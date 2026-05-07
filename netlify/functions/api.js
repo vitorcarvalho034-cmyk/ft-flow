@@ -56,8 +56,30 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
   await q(`INSERT INTO notificacoes (titulo,mensagem,tipo,destino_role) VALUES ($1,$2,$3,$4)`,[titulo,msg,tipo,"admin"]);
   try{await email(titulo,dados)}catch(e){console.log(e.message)}
 }
+app.post("/auth/login", async (req, res) => {
+  const username = String(req.body.username || "")
+    .trim()
+    .toLowerCase();
 
-app.post("/auth/login",async(req,res)=>{const r=await q(`SELECT id,username,nome,role FROM usuarios WHERE username=$1 AND password=$2`,[req.body.username,req.body.password]); if(!r.rows[0])return res.status(401).json({error:"Usuário ou senha inválidos"}); res.json(r.rows[0]);});
+  const password = String(req.body.password || "")
+    .trim();
+
+  const r = await q(
+    `SELECT id, username, nome, role
+     FROM usuarios
+     WHERE LOWER(TRIM(username)) = $1
+     AND TRIM(password) = $2`,
+    [username, password]
+  );
+
+  if (!r.rows[0]) {
+    return res.status(401).json({
+      error: "Usuário ou senha inválidos"
+    });
+  }
+
+  res.json(r.rows[0]);
+});
 app.get("/dashboard",async(req,res)=>{const a=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status!='Concluído'`),u=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgencia='Alta (parou a operação)' AND status!='Concluído'`),p=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peça'`),c=await q(`SELECT COUNT(*)::int total FROM compras WHERE status!='Recebido'`),e=await q(`SELECT COUNT(*)::int total FROM estoque WHERE quantidade<=minimo`);res.json({manutencoesAbertas:a.rows[0].total,urgentes:u.rows[0].total,aguardandoPeca:p.rows[0].total,comprasPendentes:c.rows[0].total,estoqueBaixo:e.rows[0].total});});
 
 app.get("/manutencoes",async(req,res)=>res.json((await q(`SELECT * FROM manutencoes ORDER BY id DESC`)).rows));
