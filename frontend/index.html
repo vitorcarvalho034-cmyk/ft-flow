@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FT FLOW</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <img src="logo.png" class="logo-img">
+    <h1>FT FLOW</h1>
+    <p>Sistema de Gestão Empresarial</p>
+    <input id="loginUser" placeholder="Usuário" value="admin">
+    <input id="loginPass" type="password" placeholder="Senha" value="123">
+    <button onclick="fazerLogin()">Entrar</button>
+    <small>admin / 123 ou operador / 123</small>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand"><img src="logo.png" class="logo-mini"><b>FT FLOW</b></div>
+    <button class="nav active" onclick="trocarTela('dashboard',this)">Dashboard</button>
+    <button class="nav" onclick="trocarTela('manutencoes',this)">Manutenções</button>
+    <button class="nav" onclick="trocarTela('estoque',this)">Estoque</button>
+    <button class="nav admin-only" onclick="trocarTela('compras',this)">Compras</button>
+    <button class="nav admin-only" onclick="trocarTela('cotacoes',this)">Cotações</button>
+    <button class="nav admin-only" onclick="trocarTela('recomendacoes',this)">Recomendações</button>
+    <button class="nav admin-only" onclick="trocarTela('adubacao',this)">Adubação</button>
+    <button class="nav admin-only" onclick="trocarTela('relatorios',this)">Relatórios</button>
+    <button class="nav admin-only" onclick="trocarTela('fornecedores',this)">Fornecedores</button>
+    <div class="userbox"><div id="userName"></div><small id="userRole"></small><button class="logout" onclick="location.reload()">Sair</button></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div><h2 id="pageTitle">Dashboard</h2><p>Sistema interno de gestão operacional</p></div>
+      <div class="top-actions admin-only">
+        <button class="bell-btn" onclick="abrirNotificacoes()">🔔 <span id="notifCount" class="notif-count hidden">0</span></button>
+        <button class="primary" onclick="abrirModalManutencao()">+ Nova Manutenção</button>
+      </div>
+    </header>
+    <section id="content"></section>
+  </main>
+</div>
+
+<div id="notifPanel" class="notif-panel hidden">
+  <div class="notif-head"><h3>🔔 Notificações</h3><button onclick="fecharNotificacoes()">×</button></div>
+  <button class="secondary" onclick="marcarTodasNotificacoes()">Marcar todas como lidas</button>
+  <div id="notifList"></div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Nova Manutenção</h3><button onclick="fecharModal()">×</button></div>
+    <form id="formManutencao" onsubmit="salvarManutencao(event)">
+      <div class="grid">
+        <label>Solicitante<select name="solicitante"><option>Kleber</option><option>Flávio</option><option>Leomar</option><option>Diana</option><option>Dayana</option><option>Outro</option></select></label>
+        <label>Data<input name="data_ocorrencia" type="date" required></label>
+        <label>Tipo<select name="tipo"><option>Estufas</option><option>Infraestrutura</option><option>Tratores</option><option>Implementos</option><option>Equipamentos</option><option>Máquinas</option><option>Bombas e Motores</option></select></label>
+        <label>Local/Item<input name="local_item" required></label>
+      </div>
+      <label>Problema<textarea name="defeito" required></textarea></label>
+      <div class="grid">
+        <label>Urgência<select name="urgencia"><option>Baixa (pode esperar)</option><option>Média (prejudica o uso)</option><option>Alta (parou a operação)</option></select></label>
+        <label>Responsável<input name="responsavel"></label>
+      </div>
+      <label>Solução/Observação<textarea name="solucao"></textarea></label>
+      <div class="purchase-box">
+        <label class="check"><input type="checkbox" id="precisaCompra" onchange="toggleCompra()"> Necessita compra?</label>
+        <div id="camposCompra" class="hidden grid">
+          <label>Item<input name="item_compra"></label>
+          <label>Quantidade<input name="quantidade_compra" type="number" value="1"></label>
+          <label>Categoria<select name="categoria_compra"><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Caixa 48</option><option>Caixa 58</option><option>Outros</option></select></label>
+          <label>Destino<input name="destino_compra" placeholder="Ex: Defensivo Vinhedo"></label>
+        </div>
+      </div>
+      <label>Foto<input name="foto" type="file" accept="image/*"></label>
+      <button class="primary full">Salvar</button>
+    </form>
+  </div>
+</div>
+
+<div id="concluirModal" class="modal hidden">
+  <div class="modal-card small-modal">
+    <div class="modal-head"><h3>Concluir manutenção</h3><button onclick="fecharConcluir()">×</button></div>
+    <input type="hidden" id="concluirId">
+    <label>Responsável pela execução<input id="concluirResponsavel" placeholder="Nome do responsável"></label>
+    <label>Solução aplicada<textarea id="concluirSolucao" placeholder="Descreva o que foi feito"></textarea></label>
+    <button class="primary full" onclick="salvarConclusao()">Concluir manutenção</button>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
