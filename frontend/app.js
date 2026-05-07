@@ -1,4 +1,4 @@
-const API = "/api";let usuario=null,tela="dashboard";
+const API="/api";let usuario=null,tela="dashboard";
 function hoje(){return new Date().toISOString().slice(0,10)}
 async function fazerLogin(){try{const r=await fetch(API+"/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:loginUser.value,password:loginPass.value})});if(!r.ok)return alert("Usuário ou senha inválidos");usuario=await r.json();loginScreen.classList.add("hidden");app.classList.remove("hidden");userName.innerText=usuario.nome||usuario.username;userRole.innerText=usuario.role==="admin"?"Administrador":"Funcionário";if(usuario.role!=="admin")document.querySelectorAll(".admin-only").forEach(e=>e.style.display="none");carregar();atualizarContadorNotificacoes();setInterval(atualizarContadorNotificacoes,15000)}catch(e){alert("Erro ao conectar com servidor.")}}
 function trocarTela(n,b){tela=n;document.querySelectorAll(".nav").forEach(x=>x.classList.remove("active"));if(b)b.classList.add("active");pageTitle.innerText={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",compras:"Compras",cotacoes:"Cotações",recomendacoes:"Recomendações",adubacao:"Adubação",relatorios:"Relatórios",fornecedores:"Fornecedores"}[n];carregar()}
@@ -175,4 +175,11 @@ async function confirmarBaixaRecomendacao(id){
  if(r.naoEncontrados&&r.naoEncontrados.length)alert("Baixa feita, mas estes produtos não existem no estoque: "+r.naoEncontrados.join(", "));
  else alert("Baixa no estoque concluída.");
  carregar();
+}
+
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
 }

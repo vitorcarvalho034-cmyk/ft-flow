@@ -6,6 +6,7 @@ const pdf = require("pdf-parse");
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
+
 app.use((req, res, next) => {
   if (req.url.startsWith("/api/")) {
     req.url = req.url.replace("/api", "");
@@ -62,13 +63,10 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
   await q(`INSERT INTO notificacoes (titulo,mensagem,tipo,destino_role) VALUES ($1,$2,$3,$4)`,[titulo,msg,tipo,"admin"]);
   try{await email(titulo,dados)}catch(e){console.log(e.message)}
 }
-app.post("/auth/login", async (req, res) => {
-  const username = String(req.body.username || "")
-    .trim()
-    .toLowerCase();
 
-  const password = String(req.body.password || "")
-    .trim();
+app.post("/auth/login", async (req, res) => {
+  const username = String(req.body.username || "").trim().toLowerCase();
+  const password = String(req.body.password || "").trim();
 
   const r = await q(
     `SELECT id, username, nome, role
@@ -79,9 +77,7 @@ app.post("/auth/login", async (req, res) => {
   );
 
   if (!r.rows[0]) {
-    return res.status(401).json({
-      error: "Usuário ou senha inválidos"
-    });
+    return res.status(401).json({ error: "Usuário ou senha inválidos" });
   }
 
   res.json(r.rows[0]);

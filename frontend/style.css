@@ -61,3 +61,327 @@ button{cursor:pointer;border:0;border-radius:14px;padding:12px 16px;font-weight:
 
 /* Adubação e Relatórios */
 .dist-input{background:#fff}
+
+
+/* ===========================
+   FT FLOW MOBILE V2 PREMIUM
+   =========================== */
+
+html { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior-y: none; }
+button, input, select, textarea { font-size: 16px; }
+
+@media (max-width: 900px) {
+  body {
+    background: #06130c;
+  }
+
+  .app {
+    min-height: 100vh;
+    padding-bottom: 86px;
+    background:
+      radial-gradient(circle at 10% 0%, rgba(34,197,94,.18), transparent 30%),
+      linear-gradient(180deg,#06130c,#0b1810);
+  }
+
+  .sidebar {
+    position: fixed !important;
+    left: 10px !important;
+    right: 10px !important;
+    bottom: 10px !important;
+    top: auto !important;
+    height: 72px !important;
+    width: auto !important;
+    z-index: 80 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px !important;
+    border-radius: 24px !important;
+    background: rgba(4, 28, 15, .94) !important;
+    border: 1px solid rgba(74, 222, 128, .18) !important;
+    box-shadow: 0 12px 40px rgba(0,0,0,.45) !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    backdrop-filter: blur(14px);
+  }
+
+  .sidebar::-webkit-scrollbar,
+  .category-grid::-webkit-scrollbar { display: none; }
+
+  .brand, .userbox { display: none !important; }
+
+  .nav {
+    min-width: 76px !important;
+    height: 54px !important;
+    padding: 6px 8px !important;
+    border-radius: 18px !important;
+    display: grid !important;
+    place-items: center !important;
+    text-align: center !important;
+    color: #bbf7d0 !important;
+    font-size: 11px !important;
+    line-height: 1.1 !important;
+    white-space: normal !important;
+    background: transparent !important;
+  }
+
+  .nav.active, .nav:hover {
+    background: linear-gradient(135deg,#15803d,#22c55e) !important;
+    color: white !important;
+    box-shadow: 0 8px 22px rgba(34,197,94,.28) !important;
+  }
+
+  .main {
+    padding: 14px !important;
+    padding-bottom: 96px !important;
+    width: 100% !important;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+    margin: -14px -14px 14px -14px !important;
+    padding: 14px !important;
+    background: rgba(6, 19, 12, .92);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(74, 222, 128, .14);
+  }
+
+  .topbar h2 {
+    font-size: 22px !important;
+    color: #eafff0 !important;
+  }
+
+  .topbar p {
+    font-size: 12px !important;
+    color: #8fb59c !important;
+  }
+
+  .top-actions {
+    display: grid !important;
+    grid-template-columns: 56px 1fr !important;
+    gap: 8px !important;
+    margin-top: 10px;
+  }
+
+  .top-actions .primary, .bell-btn {
+    height: 48px !important;
+    border-radius: 16px !important;
+  }
+
+  .cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .kpi, .panel, .card {
+    background: rgba(17, 24, 20, .96) !important;
+    color: #e5e7eb !important;
+    border: 1px solid rgba(74, 222, 128, .13) !important;
+    box-shadow: 0 10px 28px rgba(0,0,0,.22) !important;
+  }
+
+  .kpi {
+    padding: 14px !important;
+    border-radius: 20px !important;
+  }
+
+  .kpi small {
+    color: #8fb59c !important;
+    font-size: 12px;
+  }
+
+  .kpi strong {
+    color: #4ade80 !important;
+    font-size: 28px !important;
+  }
+
+  .panel {
+    padding: 14px !important;
+    border-radius: 22px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .panel h3 {
+    color: #eafff0 !important;
+    font-size: 18px !important;
+  }
+
+  .card {
+    border-radius: 18px !important;
+    padding: 14px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  input, select, textarea {
+    background: #07130d !important;
+    color: #e5e7eb !important;
+    border: 1px solid rgba(74, 222, 128, .18) !important;
+    min-height: 48px !important;
+    border-radius: 16px !important;
+  }
+
+  input::placeholder, textarea::placeholder { color: #789482; }
+
+  label { color: #d5fce0 !important; }
+
+  .primary, .secondary {
+    min-height: 48px !important;
+    border-radius: 16px !important;
+  }
+
+  .secondary {
+    background: rgba(34,197,94,.12) !important;
+    color: #86efac !important;
+    border: 1px solid rgba(34,197,94,.18) !important;
+  }
+
+  .table {
+    display: block !important;
+    overflow-x: auto !important;
+    white-space: nowrap !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
+  }
+
+  .table th {
+    background: #102116 !important;
+    color: #bbf7d0 !important;
+  }
+
+  .table td {
+    color: #e5e7eb !important;
+    border-bottom: 1px solid rgba(255,255,255,.07) !important;
+  }
+
+  .stock-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .stock-row .actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .stock-low { border-left: 5px solid #ef4444 !important; }
+  .stock-ok { border-left: 5px solid #22c55e !important; }
+
+  .category-grid {
+    display: flex !important;
+    overflow-x: auto !important;
+    gap: 10px !important;
+    padding-bottom: 6px !important;
+  }
+
+  .cat-btn {
+    min-width: 150px !important;
+    background: rgba(34,197,94,.12) !important;
+    color: #d1fae5 !important;
+    border-color: rgba(34,197,94,.22) !important;
+  }
+
+  .modal {
+    align-items: end !important;
+    padding: 0 !important;
+  }
+
+  .modal-card {
+    width: 100% !important;
+    max-height: 92vh !important;
+    border-radius: 28px 28px 0 0 !important;
+    background: #0b1810 !important;
+    color: #e5e7eb !important;
+    padding: 18px !important;
+    border: 1px solid rgba(74,222,128,.12) !important;
+  }
+
+  .modal-head {
+    position: sticky;
+    top: 0;
+    background: #0b1810;
+    z-index: 5;
+    padding-bottom: 8px;
+  }
+
+  .purchase-box {
+    background: rgba(34,197,94,.08) !important;
+    border-color: rgba(34,197,94,.22) !important;
+  }
+
+  .notif-panel {
+    left: 10px !important;
+    right: 10px !important;
+    top: auto !important;
+    bottom: 92px !important;
+    width: auto !important;
+    max-height: 70vh !important;
+    background: #0b1810 !important;
+    color: #e5e7eb !important;
+    border: 1px solid rgba(74,222,128,.18) !important;
+  }
+
+  .notif-item {
+    background: #111714 !important;
+    color: #e5e7eb !important;
+    border-color: rgba(74,222,128,.16) !important;
+  }
+
+  .quote-table-wrap {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .quote-matrix .item-col {
+    position: sticky !important;
+    left: 0 !important;
+    background: #101d14 !important;
+    z-index: 2 !important;
+  }
+
+  .price-input { min-width: 120px !important; }
+
+  .summary-card {
+    background: rgba(34,197,94,.10) !important;
+    border-color: rgba(34,197,94,.22) !important;
+  }
+
+  .summary-card b { color: #4ade80 !important; }
+
+  .login-screen {
+    padding: 18px !important;
+    background:
+      radial-gradient(circle at top left, rgba(34,197,94,.32), transparent 35%),
+      linear-gradient(160deg,#020617,#052e16 65%,#16a34a) !important;
+  }
+
+  .login-card {
+    border-radius: 28px !important;
+    padding: 26px !important;
+    width: 100% !important;
+    max-width: 390px !important;
+  }
+
+  .logo-img {
+    width: 82px !important;
+    height: 82px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .cards { grid-template-columns: 1fr 1fr !important; }
+  .kpi strong { font-size: 24px !important; }
+  .nav {
+    min-width: 70px !important;
+    font-size: 10px !important;
+  }
+}
