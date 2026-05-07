@@ -385,3 +385,52 @@ button, input, select, textarea { font-size: 16px; }
     font-size: 10px !important;
   }
 }
+
+
+/* FT FLOW Mobile V2.1 - topo mais limpo no celular */
+@media (max-width: 900px) {
+  .top-actions {
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    margin-top: 12px !important;
+  }
+
+  .top-actions > .primary {
+    display: none !important;
+  }
+
+  .bell-btn {
+    width: 58px !important;
+    min-width: 58px !important;
+    height: 58px !important;
+    border-radius: 18px !important;
+    background: #f0fdf4 !important;
+    color: #052e16 !important;
+    font-size: 22px !important;
+  }
+
+  .topbar {
+    padding-bottom: 16px !important;
+  }
+}
+
+
+/* FT FLOW Mobile V2.2 - cotações puxando solicitações de compra */
+@media (max-width: 900px) {
+  .cotacao-box {
+    margin-top: 12px !important;
+  }
+  .quote-panel h4 {
+    color: #eafff0 !important;
+  }
+}
+
+
+/* FT FLOW Mobile V2.3 - revisão de rotas e cotações */
+.cotacao-box.hidden { display: none !important; }
+.quote-panel h4 { margin: 0 0 12px; }
+@media (max-width: 900px) {
+  .cotacao-box { margin-top: 12px !important; }
+  .quote-panel h4 { color: #eafff0 !important; }
+}
