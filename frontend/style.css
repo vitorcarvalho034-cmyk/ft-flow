@@ -465,3 +465,9 @@ button, input, select, textarea { font-size: 16px; }
     border-radius: 18px !important;
   }
 }
+
+/* FT FLOW V2.6 stable fixes */
+.top-actions > .primary { display:none !important; }
+.cotacao-box.hidden{display:none!important;}
+.quote-panel h4{margin:0 0 12px;}
+@media(max-width:900px){.top-actions{display:flex!important;justify-content:flex-end!important}.bell-btn{width:54px!important;min-width:54px!important;height:54px!important}}

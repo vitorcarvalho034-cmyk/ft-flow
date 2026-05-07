@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FT FLOW</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=26">
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#052e16">
@@ -32,7 +32,7 @@
     <button class="nav active" onclick="trocarTela('dashboard',this)">Dashboard</button>
     <button class="nav" onclick="trocarTela('manutencoes',this)">Manutenções</button>
     <button class="nav" onclick="trocarTela('estoque',this)">Estoque</button>
-    <button class="nav admin-only" onclick="trocarTela('compras',this)">Compras</button>
+    <button class="nav" onclick="trocarTela('compras',this)">Compras</button>
     <button class="nav admin-only" onclick="trocarTela('cotacoes',this)">Cotações</button>
     <button class="nav admin-only" onclick="trocarTela('recomendacoes',this)">Recomendações</button>
     <button class="nav admin-only" onclick="trocarTela('adubacao',this)">Adubação</button>
@@ -46,7 +46,6 @@
       <div><h2 id="pageTitle">Dashboard</h2><p>Sistema interno de gestão operacional</p></div>
       <div class="top-actions admin-only">
         <button class="bell-btn" onclick="abrirNotificacoes()">🔔 <span id="notifCount" class="notif-count hidden">0</span></button>
-        <button class="primary" onclick="abrirModalManutencao()">+ Nova Manutenção</button>
       </div>
     </header>
     <section id="content"></section>
@@ -100,6 +99,6 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
