@@ -6,6 +6,12 @@ const pdf = require("pdf-parse");
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
+app.use((req, res, next) => {
+  if (req.url.startsWith("/api/")) {
+    req.url = req.url.replace("/api", "");
+  }
+  next();
+});
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
