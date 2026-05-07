@@ -434,3 +434,34 @@ button, input, select, textarea { font-size: 16px; }
   .cotacao-box { margin-top: 12px !important; }
   .quote-panel h4 { color: #eafff0 !important; }
 }
+
+
+/* FT FLOW Mobile V2.5 - remove botão nova manutenção mobile */
+@media (max-width: 900px) {
+
+  .top-actions .primary,
+  .top-actions button.primary,
+  .top-actions .btn-primary {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .top-actions {
+    display: flex !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .bell-btn {
+    width: 54px !important;
+    min-width: 54px !important;
+    height: 54px !important;
+    border-radius: 18px !important;
+  }
+}
