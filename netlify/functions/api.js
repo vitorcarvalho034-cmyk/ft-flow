@@ -20,10 +20,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Middleware de autenticação (exceto login)
+// Middleware de autenticação (exceto login e reset)
 function autenticar(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token && req.path !== "/auth/login") {
+  if (!token && req.path !== "/auth/login" && req.path !== "/auth/reset-usuarios") {
     return res.status(401).json({ error: "Token não fornecido" });
   }
   if (token) {
@@ -36,6 +36,21 @@ function autenticar(req, res, next) {
   next();
 }
 app.use(autenticar);
+
+// ENDPOINT TEMPORÁRIO: Reset de usuários (remover após usar)
+app.post("/auth/reset-usuarios", async (req, res) => {
+  try {
+    const adminPass = await bcrypt.hash("123", 10);
+    const operadorPass = await bcrypt.hash("123", 10);
+    await q(`DELETE FROM usuarios`);
+    await q(`INSERT INTO usuarios (username, password, nome, role) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
+      ["admin", adminPass, "Administrador", "admin", "operador", operadorPass, "Operador", "funcionario"]
+    );
+    res.json({ ok: true, message: "Usuários resetados com sucesso. Use admin/123 e operador/123" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
