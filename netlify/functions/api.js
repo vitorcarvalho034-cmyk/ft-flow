@@ -31,7 +31,7 @@ app.post("/auth/reset-usuarios-temp", async (req, res) => {
     });
     const c = await pool2.connect();
     try {
-      await c.query("DELETE FROM usuarios");
+      await c.query(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username VARCHAR(50) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, nome VARCHAR(100), role VARCHAR(20) DEFAULT 'funcionario', criado_em TIMESTAMP DEFAULT NOW())`); await c.query("DELETE FROM usuarios");
       await c.query(
         `INSERT INTO usuarios (username, password, nome, role) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
         ["admin", senhaAdmin, "Administrador", "admin", "operador", senhaOperador, "Operador", "funcionario"]
