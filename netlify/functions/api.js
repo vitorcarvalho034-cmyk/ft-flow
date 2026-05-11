@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 // Middleware de autenticação (exceto login)
 function autenticar(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token && req.path !== "/auth/login") {
+  if (!token && req.path !== "/auth/login" && req.path !== "/auth/reset-usuarios-temp") {
     return res.status(401).json({ error: "Token não fornecido" });
   }
   if (token) {
