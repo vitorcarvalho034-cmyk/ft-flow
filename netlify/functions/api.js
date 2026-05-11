@@ -20,6 +20,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// ENDPOINT TEMPORARIO ANTES DO MIDDLEWARE (SEM AUTENTICACAO)
+app.post("/auth/reset-usuarios-temp", async (req, res) => {
+  try {
+    const senhaAdmin = await bcrypt.hash("123", 10);
+    const senhaOperador = await bcrypt.hash("123", 10);
+    const pool2 = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+    });
+    const c = await pool2.connect();
+    try {
+      await c.query("DELETE FROM usuarios");
+      await c.query(
+        `INSERT INTO usuarios (username, password, nome, role) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
+        ["admin", senhaAdmin, "Administrador", "admin", "operador", senhaOperador, "Operador", "funcionario"]
+      );
+    } finally { c.release(); }
+    pool2.end();
+    res.json({ ok: true, message: "Usuarios resetados com sucesso. Use admin/123 e operador/123" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 // Middleware de autenticação (exceto login)
 function autenticar(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
@@ -97,25 +122,6 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
 }
 
 // LOGIN COM JWT
-// Endpoint temporário para resetar usuários (REMOVER EM PRODUÇÃO)
-app.post("/auth/reset-usuarios-temp", async (req, res) => {
-  try {
-    const senhaAdmin = await bcrypt.hash("123", 10);
-    const senhaOperador = await bcrypt.hash("123", 10);
-    
-    await q("DELETE FROM usuarios");
-    await q(
-      `INSERT INTO usuarios (username, password, nome, role) VALUES 
-       ($1, $2, $3, $4), 
-       ($5, $6, $7, $8)`,
-      ["admin", senhaAdmin, "Administrador", "admin", "operador", senhaOperador, "Operador", "funcionario"]
-    );
-    
-    res.json({ ok: true, message: "Usuários resetados com sucesso. Use admin/123 e operador/123" });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 app.post("/auth/login", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
