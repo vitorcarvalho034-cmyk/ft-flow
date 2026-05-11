@@ -227,3 +227,13 @@ app.post("/adubacao/aplicar",async(req,res)=>{const {titulo,itens,distribuicao}=
 app.get("/relatorios/mensal/html",async(req,res)=>{const month=req.query.month||new Date().toISOString().slice(0,7);const movs=await q(`SELECT produto,categoria,unidade,destino,origem,SUM(quantidade) total FROM movimentacoes_estoque WHERE to_char(created_at,'YYYY-MM')=$1 GROUP BY produto,categoria,unidade,destino,origem ORDER BY categoria,produto`,[month]);const est=await q(`SELECT nome,categoria,unidade,quantidade,minimo FROM estoque ORDER BY categoria,nome`);res.setHeader("Content-Type","text/html; charset=utf-8");res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>FT FLOW Relatório</title><style>body{font-family:Arial;background:#f3f7f4;padding:28px}.page{max-width:1000px;margin:auto;background:white;padding:30px;border-radius:22px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#ecfdf5}.btn{background:#15803d;color:white;padding:12px 18px;border:0;border-radius:12px}@media print{.btn{display:none}}</style></head><body><div class="page"><h1>🌿 FT FLOW - Relatório Mensal</h1><p>Mês: <b>${month}</b></p><button class="btn" onclick="window.print()">Salvar PDF</button><h2>Consumo</h2><table><tr><th>Produto</th><th>Categoria</th><th>Total</th><th>Destino</th><th>Origem</th></tr>${movs.rows.map(m=>`<tr><td>${m.produto}</td><td>${m.categoria||"-"}</td><td>${Number(m.total||0).toFixed(2)} ${m.unidade||""}</td><td>${m.destino||"-"}</td><td>${m.origem||"-"}</td></tr>`).join("")||"<tr><td colspan='5'>Sem consumo</td></tr>"}</table><h2>Estoque atual</h2><table><tr><th>Produto</th><th>Categoria</th><th>Atual</th><th>Mínimo</th></tr>${est.rows.map(e=>`<tr><td>${e.nome}</td><td>${e.categoria}</td><td>${e.quantidade} ${e.unidade}</td><td>${e.minimo}</td></tr>`).join("")}</table></div></body></html>`);});
 
 module.exports.handler = serverless(app);
+
+// DEBUG: Verificar usuários
+app.get("/debug/usuarios", async (req, res) => {
+  try {
+    const r = await q("SELECT id, username, nome, role FROM usuarios");
+    res.json({ usuarios: r.rows, total: r.rows.length });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
