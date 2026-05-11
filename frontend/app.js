@@ -57,7 +57,7 @@ async function fazerLogin(){
     userName.innerText = usuario.nome || usuario.username;
     userRole.innerText = usuario.role === "admin" ? "Administrador" : "Funcionário";
     if(usuario.role !== "admin") document.querySelectorAll(".admin-only").forEach(e=>e.style.display="none");
-    trocarTela("dashboard", document.querySelector(".nav"));
+    await trocarTela("dashboard", document.querySelector(".nav"));
     atualizarContadorNotificacoes();
     setInterval(atualizarContadorNotificacoes,15000);
   }catch(e){ mostrarErro("Erro ao conectar com servidor: "+e.message); }
