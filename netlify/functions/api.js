@@ -3,16 +3,39 @@ const serverless = require("serverless-http");
 const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
 const pdf = require("pdf-parse");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
 
+// JWT Secret
+const JWT_SECRET = process.env.JWT_SECRET || "ft-flow-secret-key-change-in-production";
+
+// Middleware para remover /api do URL
 app.use((req, res, next) => {
   if (req.url.startsWith("/api/")) {
     req.url = req.url.replace("/api", "");
   }
   next();
 });
+
+// Middleware de autenticação (exceto login)
+function autenticar(req, res, next) {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token && req.path !== "/auth/login") {
+    return res.status(401).json({ error: "Token não fornecido" });
+  }
+  if (token) {
+    try {
+      req.user = jwt.verify(token, JWT_SECRET);
+    } catch (e) {
+      return res.status(401).json({ error: "Token inválido" });
+    }
+  }
+  next();
+}
+app.use(autenticar);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -25,6 +48,7 @@ async function q(sql, params=[]) {
   try { return await c.query(sql, params); }
   finally { c.release(); }
 }
+
 async function ensureDb(){
   if(ready) return;
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
@@ -44,8 +68,16 @@ async function ensureDb(){
   await q(`CREATE TABLE IF NOT EXISTS aplicacoes_adubacao (id SERIAL PRIMARY KEY, titulo TEXT, status TEXT DEFAULT 'Confirmada', created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS aplicacao_adubacao_itens (id SERIAL PRIMARY KEY, aplicacao_id INTEGER, produto TEXT, quantidade_total REAL, unidade TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS aplicacao_adubacao_destinos (id SERIAL PRIMARY KEY, aplicacao_id INTEGER, produto TEXT, destino TEXT, quantidade REAL, unidade TEXT)`);
+  
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
-  if(u.rows[0].total===0) await q(`INSERT INTO usuarios (username,password,nome,role) VALUES ('admin','123','Administrador','admin'),('operador','123','Operador','funcionario')`);
+  if(u.rows[0].total===0) {
+    const adminPass = await bcrypt.hash("123", 10);
+    const operadorPass = await bcrypt.hash("123", 10);
+    await q(`INSERT INTO usuarios (username,password,nome,role) VALUES ($1,$2,$3,$4),($5,$6,$7,$8)`,
+      ["admin", adminPass, "Administrador", "admin", "operador", operadorPass, "Operador", "funcionario"]
+    );
+  }
+  
   const e = await q(`SELECT COUNT(*)::int total FROM estoque`);
   if(e.rows[0].total===0) await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo) VALUES
   ('Caixa de Papelão 48','Embalagens','un',18,30),('Caixa de Papelão 58','Embalagens','un',65,40),('Adubo 04-14-08','Adubo','kg',120,50),('Defensivo Preventivo','Defensivo','L',8,10),('Bion','Defensivo','g',1000,100),('Nativo','Defensivo','ml',2000,200),('Agree','Defensivo','g',1000,100),('Vertimec','Defensivo','ml',1000,100),('Capone','Defensivo','ml',3000,300),('Delegate','Defensivo','g',1000,100)`);
@@ -64,35 +96,74 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
   try{await email(titulo,dados)}catch(e){console.log(e.message)}
 }
 
+// LOGIN COM JWT
 app.post("/auth/login", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "").trim();
 
+  if (!username || !password) {
+    return res.status(400).json({ error: "Usuário e senha são obrigatórios" });
+  }
+
   const r = await q(
-    `SELECT id, username, nome, role
-     FROM usuarios
-     WHERE LOWER(TRIM(username)) = $1
-     AND TRIM(password) = $2`,
-    [username, password]
+    `SELECT id, username, password, nome, role FROM usuarios WHERE LOWER(TRIM(username)) = $1`,
+    [username]
   );
 
   if (!r.rows[0]) {
     return res.status(401).json({ error: "Usuário ou senha inválidos" });
   }
 
-  res.json(r.rows[0]);
+  const senhaValida = await bcrypt.compare(password, r.rows[0].password);
+  if (!senhaValida) {
+    return res.status(401).json({ error: "Usuário ou senha inválidos" });
+  }
+
+  const token = jwt.sign(
+    { id: r.rows[0].id, username: r.rows[0].username, role: r.rows[0].role },
+    JWT_SECRET,
+    { expiresIn: "24h" }
+  );
+
+  res.json({
+    id: r.rows[0].id,
+    username: r.rows[0].username,
+    nome: r.rows[0].nome,
+    role: r.rows[0].role,
+    token: token
+  });
 });
+
 app.get("/dashboard",async(req,res)=>{const a=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status!='Concluído'`),u=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgencia='Alta (parou a operação)' AND status!='Concluído'`),p=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peça'`),c=await q(`SELECT COUNT(*)::int total FROM compras WHERE status!='Recebido'`),e=await q(`SELECT COUNT(*)::int total FROM estoque WHERE quantidade<=minimo`);res.json({manutencoesAbertas:a.rows[0].total,urgentes:u.rows[0].total,aguardandoPeca:p.rows[0].total,comprasPendentes:c.rows[0].total,estoqueBaixo:e.rows[0].total});});
 
-app.get("/manutencoes",async(req,res)=>res.json((await q(`SELECT * FROM manutencoes ORDER BY id DESC`)).rows));
-app.post("/manutencoes",async(req,res)=>{const b=req.body,precisa=String(b.precisa_compra)==="1"?1:0,status=precisa?"Aguardando peça":"Aberto";const r=await q(`INSERT INTO manutencoes (solicitante,data_ocorrencia,tipo,local_item,defeito,urgencia,status,responsavel,solucao,precisa_compra,item_compra,quantidade_compra,categoria_compra,destino_compra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[b.solicitante,b.data_ocorrencia,b.tipo,b.local_item,b.defeito,b.urgencia,status,b.responsavel||"",b.solucao||"",precisa,b.item_compra||"",b.quantidade_compra||0,b.categoria_compra||"",b.destino_compra||""]);await notify(precisa?"Nova manutenção com solicitação de compra":"Nova manutenção criada",`Solicitante: ${b.solicitante||"-"}\nLocal: ${b.local_item||"-"}`,"manutencao",{Solicitante:b.solicitante,Local:b.local_item,Problema:b.defeito});if(precisa)await q(`INSERT INTO compras (manutencao_id,item,quantidade,categoria,destino,status,solicitante) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[r.rows[0].id,b.item_compra||"Item não informado",b.quantidade_compra||1,b.categoria_compra||"Peças",b.destino_compra||b.local_item||"Não informado","Em cotação",b.solicitante||"Não informado"]);res.json({id:r.rows[0].id});});
+app.get("/manutencoes",async(req,res)=>{
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(50, Number(req.query.limit) || 20);
+  const offset = (page - 1) * limit;
+  const total = await q(`SELECT COUNT(*)::int total FROM manutencoes`);
+  const data = await q(`SELECT * FROM manutencoes ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+  res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
+});
+app.post("/manutencoes",async(req,res)=>{
+  const b=req.body;
+  if(!b.solicitante || !b.local_item || !b.defeito) return res.status(400).json({error:"Campos obrigatórios faltando"});
+  if(String(b.solicitante).length > 100) return res.status(400).json({error:"Solicitante muito longo"});
+  if(String(b.defeito).length > 1000) return res.status(400).json({error:"Descrição muito longa"});
+  const precisa=String(b.precisa_compra)==="1"?1:0,status=precisa?"Aguardando peça":"Aberto";const r=await q(`INSERT INTO manutencoes (solicitante,data_ocorrencia,tipo,local_item,defeito,urgencia,status,responsavel,solucao,precisa_compra,item_compra,quantidade_compra,categoria_compra,destino_compra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[b.solicitante,b.data_ocorrencia,b.tipo,b.local_item,b.defeito,b.urgencia,status,b.responsavel||"",b.solucao||"",precisa,b.item_compra||"",b.quantidade_compra||0,b.categoria_compra||"",b.destino_compra||""]);await notify(precisa?"Nova manutenção com solicitação de compra":"Nova manutenção criada",`Solicitante: ${b.solicitante||"-"}\nLocal: ${b.local_item||"-"}`,"manutencao",{Solicitante:b.solicitante,Local:b.local_item,Problema:b.defeito});if(precisa)await q(`INSERT INTO compras (manutencao_id,item,quantidade,categoria,destino,status,solicitante) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[r.rows[0].id,b.item_compra||"Item não informado",b.quantidade_compra||1,b.categoria_compra||"Peças",b.destino_compra||b.local_item||"Não informado","Em cotação",b.solicitante||"Não informado"]);res.json({id:r.rows[0].id});});
 app.put("/manutencoes/:id",async(req,res)=>{await q(`UPDATE manutencoes SET status=$1,responsavel=$2,solucao=$3,concluido_at=$4 WHERE id=$5`,[req.body.status,req.body.responsavel||"",req.body.solucao||"",req.body.status==="Concluído"?new Date():null,req.params.id]);res.json({ok:true});});
 
 app.get("/estoque",async(req,res)=>res.json((await q(`SELECT *, CASE WHEN quantidade<=minimo THEN 1 ELSE 0 END baixo FROM estoque ORDER BY categoria,nome`)).rows));
 app.post("/estoque",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo) VALUES ($1,$2,$3,$4,$5) RETURNING id`,[b.nome,b.categoria,b.unidade,b.quantidade,b.minimo]);res.json({id:r.rows[0].id});});
 app.post("/estoque/:id/baixa",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});if(Number(item.quantidade)<qtd)return res.status(400).json({error:"Quantidade maior que estoque disponível"});await q(`UPDATE estoque SET quantidade=quantidade-$1 WHERE id=$2`,[qtd,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.destino||"","saida","baixa_manual",req.body.observacao||""]);res.json({ok:true});});
 
-app.get("/compras",async(req,res)=>res.json((await q(`SELECT * FROM compras ORDER BY id DESC`)).rows));
+app.get("/compras",async(req,res)=>{
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const limit = Math.min(50, Number(req.query.limit) || 20);
+  const offset = (page - 1) * limit;
+  const total = await q(`SELECT COUNT(*)::int total FROM compras`);
+  const data = await q(`SELECT * FROM compras ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+  res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
+});
 app.post("/compras",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO compras (item,quantidade,categoria,destino,solicitante,status) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[b.item,b.quantidade,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação"]);await notify("Nova solicitação de compra",`Item: ${b.item}`,"compra",{Item:b.item,Quantidade:b.quantidade,Solicitante:b.solicitante});res.json({id:r.rows[0].id});});
 app.get("/compras/:id/cotacoes",async(req,res)=>res.json((await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id])).rows));
 app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao||""]);res.json({id:r.rows[0].id});});

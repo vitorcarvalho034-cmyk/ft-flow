@@ -2,20 +2,42 @@ const API = "/api";
 let usuario = null;
 let tela = "dashboard";
 let adubacaoItens = [];
+let token = localStorage.getItem('ft_flow_token');
 
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function dinheiro(v){ return `R$ ${Number(v||0).toFixed(2)}`; }
-function esc(s){ return String(s ?? "").replace(/'/g,"\\'").replace(/`/g,"\\`"); }
+function esc(s){ return String(s ?? "").replace(/'/g,"\\'" ).replace(/`/g,"\\`"); }
 
 async function apiJson(url, options={}){
+  const headers = options.headers || {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  options.headers = headers;
   const r = await fetch(url, options);
   const txt = await r.text();
   let data = {};
   try { data = txt ? JSON.parse(txt) : {}; } catch { data = { raw: txt }; }
+  if(r.status === 401){ localStorage.removeItem('ft_flow_token'); location.reload(); }
   if(!r.ok){ throw new Error(data.error || data.message || txt || "Erro na API"); }
   return data;
 }
 async function js(u,o){ return apiJson(u,o); }
+
+// Funções de feedback visual
+function mostrarSucesso(msg = "Operação realizada com sucesso!") {
+  const toast = document.createElement("div");
+  toast.className = "success-toast";
+  toast.innerText = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
+
+function mostrarErro(msg = "Erro ao realizar operação") {
+  const toast = document.createElement("div");
+  toast.className = "error-toast";
+  toast.innerText = msg;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3000);
+}
 
 async function fazerLogin(){
   try{
@@ -25,7 +47,10 @@ async function fazerLogin(){
       body:JSON.stringify({username:loginUser.value,password:loginPass.value})
     });
     if(!r.ok) return alert("Usuário ou senha inválidos");
-    usuario = await r.json();
+    const data = await r.json();
+    token = data.token;
+    localStorage.setItem('ft_flow_token', token);
+    usuario = data;
     loginScreen.classList.add("hidden");
     app.classList.remove("hidden");
     userName.innerText = usuario.nome || usuario.username;
