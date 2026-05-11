@@ -97,6 +97,26 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
 }
 
 // LOGIN COM JWT
+// Endpoint temporário para resetar usuários (REMOVER EM PRODUÇÃO)
+app.post("/auth/reset-usuarios-temp", async (req, res) => {
+  try {
+    const senhaAdmin = await bcrypt.hash("123", 10);
+    const senhaOperador = await bcrypt.hash("123", 10);
+    
+    await q("DELETE FROM usuarios");
+    await q(
+      `INSERT INTO usuarios (username, password, nome, role) VALUES 
+       ($1, $2, $3, $4), 
+       ($5, $6, $7, $8)`,
+      ["admin", senhaAdmin, "Administrador", "admin", "operador", senhaOperador, "Operador", "funcionario"]
+    );
+    
+    res.json({ ok: true, message: "Usuários resetados com sucesso. Use admin/123 e operador/123" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/auth/login", async (req, res) => {
   const username = String(req.body.username || "").trim().toLowerCase();
   const password = String(req.body.password || "").trim();
