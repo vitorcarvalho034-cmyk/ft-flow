@@ -187,8 +187,69 @@ async function compras(){
   const data=await js(API+"/compras");
   const compData = data.data || data;
   const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="grid"><input id="compSolicitante" placeholder="Nome do solicitante"><input id="compItem" placeholder="Item"><input id="compQtd" type="number" placeholder="Quantidade"><input id="compCat" placeholder="Categoria"><input id="compDest" placeholder="Destino / uso"></div><button class="primary full" onclick="addCompra()">Enviar solicitação</button></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${compData.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirCotacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="grid"><input id="compSolicitante" placeholder="Nome do solicitante"><input id="compItem" placeholder="Item"><input id="compQtd" type="number" placeholder="Quantidade"><input id="compCat" placeholder="Categoria"><input id="compDest" placeholder="Destino / uso"></div><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Solicitação Detalhada</button><button class="secondary" onclick="carregar()">Atualizar</button></div><button class="primary full" onclick="addCompra()">Enviar solicitação rápida</button></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${compData.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirCotacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
 }
+function abrirModalCompra() {
+  modalCompra.classList.remove("hidden");
+  formCompra.reset();
+}
+
+function fecharModalCompra() {
+  modalCompra.classList.add("hidden");
+}
+
+async function salvarCompraDetalhada(e) {
+  e.preventDefault();
+  try {
+    const solicitante = compSolicitanteModal.value.trim();
+    const item = compItemModal.value.trim();
+    const quantidade = compQtdModal.value;
+    const categoria = compCatModal.value;
+    const destino = compDestModal.value.trim();
+    const link = compLinkModal.value.trim();
+    const descricao = compDescricaoModal.value.trim();
+    const foto = compFotoModal.files[0];
+    
+    if(!solicitante) return mostrarErro("Informe o solicitante");
+    if(!item) return mostrarErro("Informe o item");
+    if(!quantidade) return mostrarErro("Informe a quantidade");
+    
+    // Se houver foto, fazer upload
+    let fotoUrl = null;
+    if(foto) {
+      const formData = new FormData();
+      formData.append('file', foto);
+      const uploadRes = await fetch(API+"/upload", {method:"POST", body:formData});
+      if(uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        fotoUrl = uploadData.url;
+      }
+    }
+    
+    await js(API+"/compras",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        solicitante,
+        item,
+        quantidade,
+        categoria,
+        destino,
+        link_produto: link,
+        descricao_detalhada: descricao,
+        foto_url: fotoUrl
+      })
+    });
+    
+    mostrarSucesso("Solicitação enviada com sucesso!");
+    fecharModalCompra();
+    carregar();
+    atualizarContadorNotificacoes();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
 async function addCompra(){
   if(!compSolicitante.value.trim())return mostrarErro("Informe o nome do solicitante."); 
   if(!compItem.value.trim())return mostrarErro("Informe o item."); 
