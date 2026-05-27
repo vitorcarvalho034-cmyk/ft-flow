@@ -404,3 +404,21 @@ app.get("/historico-aprovacoes", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Endpoint para verificar usuários (SEM AUTENTICACAO)
+app.get("/auth/verificar-usuarios", async (req, res) => {
+  try {
+    const pool2 = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+    });
+    const c = await pool2.connect();
+    try {
+      const r = await c.query("SELECT id, username, nome, role FROM usuarios");
+      res.json({ usuarios: r.rows, total: r.rows.length });
+    } finally { c.release(); }
+    pool2.end();
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
