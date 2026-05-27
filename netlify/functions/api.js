@@ -237,3 +237,170 @@ app.get("/debug/usuarios", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+
+// ===== APROVAÇÃO DE COTAÇÕES =====
+
+// Criar tabela de aprovações se não existir
+app.post("/setup-aprovacoes", async (req, res) => {
+  try {
+    await q(`CREATE TABLE IF NOT EXISTS aprovacoes_cotacao (
+      id SERIAL PRIMARY KEY,
+      cotacao_id INTEGER,
+      email_patroa TEXT,
+      observacoes TEXT,
+      urgente INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pendente',
+      aprovado_por TEXT,
+      rejeitado_por TEXT,
+      motivo_rejeicao TEXT,
+      created_at TIMESTAMP DEFAULT NOW(),
+      respondida_em TIMESTAMP
+    )`);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Enviar cotação para aprovação
+app.post("/cotacoes/:id/enviar-aprovacao", async (req, res) => {
+  try {
+    const { email_patroa, observacoes, urgente } = req.body;
+    
+    // Salvar solicitação de aprovação
+    const r = await q(
+      `INSERT INTO aprovacoes_cotacao (cotacao_id, email_patroa, observacoes, urgente, status)
+       VALUES ($1, $2, $3, $4, 'pendente') RETURNING id`,
+      [req.params.id, email_patroa, observacoes || "", urgente ? 1 : 0]
+    );
+    
+    // Buscar dados da cotação
+    const cotacao = await q(`SELECT * FROM cotacoes_gerais WHERE id = $1`, [req.params.id]);
+    
+    // Enviar email
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      }
+    });
+    
+    const linkAprovacao = `${process.env.SITE_URL || 'https://ft-flow.netlify.app'}/aprovar/${r.rows[0].id}`;
+    const linkRejeicao = `${process.env.SITE_URL || 'https://ft-flow.netlify.app'}/rejeitar/${r.rows[0].id}`;
+    
+    const mailOptions = {
+      from: process.env.SMTP_USER,
+      to: email_patroa,
+      subject: `${urgente ? '🔴 URGENTE - ' : ''}Cotação para aprovação: ${cotacao.rows[0]?.titulo || 'Sem título'}`,
+      html: `
+        <h2>Solicitação de Aprovação de Cotação</h2>
+        <p><strong>Produto/Serviço:</strong> ${cotacao.rows[0]?.titulo || 'N/A'}</p>
+        <p><strong>Categoria:</strong> ${cotacao.rows[0]?.categoria || 'N/A'}</p>
+        ${observacoes ? `<p><strong>Observações:</strong> ${observacoes}</p>` : ''}
+        <p><strong>Prioridade:</strong> ${urgente ? '🔴 URGENTE' : 'Normal'}</p>
+        <hr>
+        <p>
+          <a href="${linkAprovacao}" style="background: green; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            ✅ APROVAR
+          </a>
+          &nbsp;&nbsp;
+          <a href="${linkRejeicao}" style="background: red; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            ❌ REJEITAR
+          </a>
+        </p>
+        <p style="color: #999; font-size: 12px;">Clique nos botões acima para aprovar ou rejeitar a cotação.</p>
+      `
+    };
+    
+    await transporter.sendMail(mailOptions);
+    
+    res.json({ ok: true, id: r.rows[0].id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Aprovar cotação
+app.post("/cotacoes/:id/aprovar", async (req, res) => {
+  try {
+    const { aprovado_por } = req.body;
+    
+    await q(
+      `UPDATE aprovacoes_cotacao SET status = 'aprovada', aprovado_por = $1, respondida_em = NOW()
+       WHERE id = $2`,
+      [aprovado_por, req.params.id]
+    );
+    
+    // Atualizar status da cotação
+    const aprov = await q(`SELECT cotacao_id FROM aprovacoes_cotacao WHERE id = $1`, [req.params.id]);
+    await q(
+      `UPDATE cotacoes_gerais SET status = 'Aprovada' WHERE id = $1`,
+      [aprov.rows[0].cotacao_id]
+    );
+    
+    res.json({ ok: true, message: "Cotação aprovada com sucesso!" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Rejeitar cotação
+app.post("/cotacoes/:id/rejeitar", async (req, res) => {
+  try {
+    const { rejeitado_por, motivo } = req.body;
+    
+    await q(
+      `UPDATE aprovacoes_cotacao SET status = 'rejeitada', rejeitado_por = $1, motivo_rejeicao = $2, respondida_em = NOW()
+       WHERE id = $3`,
+      [rejeitado_por, motivo || "", req.params.id]
+    );
+    
+    // Atualizar status da cotação
+    const aprov = await q(`SELECT cotacao_id FROM aprovacoes_cotacao WHERE id = $1`, [req.params.id]);
+    await q(
+      `UPDATE cotacoes_gerais SET status = 'Rejeitada' WHERE id = $1`,
+      [aprov.rows[0].cotacao_id]
+    );
+    
+    res.json({ ok: true, message: "Cotação rejeitada!" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Listar aprovações pendentes
+app.get("/aprovacoes-pendentes", async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT ac.*, cg.titulo, cg.categoria 
+       FROM aprovacoes_cotacao ac
+       LEFT JOIN cotacoes_gerais cg ON ac.cotacao_id = cg.id
+       WHERE ac.status = 'pendente'
+       ORDER BY ac.urgente DESC, ac.created_at DESC`
+    );
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Histórico de aprovações
+app.get("/historico-aprovacoes", async (req, res) => {
+  try {
+    const r = await q(
+      `SELECT ac.*, cg.titulo, cg.categoria 
+       FROM aprovacoes_cotacao ac
+       LEFT JOIN cotacoes_gerais cg ON ac.cotacao_id = cg.id
+       WHERE ac.status IN ('aprovada', 'rejeitada')
+       ORDER BY ac.respondida_em DESC
+       LIMIT 50`
+    );
+    res.json(r.rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});

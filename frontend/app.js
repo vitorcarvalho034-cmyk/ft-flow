@@ -335,3 +335,237 @@ async function atualizarContadorNotificacoes(){
     notifCount.classList.toggle("hidden",naoLidas===0);
   }catch(e){}
 }
+
+
+// ===== ESTOQUE: INCLUIR/EDITAR PRODUTOS =====
+function abrirModalEstoque(id = null) {
+  const modal = document.getElementById("modalEstoque");
+  const titulo = document.getElementById("tituloEstoque");
+  
+  if (id) {
+    titulo.innerText = "Editar Produto";
+    // Carregar dados do produto
+    js(API + `/estoque/${id}`).then(p => {
+      document.getElementById("estoqueId").value = p.id;
+      document.getElementById("estoqueName").value = p.nome;
+      document.getElementById("estoqueCat").value = p.categoria;
+      document.getElementById("estoqueUnit").value = p.unidade;
+      document.getElementById("estoqueQtd").value = p.quantidade;
+      document.getElementById("estoqueMin").value = p.minimo;
+    });
+  } else {
+    titulo.innerText = "Novo Produto";
+    document.getElementById("formEstoque").reset();
+    document.getElementById("estoqueId").value = "";
+  }
+  modal.classList.remove("hidden");
+}
+
+function fecharModalEstoque() {
+  document.getElementById("modalEstoque").classList.add("hidden");
+}
+
+async function salvarProdutoEstoque(e) {
+  e.preventDefault();
+  try {
+    const id = document.getElementById("estoqueId").value;
+    const dados = {
+      nome: document.getElementById("estoqueName").value,
+      categoria: document.getElementById("estoqueCat").value,
+      unidade: document.getElementById("estoqueUnit").value,
+      quantidade: parseFloat(document.getElementById("estoqueQtd").value),
+      minimo: parseFloat(document.getElementById("estoqueMin").value)
+    };
+    
+    const url = id ? `${API}/estoque/${id}` : `${API}/estoque`;
+    const method = id ? "PUT" : "POST";
+    
+    await js(url, { method, body: JSON.stringify(dados) });
+    mostrarSucesso("Produto salvo com sucesso!");
+    fecharModalEstoque();
+    estoque(); // Recarregar lista
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function excluirProdutoEstoque(id) {
+  if (confirm("Tem certeza que deseja excluir este produto?")) {
+    try {
+      await js(`${API}/estoque/${id}`, { method: "DELETE" });
+      mostrarSucesso("Produto excluído!");
+      estoque();
+    } catch (e) {
+      mostrarErro(e.message);
+    }
+  }
+}
+
+// ===== COMPRA RÁPIDA (< R$2000) =====
+function abrirModalCompraRapida() {
+  document.getElementById("modalCompraRapida").classList.remove("hidden");
+  document.getElementById("formCompraRapida").reset();
+}
+
+function fecharModalCompraRapida() {
+  document.getElementById("modalCompraRapida").classList.add("hidden");
+}
+
+async function salvarCompraRapida(e) {
+  e.preventDefault();
+  try {
+    const valor = parseFloat(document.getElementById("crValor").value);
+    
+    if (valor > 2000) {
+      mostrarErro("Valor máximo para compra rápida é R$ 2000!");
+      return;
+    }
+    
+    const dados = {
+      solicitante: document.getElementById("crSolicitante").value,
+      produto: document.getElementById("crProduto").value,
+      quantidade: parseFloat(document.getElementById("crQtd").value),
+      valor: valor,
+      descricao: document.getElementById("crDescricao").value,
+      tipo: "rapida",
+      status: "aprovada"
+    };
+    
+    await js(`${API}/compras-rapidas`, { method: "POST", body: JSON.stringify(dados) });
+    mostrarSucesso("Compra rápida registrada! Será incluída no relatório semanal.");
+    fecharModalCompraRapida();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+// ===== COTAÇÕES: COMPARAÇÃO DE FORNECEDORES =====
+function abrirModalCotacaoComparacao(cotacaoId) {
+  try {
+    js(`${API}/cotacoes/${cotacaoId}`).then(cotacao => {
+      const modal = document.getElementById("modalCotacaoComparacao");
+      const tbody = document.getElementById("cotacaoComparacaoBody");
+      
+      // Montar tabela com fornecedores lado a lado
+      let html = `<tr>
+        <td><strong>${cotacao.produto}</strong></td>`;
+      
+      cotacao.fornecedores.forEach((f, i) => {
+        html += `<td>
+          <strong>${f.nome}</strong><br>
+          <span style="color: green; font-size: 16px;">R$ ${f.valor.toFixed(2)}</span><br>
+          <small>${f.observacao || ""}</small>
+        </td>`;
+      });
+      
+      html += `<td>
+        <button class="small" onclick="editarCotacao(${cotacaoId})">✏️ Editar</button>
+        <button class="small danger" onclick="excluirCotacao(${cotacaoId})">🗑️ Excluir</button>
+      </td></tr>`;
+      
+      tbody.innerHTML = html;
+      modal.classList.remove("hidden");
+    });
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+function fecharModalCotacaoComparacao() {
+  document.getElementById("modalCotacaoComparacao").classList.add("hidden");
+}
+
+async function editarCotacao(id) {
+  // Abrir modal de edição
+  mostrarSucesso("Modo edição ativado!");
+}
+
+async function excluirCotacao(id) {
+  if (confirm("Excluir esta cotação?")) {
+    try {
+      await js(`${API}/cotacoes/${id}`, { method: "DELETE" });
+      mostrarSucesso("Cotação excluída!");
+      fecharModalCotacaoComparacao();
+    } catch (e) {
+      mostrarErro(e.message);
+    }
+  }
+}
+
+
+// ===== APROVAÇÃO DE COTAÇÕES =====
+let cotacaoAtualId = null;
+
+function enviarParaAprovacao(cotacaoId) {
+  cotacaoAtualId = cotacaoId;
+  const modal = document.getElementById("modalAprovacaoCotacao");
+  document.getElementById("aprovacaoCotacaoId").value = cotacaoId;
+  document.getElementById("aprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
+  modal.classList.remove("hidden");
+}
+
+function fecharModalAprovacao() {
+  document.getElementById("modalAprovacaoCotacao").classList.add("hidden");
+}
+
+async function confirmarEnvioAprovacao(e) {
+  e.preventDefault();
+  try {
+    const cotacaoId = document.getElementById("aprovacaoCotacaoId").value;
+    const email = document.getElementById("aprovacaoEmail").value;
+    const obs = document.getElementById("aprovacaoObs").value;
+    const urgente = document.getElementById("aprovacaoUrgente").checked;
+    
+    // Salvar email da patroa para próxima vez
+    localStorage.setItem("patroa_email", email);
+    
+    const dados = {
+      cotacao_id: cotacaoId,
+      email_patroa: email,
+      observacoes: obs,
+      urgente: urgente,
+      status: "pendente_aprovacao"
+    };
+    
+    // Enviar para aprovação
+    await js(`${API}/cotacoes/${cotacaoId}/enviar-aprovacao`, {
+      method: "POST",
+      body: JSON.stringify(dados)
+    });
+    
+    mostrarSucesso(`Email enviado para ${email}! Aguardando aprovação...`);
+    fecharModalAprovacao();
+    fecharModalCotacaoComparacao();
+    cotacoes(); // Recarregar lista
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+// Função para aprovar cotação (chamada pelo link no email)
+async function aprovarCotacao(cotacaoId) {
+  try {
+    await js(`${API}/cotacoes/${cotacaoId}/aprovar`, {
+      method: "POST",
+      body: JSON.stringify({ aprovado_por: usuario.nome })
+    });
+    mostrarSucesso("Cotação aprovada!");
+    cotacoes();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+// Função para rejeitar cotação
+async function rejeitarCotacao(cotacaoId, motivo = "") {
+  try {
+    await js(`${API}/cotacoes/${cotacaoId}/rejeitar`, {
+      method: "POST",
+      body: JSON.stringify({ motivo, rejeitado_por: usuario.nome })
+    });
+    mostrarSucesso("Cotação rejeitada!");
+    cotacoes();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}

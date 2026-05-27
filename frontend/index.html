@@ -120,6 +120,93 @@
   </div>
 </div>
 
+<!-- Modal Estoque: Incluir/Editar Produto -->
+<div id="modalEstoque" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="tituloEstoque">Novo Produto</h3><button onclick="fecharModalEstoque()">×</button></div>
+    <form id="formEstoque" onsubmit="salvarProdutoEstoque(event)">
+      <input type="hidden" id="estoqueId">
+      <div class="grid">
+        <label>Nome do Produto<input id="estoqueName" placeholder="Ex: Adubo NPK" required></label>
+        <label>Categoria<select id="estoqueCat"><option>Adubo</option><option>Defensivo</option><option>Peças</option><option>Embalagens</option><option>Outros</option></select></label>
+      </div>
+      <div class="grid">
+        <label>Unidade<input id="estoqueUnit" placeholder="Ex: kg, L, un" required></label>
+        <label>Quantidade<input id="estoqueQtd" type="number" placeholder="0" required></label>
+      </div>
+      <div class="grid">
+        <label>Mínimo para Alerta<input id="estoqueMin" type="number" placeholder="0" required></label>
+      </div>
+      <label>Foto do Produto<input id="estoqueFoto" type="file" accept="image/*"></label>
+      <button class="primary full">Salvar Produto</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Compra Rápida (< R$2000) -->
+<div id="modalCompraRapida" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Compra Rápida (< R$2000)</h3><button onclick="fecharModalCompraRapida()">×</button></div>
+    <form id="formCompraRapida" onsubmit="salvarCompraRapida(event)">
+      <div class="grid">
+        <label>Solicitante<input id="crSolicitante" placeholder="Nome" required></label>
+        <label>Produto<input id="crProduto" placeholder="Nome do produto" required></label>
+      </div>
+      <div class="grid">
+        <label>Quantidade<input id="crQtd" type="number" placeholder="1" required></label>
+        <label>Valor Aproximado<input id="crValor" type="number" placeholder="0" step="0.01" required></label>
+      </div>
+      <label>Descrição<textarea id="crDescricao" placeholder="Detalhes da compra"></textarea></label>
+      <label>Foto<input id="crFoto" type="file" accept="image/*"></label>
+      <p style="color:#999; font-size:12px;">⚠️ Compras até R$2000 não requerem autorização e geram relatório semanal</p>
+      <button class="primary full">Registrar Compra Rápida</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Visualização de Cotações (Comparação de Fornecedores) -->
+<div id="modalCotacaoComparacao" class="modal hidden">
+  <div class="modal-card large-modal">
+    <div class="modal-head"><h3>Comparação de Fornecedores</h3><button onclick="fecharModalCotacaoComparacao()">×</button></div>
+    <div id="cotacaoComparacaoContent" style="overflow-x: auto;">
+      <table class="cotacao-table">
+        <thead>
+          <tr>
+            <th>Produto</th>
+            <th id="fornecedor1Header">Fornecedor 1</th>
+            <th id="fornecedor2Header">Fornecedor 2</th>
+            <th id="fornecedor3Header">Fornecedor 3</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="cotacaoComparacaoBody">
+        </tbody>
+      </table>
+    </div>
+    <div style="margin-top: 20px; display: flex; gap: 10px;">
+      <button class="primary" onclick="enviarParaAprovacao()">✉️ Enviar para Aprovação</button>
+      <button class="secondary" onclick="editarCotacao()">✏️ Editar</button>
+      <button class="danger" onclick="excluirCotacao()">🗑️ Excluir</button>
+      <button class="secondary" onclick="fecharModalCotacaoComparacao()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Aprovação de Cotação -->
+<div id="modalAprovacaoCotacao" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Enviar para Aprovação</h3><button onclick="fecharModalAprovacao()">×</button></div>
+    <form id="formAprovacao" onsubmit="confirmarEnvioAprovacao(event)">
+      <input type="hidden" id="aprovacaoCotacaoId">
+      <label>Email da Patroa<input id="aprovacaoEmail" type="email" placeholder="patroa@email.com" required></label>
+      <label>Observações (opcional)<textarea id="aprovacaoObs" placeholder="Adicione alguma observação importante"></textarea></label>
+      <label class="check"><input type="checkbox" id="aprovacaoUrgente"> Marcar como urgente</label>
+      <p style="color:#999; font-size:12px;">Um email será enviado para a patroa com os detalhes da cotação para aprovação.</p>
+      <button class="primary full">Enviar para Aprovação</button>
+    </form>
+  </div>
+</div>
+
 <script src="app.js?v=26"></script>
 </body>
 </html>
