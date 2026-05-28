@@ -163,7 +163,6 @@ async function estoque(){
 }
 function renderEstoque(lista){
   const baixo=lista.filter(i=>i.baixo).length;
-  const comAlerta=lista.filter(i=>i.baixo);
   const semAlerta=lista.filter(i=>!i.baixo);
   const ordenado=[...comAlerta,...semAlerta];
   tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
