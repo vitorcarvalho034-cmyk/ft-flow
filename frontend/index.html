@@ -153,11 +153,20 @@
         <label>Produto<input id="crProduto" placeholder="Nome do produto" required></label>
       </div>
       <div class="grid">
-        <label>Quantidade<input id="crQtd" type="number" placeholder="1" required></label>
-        <label>Valor Aproximado<input id="crValor" type="number" placeholder="0" step="0.01" required></label>
+        <label>Categoria<select id="crCategoria" required><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Outros</option></select></label>
+        <label>Destino / Uso<input id="crDestino" placeholder="Ex: Defensivo Vinhedo" required></label>
       </div>
-      <label>Descrição<textarea id="crDescricao" placeholder="Detalhes da compra"></textarea></label>
-      <label>Foto<input id="crFoto" type="file" accept="image/*"></label>
+      <div class="grid">
+        <label>Quantidade<input id="crQtd" type="number" placeholder="1" required></label>
+        <label>Unidade<input id="crUnidade" placeholder="kg, L, un, etc" required></label>
+      </div>
+      <div class="grid">
+        <label>Valor Unitário<input id="crValorUnit" type="number" placeholder="0" step="0.01" required></label>
+        <label>Valor Total<input id="crValor" type="number" placeholder="0" step="0.01" required></label>
+      </div>
+      <label>Link do Produto (opcional)<input id="crLink" type="url" placeholder="https://exemplo.com/produto"></label>
+      <label>Descrição Detalhada<textarea id="crDescricao" placeholder="Especificações, marca, modelo, etc."></textarea></label>
+      <label>Foto para Comparativo (opcional)<input id="crFoto" type="file" accept="image/*"></label>
       <p style="color:#999; font-size:12px;">⚠️ Compras até R$2000 não requerem autorização e geram relatório semanal</p>
       <button class="primary full">Registrar Compra Rápida</button>
     </form>
