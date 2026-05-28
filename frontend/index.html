@@ -183,26 +183,12 @@
 <!-- Modal Visualização de Cotações (Comparação de Fornecedores) -->
 <div id="modalCotacaoComparacao" class="modal hidden">
   <div class="modal-card large-modal">
-    <div class="modal-head"><h3>Comparação de Fornecedores</h3><button onclick="fecharModalCotacaoComparacao()">×</button></div>
-    <div id="cotacaoComparacaoContent" style="overflow-x: auto;">
-      <table class="cotacao-table">
-        <thead>
-          <tr>
-            <th>Produto</th>
-            <th id="fornecedor1Header">Fornecedor 1</th>
-            <th id="fornecedor2Header">Fornecedor 2</th>
-            <th id="fornecedor3Header">Fornecedor 3</th>
-            <th>Ações</th>
-          </tr>
-        </thead>
-        <tbody id="cotacaoComparacaoBody">
-        </tbody>
-      </table>
+    <div class="modal-head"><h3>Comparação de Fornecedores - Selecione o melhor preço</h3><button onclick="fecharModalCotacaoComparacao()">×</button></div>
+    <div id="cotacaoComparacaoContainer" style="overflow-x: auto; padding: 20px;">
+      <!-- Tabela será renderizada aqui -->
     </div>
-    <div style="margin-top: 20px; display: flex; gap: 10px;">
-      <button class="primary" onclick="enviarParaAprovacao()">✉️ Enviar para Aprovação</button>
-      <button class="secondary" onclick="editarCotacao()">✏️ Editar</button>
-      <button class="danger" onclick="excluirCotacao()">🗑️ Excluir</button>
+    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+      <button id="btnEnviarAprovacao" class="primary hidden" onclick="enviarParaAprovacao()">✉️ Enviar para Aprovação</button>
       <button class="secondary" onclick="fecharModalCotacaoComparacao()">Fechar</button>
     </div>
   </div>

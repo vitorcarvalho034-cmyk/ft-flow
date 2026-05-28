@@ -642,29 +642,75 @@ function abrirModalCotacaoComparacao(cotacaoId) {
   try {
     js(`${API}/cotacoes/${cotacaoId}`).then(cotacao => {
       const modal = document.getElementById("modalCotacaoComparacao");
-      const tbody = document.getElementById("cotacaoComparacaoBody");
+      const container = document.getElementById("cotacaoComparacaoContainer");
       
-      // Montar tabela com fornecedores lado a lado
-      let html = `<tr>
-        <td><strong>${cotacao.produto}</strong></td>`;
+      // Montar tabela comparativa lado a lado
+      let html = `
+        <div style="overflow-x: auto; width: 100%;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <thead>
+              <tr style="background-color: #052e16; color: white;">
+                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;"><strong>Produto</strong></th>
+      `;
       
-      cotacao.fornecedores.forEach((f, i) => {
-        const selecionado = fornecedorSelecionado?.id === f.id;
-        html += `<td style="${selecionado ? 'background-color: #e8f5e9; border: 2px solid green;' : ''}">
-          <strong>${f.nome}</strong><br>
-          <span style="color: green; font-size: 16px;">R$ ${f.valor.toFixed(2)}</span><br>
-          <small>${f.observacao || ""}</small><br>
-          <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${i}, '${f.nome}', ${f.valor})">\u2713 ${selecionado ? 'SELECIONADO' : 'Selecionar'}</button>
-        </td>`;
-      });
+      // Adicionar cabeçalho com fornecedores
+      if (cotacao.fornecedores && cotacao.fornecedores.length > 0) {
+        cotacao.fornecedores.forEach((f, i) => {
+          html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>${f.nome}</strong></th>`;
+        });
+      }
       
-      html += `<td>
-        <button class="small" onclick="editarCotacao(${cotacaoId})">✏️ Editar</button>
-        <button class="small danger" onclick="excluirCotacao(${cotacaoId})">🗑️ Excluir</button>
-        ${fornecedorSelecionado ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})">✉️ Enviar para Aprovação</button>` : ''}
-      </td></tr>`;
+      html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Ações</strong></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="background-color: #f5f5f5;">
+                <td style="padding: 12px; border: 1px solid #ddd;"><strong>${cotacao.produto || 'Produto'}</strong></td>
+      `;
       
-      tbody.innerHTML = html;
+      // Adicionar valores dos fornecedores
+      if (cotacao.fornecedores && cotacao.fornecedores.length > 0) {
+        cotacao.fornecedores.forEach((f, i) => {
+          const selecionado = fornecedorSelecionado?.id === f.id;
+          const bgColor = selecionado ? '#e8f5e9' : 'white';
+          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+          
+          html += `
+            <td style="padding: 12px; text-align: center; border: ${borderStyle}; background-color: ${bgColor};">
+              <div style="margin-bottom: 8px;">
+                <span style="color: green; font-size: 18px; font-weight: bold;">R$ ${Number(f.valor || 0).toFixed(2)}</span>
+              </div>
+              ${f.observacao ? `<small style="color: #666;">${f.observacao}</small><br>` : ''}
+              <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${i}, '${f.nome}', ${f.valor})" style="margin-top: 8px;">
+                ${selecionado ? '✓ SELECIONADO' : 'Selecionar'}
+              </button>
+            </td>
+          `;
+        });
+      }
+      
+      html += `
+                <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">
+                  <button class="small" onclick="editarCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">✏️ Editar</button>
+                  <button class="small danger" onclick="excluirCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">🗑️ Excluir</button>
+                  ${fornecedorSelecionado ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})" style="width: 100%;">✉️ Enviar</button>` : ''}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+      
+      container.innerHTML = html;
+      
+      // Mostrar/esconder botão de envio baseado na seleção
+      const btnEnviar = document.getElementById("btnEnviarAprovacao");
+      if (fornecedorSelecionado && fornecedorSelecionado.cotacaoId === cotacaoId) {
+        btnEnviar.classList.remove("hidden");
+      } else {
+        btnEnviar.classList.add("hidden");
+      }
+      
       modal.classList.remove("hidden");
     });
   } catch (e) {
