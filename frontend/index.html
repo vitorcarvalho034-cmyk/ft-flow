@@ -105,15 +105,22 @@
     <form id="formCompra" onsubmit="salvarCompraDetalhada(event)">
       <div class="grid">
         <label>Solicitante<input id="compSolicitanteModal" placeholder="Nome do solicitante" required></label>
-        <label>Item<input id="compItemModal" placeholder="Nome do produto" required></label>
+        <label>Produto<input id="compItemModal" placeholder="Nome do produto" required></label>
       </div>
       <div class="grid">
-        <label>Quantidade<input id="compQtdModal" type="number" placeholder="Quantidade" required></label>
-        <label>Categoria<select id="compCatModal"><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Caixa 48</option><option>Caixa 58</option><option>Outros</option></select></label>
+        <label>Categoria<select id="compCatModal" required><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Outros</option></select></label>
+        <label>Destino / Uso<input id="compDestModal" placeholder="Ex: Defensivo Vinhedo" required></label>
       </div>
-      <label>Destino / Uso<input id="compDestModal" placeholder="Ex: Defensivo Vinhedo"></label>
+      <div class="grid">
+        <label>Quantidade<input id="compQtdModal" type="number" placeholder="1" required></label>
+        <label>Unidade<input id="compUnidadeModal" placeholder="kg, L, un, etc" required></label>
+      </div>
+      <div class="grid">
+        <label>Valor Unitário<input id="compValorUnitModal" type="number" placeholder="0" step="0.01" required></label>
+        <label>Valor Total<input id="compValorTotalModal" type="number" placeholder="0" step="0.01" required></label>
+      </div>
       <label>Link do Produto (opcional)<input id="compLinkModal" type="url" placeholder="https://exemplo.com/produto"></label>
-      <label>Descrição Detalhada<textarea id="compDescricaoModal" placeholder="Descreva especificações, marca, modelo, etc."></textarea></label>
+      <label>Descrição Detalhada<textarea id="compDescricaoModal" placeholder="Especificações, marca, modelo, etc."></textarea></label>
       <label>Foto para Comparativo (opcional)<input id="compFotoModal" type="file" accept="image/*"></label>
       <button class="primary full">Enviar Solicitação</button>
     </form>
