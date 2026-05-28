@@ -158,7 +158,7 @@ async function salvarConclusao(){
 async function estoque(){
   const data=await js(API+"/estoque");
   const cats=[...new Set(data.map(i=>i.categoria||"Sem categoria"))];
-  content.innerHTML=`<div class="panel"><h3>Novo item de estoque</h3><div class="grid"><input id="estNome" placeholder="Nome"><input id="estCategoria" placeholder="Categoria"><input id="estUnidade" placeholder="Unidade"><input id="estQtd" type="number" placeholder="Quantidade"><input id="estMin" type="number" placeholder="Mínimo"></div><button class="primary full" onclick="addEstoque()">Salvar item</button></div><div class="panel"><h3>Categorias</h3><div class="category-grid"><button class="cat-btn" onclick="filtrarEstoque('Todos')">Todos <b>${data.length}</b></button>${cats.map(c=>`<button class="cat-btn" onclick="filtrarEstoque('${esc(c)}')">${c} <b>${data.filter(i=>(i.categoria||"Sem categoria")===c).length}</b></button>`).join("")}</div></div><div class="panel"><h3 id="tituloEstoque">Itens</h3><div id="listaEstoque"></div></div>`;
+  content.innerHTML=`<div class="panel"><h3>Novo item de estoque</h3><div class="grid"><input id="estNome" placeholder="Nome"><input id="estCategoria" placeholder="Categoria"><input id="estUnidade" placeholder="Unidade"><input id="estQtd" type="number" placeholder="Quantidade"><input id="estMin" type="number" placeholder="Mínimo"></div><button class="primary full" onclick="addEstoque()">Salvar item</button><button class="secondary full" onclick="abrirAdicionarEstoqueComFoto()">+ Adicionar com Foto</button></div><div class="panel"><h3>Categorias</h3><div class="category-grid"><button class="cat-btn" onclick="filtrarEstoque('Todos')">Todos <b>${data.length}</b></button>${cats.map(c=>`<button class="cat-btn" onclick="filtrarEstoque('${esc(c)}')">${c} <b>${data.filter(i=>(i.categoria||"Sem categoria")===c).length}</b></button>`).join("")}</div></div><div class="panel"><h3 id="tituloEstoque">Itens</h3><div id="listaEstoque"></div></div>`;
   window._estoqueData=data; renderEstoque(data);
 }
 function renderEstoque(lista){
@@ -167,7 +167,7 @@ function renderEstoque(lista){
   const semAlerta=lista.filter(i=>!i.baixo);
   const ordenado=[...comAlerta,...semAlerta];
   tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
-  const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];listaEstoque.innerHTML=ordenado.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row"><div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`).join("")||"Nenhum item.";
+  const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];listaEstoque.innerHTML=ordenado.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row">${i.foto_url?`<img src="${i.foto_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-right:15px;">`:''}<div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`).join("")||"Nenhum item.";
 }
 function filtrarEstoque(c){const data=window._estoqueData||[];renderEstoque(c==="Todos"?data:data.filter(i=>(i.categoria||"Sem categoria")===c));}
 async function addEstoque(){ 
@@ -223,6 +223,75 @@ async function deletarEstoque(id) {
     mostrarErro(e.message);
   }
 }
+
+// ===== UPLOAD DE FOTO COM CLOUDINARY =====
+async function uploadFotoCloudinary(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', 'ft_flow_unsigned');
+  formData.append('cloud_name', 'dxvxkz8yd');
+  
+  try {
+    const response = await fetch('https://api.cloudinary.com/v1_1/dxvxkz8yd/image/upload', {
+      method: 'POST',
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error?.message || 'Erro ao fazer upload');
+    return data.secure_url;
+  } catch (e) {
+    mostrarErro('Erro ao fazer upload da foto: ' + e.message);
+    return null;
+  }
+}
+
+async function abrirAdicionarEstoqueComFoto() {
+  const nome = prompt('Nome do item:');
+  if (!nome) return;
+  const categoria = prompt('Categoria:');
+  const unidade = prompt('Unidade:');
+  const qtd = prompt('Quantidade:');
+  const minimo = prompt('Mínimo:');
+  
+  // Criar input de arquivo
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    content.innerHTML = '<div class="panel"><div class="spinner"></div> Fazendo upload da foto...</div>';
+    const fotoUrl = await uploadFotoCloudinary(file);
+    
+    if (!fotoUrl) {
+      carregar();
+      return;
+    }
+    
+    try {
+      await js(API + '/estoque', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome,
+          categoria,
+          unidade,
+          quantidade: Number(qtd),
+          minimo: Number(minimo),
+          foto_url: fotoUrl
+        })
+      });
+      mostrarSucesso('Item adicionado com foto com sucesso!');
+      carregar();
+    } catch (e) {
+      mostrarErro(e.message);
+      carregar();
+    }
+  };
+  input.click();
+}
+
 
 // ===== COMPRAS RÁPIDAS (<R$2000) =====
 async function abrirCompraRapida() {
