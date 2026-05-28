@@ -192,7 +192,15 @@ app.get("/compras",async(req,res)=>{
 });
 app.post("/compras",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO compras (item,quantidade,categoria,destino,solicitante,status) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[b.item,b.quantidade,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação"]);await notify("Nova solicitação de compra",`Item: ${b.item}`,"compra",{Item:b.item,Quantidade:b.quantidade,Solicitante:b.solicitante});res.json({id:r.rows[0].id});});
 app.get("/compras/:id/cotacoes",async(req,res)=>res.json((await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id])).rows));
-app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao||""]);res.json({id:r.rows[0].id});});
+app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;
+app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
+  try {
+    await q(`DELETE FROM cotacoes WHERE id=$1 AND compra_id=$2`, [req.params.preco_id, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao||""]);res.json({id:r.rows[0].id});});
 app.put("/compras/:id/status",async(req,res)=>{await q(`UPDATE compras SET status=$1 WHERE id=$2`,[req.body.status,req.params.id]);res.json({ok:true});});
 app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});});
 

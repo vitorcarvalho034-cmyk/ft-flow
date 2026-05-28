@@ -687,6 +687,7 @@ function abrirModalCotacaoComparacao(cotacaoId) {
             <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${f.id}, '${f.nome}', ${valor || 0})" style="margin-top: 8px;">
               ${selecionado ? '✓ SELECIONADO' : 'Selecionar'}
             </button>
+            <button class="small danger" onclick="deletarFornecedor(${cotacaoId}, '${f.nome}')" style="margin-top: 4px; width: 100%;">🗑️ Deletar</button>
           </td>
         `;
       });
@@ -694,6 +695,7 @@ function abrirModalCotacaoComparacao(cotacaoId) {
       html += `
                 <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">
                   <button class="small" onclick="editarCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">✏️ Editar</button>
+                  <button class="small" onclick="abrirModalAdicionarFornecedor(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">➕ Adicionar</button>
                   <button class="small danger" onclick="excluirCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">🗑️ Excluir</button>
                   ${fornecedorSelecionado && fornecedorSelecionado.cotacaoId === cotacaoId ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})" style="width: 100%;">✉️ Enviar</button>` : ''}
                 </td>
@@ -811,6 +813,76 @@ async function rejeitarCotacao(cotacaoId, motivo = "") {
     });
     mostrarSucesso("Cotação rejeitada!");
     cotacoes();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+
+// ===== ADICIONAR FORNECEDOR E PREÇO =====
+let cotacaoIdAtual = null;
+
+function abrirModalAdicionarFornecedor(cotacaoId) {
+  cotacaoIdAtual = cotacaoId;
+  document.getElementById("novoFornecedorCotacaoId").value = cotacaoId;
+  document.getElementById("novoFornecedorNome").value = "";
+  document.getElementById("novoFornecedorValor").value = "";
+  document.getElementById("novoFornecedorObs").value = "";
+  document.getElementById("modalAdicionarFornecedor").classList.remove("hidden");
+}
+
+function fecharModalAdicionarFornecedor() {
+  document.getElementById("modalAdicionarFornecedor").classList.add("hidden");
+  cotacaoIdAtual = null;
+}
+
+async function salvarNovoFornecedor(event) {
+  event.preventDefault();
+  
+  const cotacaoId = document.getElementById("novoFornecedorCotacaoId").value;
+  const fornecedor = document.getElementById("novoFornecedorNome").value;
+  const valor = parseFloat(document.getElementById("novoFornecedorValor").value);
+  const observacao = document.getElementById("novoFornecedorObs").value;
+  
+  try {
+    const resultado = await js(`${API}/compras/${cotacaoId}/cotacoes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fornecedor, valor, observacao })
+    });
+    
+    mostrarSucesso("Fornecedor adicionado com sucesso!");
+    fecharModalAdicionarFornecedor();
+    
+    // Recarregar a tabela
+    abrirModalCotacaoComparacao(cotacaoId);
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function deletarFornecedor(cotacaoId, fornecedorNome) {
+  if (!confirm("Tem certeza que quer deletar este fornecedor?")) return;
+  
+  try {
+    // Buscar o ID do preço para deletar
+    const precos = await js(`${API}/compras/${cotacaoId}/cotacoes`);
+    const preco = precos.find(p => p.fornecedor === fornecedorNome);
+    
+    if (!preco) {
+      mostrarErro("Fornecedor não encontrado!");
+      return;
+    }
+    
+    // Deletar o preço
+    await js(`${API}/compras/${cotacaoId}/cotacoes/${preco.id}`, {
+      method: 'DELETE'
+    });
+    
+    mostrarSucesso("Fornecedor deletado com sucesso!");
+    
+    // Recarregar a tabela
+    abrirModalCotacaoComparacao(cotacaoId);
   } catch (e) {
     mostrarErro(e.message);
   }
