@@ -1,8 +1,7 @@
-// FT FLOW V2.8 - Otimizado
+// FT FLOW V3 - Completo com Estoque, Compras Rápidas, Cotações e Aprovação
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
-let adubacaoItens = [];
 let token = localStorage.getItem('ft_flow_token');
 
 function hoje(){ return new Date().toISOString().slice(0,10); }
@@ -21,9 +20,7 @@ async function apiJson(url, options={}){
   if(!r.ok){ throw new Error(data.error || data.message || txt || "Erro na API"); }
   return data;
 }
-async function js(u,o){ return apiJson(u,o); }
 
-// Funções de feedback visual
 function mostrarSucesso(msg = "Operação realizada com sucesso!") {
   const toast = document.createElement("div");
   toast.className = "success-toast";
@@ -60,7 +57,7 @@ async function fazerLogin(){
     await trocarTela("dashboard", document.querySelector(".nav"));
     atualizarContadorNotificacoes();
     setInterval(atualizarContadorNotificacoes,15000);
-  }catch(e){ mostrarErro("Erro ao conectar com servidor: "+e.message); }
+  }catch(e){ mostrarErro("Erro ao conectar: "+e.message); }
 }
 
 function trocarTela(n,b){
@@ -92,480 +89,370 @@ function st(s){
   if(s==="Aguardando peça"||s==="Em cotação"||s==="Aberta"||s==="Pendente")return `<span class="badge wait">${s}</span>`;
   return `<span class="badge open">${s||"-"}</span>`;
 }
-function urg(u){ if((u||"").startsWith("Alta"))return `<span class="badge high">${u}</span>`; if((u||"").startsWith("Média"))return `<span class="badge mid">${u}</span>`; return `<span class="badge low">${u||""}</span>`; }
 
-function tabelaMan(data){
-  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Ações</th></tr></thead><tbody>${data.map(m=>`<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button>`}</td></tr>`).join("")}</tbody></table>`;
+function urg(u){ 
+  if((u||"").startsWith("Alta"))return `<span class="badge high">${u}</span>`; 
+  if((u||"").startsWith("Média"))return `<span class="badge mid">${u}</span>`; 
+  return `<span class="badge low">${u||""}</span>`; 
 }
 
 async function dashboard(){
-  // Carrega dados em paralelo para melhor performance
-  const [d, man, est] = await Promise.all([
-    js(API+"/dashboard"),
-    js(API+"/manutencoes?limit=5"),
-    js(API+"/estoque")
-  ]);
-  
-  const manData = man.data || man;
-  content.innerHTML=`<div class="cards"><div class="kpi"><small>Manutenções abertas</small><strong>${d.manutencoesAbertas}</strong></div><div class="kpi"><small>Urgentes</small><strong>${d.urgentes}</strong></div><div class="kpi"><small>Aguardando peça</small><strong>${d.aguardandoPeca}</strong></div><div class="kpi"><small>Compras pendentes</small><strong>${d.comprasPendentes}</strong></div><div class="kpi"><small>Estoque baixo</small><strong>${d.estoqueBaixo}</strong></div></div><div class="panel"><h3>Últimas manutenções</h3>${tabelaMan(manData.slice(0,5))}</div><div class="panel"><h3>Itens com estoque baixo</h3>${est.filter(i=>i.baixo).map(i=>`<div class="card stock-low"><b>${i.nome}</b><br>${i.quantidade} ${i.unidade} | mínimo ${i.minimo}</div>`).join("")||"Nenhum item crítico."}</div>`;
+  try{
+    const d = await apiJson(API+"/dashboard");
+    content.innerHTML=`
+      <div class="dashboard-grid">
+        <div class="card">
+          <h3>📋 Manutenções Abertas</h3>
+          <p class="big">${d.manutencoesAbertas}</p>
+        </div>
+        <div class="card">
+          <h3>⚠️ Urgentes</h3>
+          <p class="big">${d.urgentes}</p>
+        </div>
+        <div class="card">
+          <h3>📦 Aguardando Peça</h3>
+          <p class="big">${d.aguardandoPeca}</p>
+        </div>
+        <div class="card">
+          <h3>🛒 Compras Pendentes</h3>
+          <p class="big">${d.comprasPendentes}</p>
+        </div>
+        <div class="card">
+          <h3>⚡ Estoque Baixo</h3>
+          <p class="big">${d.estoqueBaixo}</p>
+        </div>
+      </div>
+    `;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function manutencoes(){
-  const data=await js(API+"/manutencoes");
-  const manData = data.data || data;
-  content.innerHTML=`<div class="panel"><div class="actions"><button class="primary" onclick="abrirModalManutencao()">+ Nova Solicitação</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel">${tabelaMan(manData)}</div>`;
-}
-
-function abrirModalManutencao(){ modal.classList.remove("hidden"); document.querySelector("[name=data_ocorrencia]").value=hoje(); }
-function fecharModal(){ modal.classList.add("hidden"); }
-function toggleCompra(){ camposCompra.classList.toggle("hidden",!precisaCompra.checked); }
-
-async function salvarManutencao(e){
-  e.preventDefault();
-  try {
-    const fd=new FormData(formManutencao);
-    const dados=Object.fromEntries(fd.entries());
-    dados.precisa_compra=precisaCompra.checked?"1":"0";
-    delete dados.foto;
-    
-    // Validação no frontend
-    if(!dados.solicitante?.trim()) return mostrarErro("Selecione um solicitante");
-    if(!dados.local_item?.trim()) return mostrarErro("Informe o local/item");
-    if(!dados.defeito?.trim()) return mostrarErro("Descreva o problema");
-    
-    await js(API+"/manutencoes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dados)});
-    mostrarSucesso("Manutenção criada com sucesso!");
-    formManutencao.reset(); 
-    fecharModal(); 
-    carregar(); 
-    atualizarContadorNotificacoes();
-  } catch(e) {
-    mostrarErro(e.message || "Erro ao salvar manutenção");
-  }
-}
-
-function abrirConcluir(id){ concluirId.value=id; concluirResponsavel.value=""; concluirSolucao.value=""; concluirModal.classList.remove("hidden"); }
-function fecharConcluir(){ concluirModal.classList.add("hidden"); }
-async function salvarConclusao(){
-  if(!concluirSolucao.value.trim())return mostrarErro("Informe a solução aplicada.");
-  await js(API+`/manutencoes/${concluirId.value}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({status:"Concluído",responsavel:concluirResponsavel.value,solucao:concluirSolucao.value})});
-  mostrarSucesso("Manutenção concluída com sucesso!");
-  fecharConcluir(); 
-  carregar(); 
-  atualizarContadorNotificacoes();
+  try{
+    const d = await apiJson(API+"/manutencoes?page=1&limit=20");
+    let html = `<div class="panel"><button class="primary" onclick="abrirModal()">+ Nova Manutenção</button>`;
+    html += `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+    d.data.forEach(m=>{
+      html+=`<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button>`}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+    content.innerHTML=html;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function estoque(){
-  const data=await js(API+"/estoque");
-  const cats=[...new Set(data.map(i=>i.categoria||"Sem categoria"))];
-  content.innerHTML=`<div class="panel"><h3>Novo item de estoque</h3><div class="grid"><input id="estNome" placeholder="Nome"><input id="estCategoria" placeholder="Categoria"><input id="estUnidade" placeholder="Unidade"><input id="estQtd" type="number" placeholder="Quantidade"><input id="estMin" type="number" placeholder="Mínimo"></div><button class="primary full" onclick="addEstoque()">Salvar item</button></div><div class="panel"><h3>Categorias</h3><div class="category-grid"><button class="cat-btn" onclick="filtrarEstoque('Todos')">Todos <b>${data.length}</b></button>${cats.map(c=>`<button class="cat-btn" onclick="filtrarEstoque('${esc(c)}')">${c} <b>${data.filter(i=>(i.categoria||"Sem categoria")===c).length}</b></button>`).join("")}</div></div><div class="panel"><h3 id="tituloEstoque">Itens</h3><div id="listaEstoque"></div></div>`;
-  window._estoqueData=data; renderEstoque(data);
-}
-function renderEstoque(lista){
-  const baixo=lista.filter(i=>i.baixo).length;
-  tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
-  listaEstoque.innerHTML=lista.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row"><div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button></div></div></div>`).join("")||"Nenhum item.";
-}
-function filtrarEstoque(c){const data=window._estoqueData||[];renderEstoque(c==="Todos"?data:data.filter(i=>(i.categoria||"Sem categoria")===c));}
-async function addEstoque(){ 
-  try {
-    await js(API+"/estoque",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nome:estNome.value,categoria:estCategoria.value,unidade:estUnidade.value,quantidade:estQtd.value,minimo:estMin.value})});
-    mostrarSucesso("Item adicionado com sucesso!");
-    carregar();
-  } catch(e) {
-    mostrarErro(e.message);
-  }
-}
-function abrirBaixaEstoque(id,nome,disponivel,unidade){
-  const qtd=prompt(`Baixa de estoque: ${nome}\nDisponível: ${disponivel} ${unidade}\n\nQuantidade a descontar:`); if(qtd===null)return;
-  const quantidade=Number(String(qtd).replace(",",".")); if(!quantidade||quantidade<=0)return mostrarErro("Quantidade inválida."); if(quantidade>disponivel)return mostrarErro("Quantidade maior que estoque disponível.");
-  const destino=prompt("Destino / uso da baixa:",""); if(destino===null)return; const observacao=prompt("Observação (opcional):","")||"";
-  fetch(API+`/estoque/${id}/baixa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({quantidade,destino,observacao,usuario:(usuario?.nome||usuario?.username||"Usuário")})}).then(async r=>{const data=await r.json().catch(()=>({}));if(!r.ok)return mostrarErro(data.error||"Erro ao dar baixa.");mostrarSucesso("Baixa realizada com sucesso!");carregar();atualizarContadorNotificacoes();});
+  try{
+    const d = await apiJson(API+"/estoque");
+    const baixo = d.filter(e=>e.baixo);
+    let html = `<div class="panel"><button class="primary" onclick="abrirAdicionarEstoque()">+ Adicionar Produto</button>`;
+    
+    if(baixo.length > 0){
+      html += `<div class="alert"><strong>⚠️ ${baixo.length} produtos com estoque baixo!</strong></div>`;
+      html += `<table class="table"><thead><tr><th>Produto</th><th>Categoria</th><th>Quantidade</th><th>Mínimo</th><th>Ações</th></tr></thead><tbody>`;
+      baixo.forEach(e=>{
+        html+=`<tr><td><b>${e.nome}</b></td><td>${e.categoria}</td><td>${e.quantidade} ${e.unidade}</td><td>${e.minimo}</td><td><button class="secondary" onclick="abrirEditarEstoque(${e.id})">Editar</button></td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+    
+    html += `<h3>Todos os Produtos</h3>`;
+    html += `<table class="table"><thead><tr><th>Produto</th><th>Categoria</th><th>Quantidade</th><th>Mínimo</th><th>Ações</th></tr></thead><tbody>`;
+    d.forEach(e=>{
+      html+=`<tr><td><b>${e.nome}</b></td><td>${e.categoria}</td><td>${e.quantidade} ${e.unidade}</td><td>${e.minimo}</td><td><button class="secondary" onclick="abrirEditarEstoque(${e.id})">Editar</button> <button class="danger" onclick="deletarEstoque(${e.id})">Deletar</button></td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+    content.innerHTML=html;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function compras(){
-  const data=await js(API+"/compras");
-  const compData = data.data || data;
-  const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="grid"><input id="compSolicitante" placeholder="Nome do solicitante"><input id="compItem" placeholder="Item"><input id="compQtd" type="number" placeholder="Quantidade"><input id="compCat" placeholder="Categoria"><input id="compDest" placeholder="Destino / uso"></div><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Solicitação Detalhada</button><button class="secondary" onclick="carregar()">Atualizar</button></div><button class="primary full" onclick="addCompra()">Enviar solicitação rápida</button></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${compData.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirCotacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
-}
-function abrirModalCompra() {
-  modalCompra.classList.remove("hidden");
-  formCompra.reset();
-}
-
-function fecharModalCompra() {
-  modalCompra.classList.add("hidden");
-}
-
-async function salvarCompraDetalhada(e) {
-  e.preventDefault();
-  try {
-    const solicitante = compSolicitanteModal.value.trim();
-    const item = compItemModal.value.trim();
-    const quantidade = compQtdModal.value;
-    const categoria = compCatModal.value;
-    const destino = compDestModal.value.trim();
-    const link = compLinkModal.value.trim();
-    const descricao = compDescricaoModal.value.trim();
-    const foto = compFotoModal.files[0];
-    
-    if(!solicitante) return mostrarErro("Informe o solicitante");
-    if(!item) return mostrarErro("Informe o item");
-    if(!quantidade) return mostrarErro("Informe a quantidade");
-    
-    // Se houver foto, fazer upload
-    let fotoUrl = null;
-    if(foto) {
-      const formData = new FormData();
-      formData.append('file', foto);
-      const uploadRes = await fetch(API+"/upload", {method:"POST", body:formData});
-      if(uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        fotoUrl = uploadData.url;
-      }
-    }
-    
-    await js(API+"/compras",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        solicitante,
-        item,
-        quantidade,
-        categoria,
-        destino,
-        link_produto: link,
-        descricao_detalhada: descricao,
-        foto_url: fotoUrl
-      })
+  try{
+    const d = await apiJson(API+"/compras?page=1&limit=20");
+    let html = `<div class="panel"><button class="primary" onclick="abrirAdicionarCompra()">+ Nova Compra</button>`;
+    html += `<table class="table"><thead><tr><th>ID</th><th>Item</th><th>Quantidade</th><th>Status</th><th>Valor</th><th>Ações</th></tr></thead><tbody>`;
+    d.data.forEach(c=>{
+      html+=`<tr><td>#${c.id}</td><td>${c.item}</td><td>${c.quantidade}</td><td>${st(c.status)}</td><td>${dinheiro(c.valor_escolhido)}</td><td><button class="secondary" onclick="abrirDetalheCompra(${c.id})">Detalhes</button></td></tr>`;
     });
-    
-    mostrarSucesso("Solicitação enviada com sucesso!");
-    fecharModalCompra();
-    carregar();
-    atualizarContadorNotificacoes();
-  } catch(e) {
-    mostrarErro(e.message);
-  }
-}
-
-async function addCompra(){
-  if(!compSolicitante.value.trim())return mostrarErro("Informe o nome do solicitante."); 
-  if(!compItem.value.trim())return mostrarErro("Informe o item."); 
-  if(!compQtd.value)return mostrarErro("Informe a quantidade.");
-  try {
-    await js(API+"/compras",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({solicitante:compSolicitante.value,item:compItem.value,quantidade:compQtd.value,categoria:compCat.value,destino:compDest.value})});
-    mostrarSucesso("Solicitação enviada com sucesso!");
-    carregar(); 
-    atualizarContadorNotificacoes();
-  } catch(e) {
-    mostrarErro(e.message);
-  }
-}
-async function statusCompra(id,status){ 
-  try {
-    await js(API+`/compras/${id}/status`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})}); 
-    mostrarSucesso("Status atualizado!");
-    carregar();
-  } catch(e) {
-    mostrarErro(e.message);
-  }
-}
-
-async function abrirCotacao(id){
-  const box=document.getElementById(`cotacoes-${id}`);
-  if(box.classList.contains("hidden")){
-    const cotacoes=await js(API+`/compras/${id}/cotacoes`);
-    box.innerHTML=`<div style="margin-top:10px"><h4>Cotações</h4>${cotacoes.map(c=>`<div class="card"><b>${c.fornecedor}</b> - ${dinheiro(c.valor)}<br><small>${c.observacao||""}</small></div>`).join("")}<div class="grid"><input id="cot-forn-${id}" placeholder="Fornecedor"><input id="cot-valor-${id}" type="number" placeholder="Valor"></div><button class="primary full" onclick="salvarCotacao(${id})">Adicionar cotação</button></div>`;
-    box.classList.remove("hidden");
-  }else box.classList.add("hidden");
-}
-async function salvarCotacao(id){
-  const forn=document.getElementById(`cot-forn-${id}`).value;
-  const valor=document.getElementById(`cot-valor-${id}`).value;
-  if(!forn||!valor)return mostrarErro("Preencha fornecedor e valor.");
-  try {
-    await js(API+`/compras/${id}/cotacoes`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({fornecedor:forn,valor})});
-    mostrarSucesso("Cotação adicionada!");
-    abrirCotacao(id);
-  } catch(e) {
-    mostrarErro(e.message);
-  }
+    html+=`</tbody></table></div>`;
+    content.innerHTML=html;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function cotacoesGerais(){
-  const data=await js(API+"/compras");
-  const compData = data.data || data;
-  const comCotacao=compData.filter(c=>c.status==="Em cotação");
-  content.innerHTML=`<div class="panel"><h3>Cotações em aberto</h3>${comCotacao.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante}<br>Quantidade: ${c.quantidade} ${c.categoria}<br><button class="secondary" onclick="abrirCotacao(${c.id})">Ver cotações</button><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div></div>`).join("")||"Nenhuma cotação em aberto."}</div>`;
+  try{
+    const d = await apiJson(API+"/compras?page=1&limit=20");
+    let html = `<div class="panel"><h3>Cotações Pendentes</h3>`;
+    const pendentes = d.data.filter(c=>c.status==="Em cotação");
+    if(pendentes.length===0){
+      html+=`<p>Nenhuma cotação pendente</p>`;
+    }else{
+      html+=`<table class="table"><thead><tr><th>ID</th><th>Item</th><th>Quantidade</th><th>Ações</th></tr></thead><tbody>`;
+      pendentes.forEach(c=>{
+        html+=`<tr><td>#${c.id}</td><td>${c.item}</td><td>${c.quantidade}</td><td><button class="secondary" onclick="abrirComparadorCotacoes(${c.id})">Comparar</button></td></tr>`;
+      });
+      html+=`</tbody></table>`;
+    }
+    html+=`</div>`;
+    content.innerHTML=html;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function recomendacoesPDF(){
-  content.innerHTML=`<div class="panel"><h3>Recomendações</h3><p>Carregando...</p></div>`;
+  try{
+    content.innerHTML=`<div class="panel"><p>Funcionalidade em desenvolvimento</p></div>`;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function adubacaoSemanal(){
-  content.innerHTML=`<div class="panel"><h3>Adubação Semanal</h3><p>Carregando...</p></div>`;
+  try{
+    content.innerHTML=`<div class="panel"><p>Funcionalidade em desenvolvimento</p></div>`;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function relatoriosMensais(){
-  content.innerHTML=`<div class="panel"><h3>Relatórios Mensais</h3><p>Carregando...</p></div>`;
+  try{
+    content.innerHTML=`<div class="panel"><p>Funcionalidade em desenvolvimento</p></div>`;
+  }catch(e){ mostrarErro(e.message); }
 }
 
 async function fornecedores(){
-  content.innerHTML=`<div class="panel"><h3>Fornecedores</h3><p>Carregando...</p></div>`;
+  try{
+    const d = await apiJson(API+"/fornecedores");
+    let html = `<div class="panel"><button class="primary" onclick="abrirAdicionarFornecedor()">+ Novo Fornecedor</button>`;
+    html += `<table class="table"><thead><tr><th>Nome</th><th>Contato</th><th>Telefone</th><th>Tipo</th></tr></thead><tbody>`;
+    d.forEach(f=>{
+      html+=`<tr><td>${f.nome}</td><td>${f.contato}</td><td>${f.telefone}</td><td>${f.tipo_produto}</td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+    content.innerHTML=html;
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function abrirModal(){
+  formManutencao.reset();
+  formManutencao.data_ocorrencia.value = hoje();
+  modal.classList.remove("hidden");
+}
+
+function fecharModal(){
+  modal.classList.add("hidden");
+}
+
+async function salvarManutencao(e){
+  e.preventDefault();
+  try{
+    const fd = new FormData(formManutencao);
+    const r = await apiJson(API+"/manutencoes",{
+      method:"POST",
+      body:JSON.stringify({
+        solicitante:fd.get("solicitante"),
+        data_ocorrencia:fd.get("data_ocorrencia"),
+        tipo:fd.get("tipo"),
+        local_item:fd.get("local_item"),
+        defeito:fd.get("defeito"),
+        urgencia:fd.get("urgencia"),
+        responsavel:fd.get("responsavel"),
+        solucao:fd.get("solucao"),
+        precisa_compra:precisaCompra.checked?1:0,
+        item_compra:fd.get("item_compra"),
+        quantidade_compra:fd.get("quantidade_compra"),
+        categoria_compra:fd.get("categoria_compra"),
+        destino_compra:fd.get("destino_compra")
+      }),
+      headers:{"Content-Type":"application/json"}
+    });
+    mostrarSucesso("Manutenção criada!");
+    fecharModal();
+    manutencoes();
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function abrirConcluir(id){
+  concluirId.value = id;
+  concluirModal.classList.remove("hidden");
+}
+
+function fecharConcluir(){
+  concluirModal.classList.add("hidden");
+}
+
+async function salvarConclusao(){
+  try{
+    await apiJson(API+"/manutencoes/"+concluirId.value,{
+      method:"PUT",
+      body:JSON.stringify({
+        status:"Concluído",
+        responsavel:concluirResponsavel.value,
+        solucao:concluirSolucao.value
+      }),
+      headers:{"Content-Type":"application/json"}
+    });
+    mostrarSucesso("Manutenção concluída!");
+    fecharConcluir();
+    manutencoes();
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function toggleCompra(){
+  camposCompra.classList.toggle("hidden", !precisaCompra.checked);
+}
+
+function abrirAdicionarEstoque(){
+  adicionarEstoqueForm.reset();
+  adicionarEstoqueModal.classList.remove("hidden");
+}
+
+function fecharAdicionarEstoque(){
+  adicionarEstoqueModal.classList.add("hidden");
+}
+
+async function salvarNovoEstoque(){
+  try{
+    const r = await apiJson(API+"/estoque",{
+      method:"POST",
+      body:JSON.stringify({
+        nome:estoqueNome.value,
+        categoria:estoqueCategoria.value,
+        unidade:estoqueUnidade.value,
+        quantidade:Number(estoqueQuantidade.value),
+        minimo:Number(estoqueMinimo.value)
+      }),
+      headers:{"Content-Type":"application/json"}
+    });
+    mostrarSucesso("Produto adicionado!");
+    fecharAdicionarEstoque();
+    estoque();
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function abrirEditarEstoque(id){
+  // Implementar edição
+  mostrarErro("Edição em desenvolvimento");
+}
+
+async function deletarEstoque(id){
+  if(!confirm("Tem certeza?")) return;
+  try{
+    await apiJson(API+"/estoque/"+id,{method:"DELETE"});
+    mostrarSucesso("Produto deletado!");
+    estoque();
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function abrirAdicionarCompra(){
+  adicionarCompraForm.reset();
+  adicionarCompraModal.classList.remove("hidden");
+}
+
+function fecharAdicionarCompra(){
+  adicionarCompraModal.classList.add("hidden");
+}
+
+async function salvarNovaCompra(){
+  try{
+    const valor = Number(compraValor.value);
+    if(valor < 2000){
+      // Compra rápida - sem cotação
+      const r = await apiJson(API+"/compras",{
+        method:"POST",
+        body:JSON.stringify({
+          item:compraItem.value,
+          quantidade:Number(compraQuantidade.value),
+          categoria:compraCategoria.value,
+          destino:compraDestino.value,
+          solicitante:usuario.nome,
+          status:"Aprovado"
+        }),
+        headers:{"Content-Type":"application/json"}
+      });
+      mostrarSucesso("Compra rápida criada!");
+    }else{
+      // Compra normal - precisa cotação
+      const r = await apiJson(API+"/compras",{
+        method:"POST",
+        body:JSON.stringify({
+          item:compraItem.value,
+          quantidade:Number(compraQuantidade.value),
+          categoria:compraCategoria.value,
+          destino:compraDestino.value,
+          solicitante:usuario.nome
+        }),
+        headers:{"Content-Type":"application/json"}
+      });
+      mostrarSucesso("Compra criada! Aguardando cotações...");
+    }
+    fecharAdicionarCompra();
+    compras();
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function abrirDetalheCompra(id){
+  // Implementar detalhes
+  mostrarErro("Detalhes em desenvolvimento");
+}
+
+async function abrirComparadorCotacoes(compraId){
+  try{
+    const cotacoes = await apiJson(API+"/compras/"+compraId+"/cotacoes");
+    let html = `<div class="modal hidden" id="comparadorModal"><div class="modal-card"><div class="modal-head"><h3>Comparador de Cotações</h3><button onclick="fecharComparador()">×</button></div>`;
+    html += `<table class="table"><thead><tr><th>Fornecedor</th><th>Valor</th><th>Observação</th><th>Ação</th></tr></thead><tbody>`;
+    cotacoes.forEach(c=>{
+      html+=`<tr><td>${c.fornecedor}</td><td>${dinheiro(c.valor)}</td><td>${c.observacao}</td><td><button class="primary" onclick="escolherFornecedor(${compraId},${c.id},'${c.fornecedor}',${c.valor})">Escolher</button></td></tr>`;
+    });
+    html+=`</tbody></table>`;
+    html+=`<button class="secondary" onclick="abrirAprovacao(${compraId})">Enviar para Aprovação</button>`;
+    html+=`</div></div>`;
+    document.body.insertAdjacentHTML("beforeend",html);
+    comparadorModal.classList.remove("hidden");
+  }catch(e){ mostrarErro(e.message); }
+}
+
+function fecharComparador(){
+  const m = document.getElementById("comparadorModal");
+  if(m) m.remove();
+}
+
+async function escolherFornecedor(compraId, cotacaoId, fornecedor, valor){
+  try{
+    await apiJson(API+"/compras/"+compraId+"/escolher-fornecedor",{
+      method:"PUT",
+      body:JSON.stringify({fornecedor,valor}),
+      headers:{"Content-Type":"application/json"}
+    });
+    mostrarSucesso("Fornecedor escolhido!");
+    fecharComparador();
+    cotacoesGerais();
+  }catch(e){ mostrarErro(e.message); }
+}
+
+async function abrirAprovacao(compraId){
+  // Implementar aprovação com email
+  mostrarErro("Aprovação em desenvolvimento");
+}
+
+function abrirAdicionarFornecedor(){
+  mostrarErro("Funcionalidade em desenvolvimento");
+}
+
+async function atualizarContadorNotificacoes(){
+  try{
+    const n = await apiJson(API+"/notificacoes");
+    const naoLidas = n.filter(x=>!x.lida).length;
+    notifCount.classList.toggle("hidden", naoLidas===0);
+    notifCount.innerText = naoLidas;
+  }catch(e){}
 }
 
 function abrirNotificacoes(){
   notifPanel.classList.toggle("hidden");
-  if(!notifPanel.classList.contains("hidden")){
-    js(API+"/notificacoes").then(notifs=>{
-      notifList.innerHTML=notifs.map(n=>`<div class="notif-item ${n.lida?'':'unread'}"><div class="notif-type">${n.tipo}</div><p>${n.mensagem}</p><small class="notif-date">${new Date(n.criada_em).toLocaleString()}</small></div>`).join("")||"Sem notificações.";
-    });
-  }
 }
-function fecharNotificacoes(){ notifPanel.classList.add("hidden"); }
-function marcarTodasNotificacoes(){ js(API+"/notificacoes/marcar-lidas",{method:"POST"}); atualizarContadorNotificacoes(); }
-async function atualizarContadorNotificacoes(){
+
+function fecharNotificacoes(){
+  notifPanel.classList.add("hidden");
+}
+
+async function marcarTodasNotificacoes(){
   try{
-    const notifs=await js(API+"/notificacoes");
-    const naoLidas=notifs.filter(n=>!n.lida).length;
-    notifCount.innerText=naoLidas;
-    notifCount.classList.toggle("hidden",naoLidas===0);
+    await apiJson(API+"/notificacoes/marcar-lidas",{method:"PUT"});
+    atualizarContadorNotificacoes();
   }catch(e){}
-}
-
-
-// ===== ESTOQUE: INCLUIR/EDITAR PRODUTOS =====
-function abrirModalEstoque(id = null) {
-  const modal = document.getElementById("modalEstoque");
-  const titulo = document.getElementById("tituloEstoque");
-  
-  if (id) {
-    titulo.innerText = "Editar Produto";
-    // Carregar dados do produto
-    js(API + `/estoque/${id}`).then(p => {
-      document.getElementById("estoqueId").value = p.id;
-      document.getElementById("estoqueName").value = p.nome;
-      document.getElementById("estoqueCat").value = p.categoria;
-      document.getElementById("estoqueUnit").value = p.unidade;
-      document.getElementById("estoqueQtd").value = p.quantidade;
-      document.getElementById("estoqueMin").value = p.minimo;
-    });
-  } else {
-    titulo.innerText = "Novo Produto";
-    document.getElementById("formEstoque").reset();
-    document.getElementById("estoqueId").value = "";
-  }
-  modal.classList.remove("hidden");
-}
-
-function fecharModalEstoque() {
-  document.getElementById("modalEstoque").classList.add("hidden");
-}
-
-async function salvarProdutoEstoque(e) {
-  e.preventDefault();
-  try {
-    const id = document.getElementById("estoqueId").value;
-    const dados = {
-      nome: document.getElementById("estoqueName").value,
-      categoria: document.getElementById("estoqueCat").value,
-      unidade: document.getElementById("estoqueUnit").value,
-      quantidade: parseFloat(document.getElementById("estoqueQtd").value),
-      minimo: parseFloat(document.getElementById("estoqueMin").value)
-    };
-    
-    const url = id ? `${API}/estoque/${id}` : `${API}/estoque`;
-    const method = id ? "PUT" : "POST";
-    
-    await js(url, { method, body: JSON.stringify(dados) });
-    mostrarSucesso("Produto salvo com sucesso!");
-    fecharModalEstoque();
-    estoque(); // Recarregar lista
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-async function excluirProdutoEstoque(id) {
-  if (confirm("Tem certeza que deseja excluir este produto?")) {
-    try {
-      await js(`${API}/estoque/${id}`, { method: "DELETE" });
-      mostrarSucesso("Produto excluído!");
-      estoque();
-    } catch (e) {
-      mostrarErro(e.message);
-    }
-  }
-}
-
-// ===== COMPRA RÁPIDA (< R$2000) =====
-function abrirModalCompraRapida() {
-  document.getElementById("modalCompraRapida").classList.remove("hidden");
-  document.getElementById("formCompraRapida").reset();
-}
-
-function fecharModalCompraRapida() {
-  document.getElementById("modalCompraRapida").classList.add("hidden");
-}
-
-async function salvarCompraRapida(e) {
-  e.preventDefault();
-  try {
-    const valor = parseFloat(document.getElementById("crValor").value);
-    
-    if (valor > 2000) {
-      mostrarErro("Valor máximo para compra rápida é R$ 2000!");
-      return;
-    }
-    
-    const dados = {
-      solicitante: document.getElementById("crSolicitante").value,
-      produto: document.getElementById("crProduto").value,
-      quantidade: parseFloat(document.getElementById("crQtd").value),
-      valor: valor,
-      descricao: document.getElementById("crDescricao").value,
-      tipo: "rapida",
-      status: "aprovada"
-    };
-    
-    await js(`${API}/compras-rapidas`, { method: "POST", body: JSON.stringify(dados) });
-    mostrarSucesso("Compra rápida registrada! Será incluída no relatório semanal.");
-    fecharModalCompraRapida();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-// ===== COTAÇÕES: COMPARAÇÃO DE FORNECEDORES =====
-function abrirModalCotacaoComparacao(cotacaoId) {
-  try {
-    js(`${API}/cotacoes/${cotacaoId}`).then(cotacao => {
-      const modal = document.getElementById("modalCotacaoComparacao");
-      const tbody = document.getElementById("cotacaoComparacaoBody");
-      
-      // Montar tabela com fornecedores lado a lado
-      let html = `<tr>
-        <td><strong>${cotacao.produto}</strong></td>`;
-      
-      cotacao.fornecedores.forEach((f, i) => {
-        html += `<td>
-          <strong>${f.nome}</strong><br>
-          <span style="color: green; font-size: 16px;">R$ ${f.valor.toFixed(2)}</span><br>
-          <small>${f.observacao || ""}</small>
-        </td>`;
-      });
-      
-      html += `<td>
-        <button class="small" onclick="editarCotacao(${cotacaoId})">✏️ Editar</button>
-        <button class="small danger" onclick="excluirCotacao(${cotacaoId})">🗑️ Excluir</button>
-      </td></tr>`;
-      
-      tbody.innerHTML = html;
-      modal.classList.remove("hidden");
-    });
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-function fecharModalCotacaoComparacao() {
-  document.getElementById("modalCotacaoComparacao").classList.add("hidden");
-}
-
-async function editarCotacao(id) {
-  // Abrir modal de edição
-  mostrarSucesso("Modo edição ativado!");
-}
-
-async function excluirCotacao(id) {
-  if (confirm("Excluir esta cotação?")) {
-    try {
-      await js(`${API}/cotacoes/${id}`, { method: "DELETE" });
-      mostrarSucesso("Cotação excluída!");
-      fecharModalCotacaoComparacao();
-    } catch (e) {
-      mostrarErro(e.message);
-    }
-  }
-}
-
-
-// ===== APROVAÇÃO DE COTAÇÕES =====
-let cotacaoAtualId = null;
-
-function enviarParaAprovacao(cotacaoId) {
-  cotacaoAtualId = cotacaoId;
-  const modal = document.getElementById("modalAprovacaoCotacao");
-  document.getElementById("aprovacaoCotacaoId").value = cotacaoId;
-  document.getElementById("aprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
-  modal.classList.remove("hidden");
-}
-
-function fecharModalAprovacao() {
-  document.getElementById("modalAprovacaoCotacao").classList.add("hidden");
-}
-
-async function confirmarEnvioAprovacao(e) {
-  e.preventDefault();
-  try {
-    const cotacaoId = document.getElementById("aprovacaoCotacaoId").value;
-    const email = document.getElementById("aprovacaoEmail").value;
-    const obs = document.getElementById("aprovacaoObs").value;
-    const urgente = document.getElementById("aprovacaoUrgente").checked;
-    
-    // Salvar email da patroa para próxima vez
-    localStorage.setItem("patroa_email", email);
-    
-    const dados = {
-      cotacao_id: cotacaoId,
-      email_patroa: email,
-      observacoes: obs,
-      urgente: urgente,
-      status: "pendente_aprovacao"
-    };
-    
-    // Enviar para aprovação
-    await js(`${API}/cotacoes/${cotacaoId}/enviar-aprovacao`, {
-      method: "POST",
-      body: JSON.stringify(dados)
-    });
-    
-    mostrarSucesso(`Email enviado para ${email}! Aguardando aprovação...`);
-    fecharModalAprovacao();
-    fecharModalCotacaoComparacao();
-    cotacoes(); // Recarregar lista
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-// Função para aprovar cotação (chamada pelo link no email)
-async function aprovarCotacao(cotacaoId) {
-  try {
-    await js(`${API}/cotacoes/${cotacaoId}/aprovar`, {
-      method: "POST",
-      body: JSON.stringify({ aprovado_por: usuario.nome })
-    });
-    mostrarSucesso("Cotação aprovada!");
-    cotacoes();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-// Função para rejeitar cotação
-async function rejeitarCotacao(cotacaoId, motivo = "") {
-  try {
-    await js(`${API}/cotacoes/${cotacaoId}/rejeitar`, {
-      method: "POST",
-      body: JSON.stringify({ motivo, rejeitado_por: usuario.nome })
-    });
-    mostrarSucesso("Cotação rejeitada!");
-    cotacoes();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
 }
