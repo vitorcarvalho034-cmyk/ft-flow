@@ -854,35 +854,10 @@ async function salvarNovoFornecedor(event) {
     mostrarSucesso("Fornecedor adicionado com sucesso!");
     fecharModalAdicionarFornecedor();
     
-    // Recarregar a tabela
-    abrirModalCotacaoComparacao(cotacaoId);
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-async function deletarFornecedor(cotacaoId, fornecedorNome) {
-  if (!confirm("Tem certeza que quer deletar este fornecedor?")) return;
-  
-  try {
-    // Buscar o ID do preço para deletar
-    const precos = await js(`${API}/compras/${cotacaoId}/cotacoes`);
-    const preco = precos.find(p => p.fornecedor === fornecedorNome);
-    
-    if (!preco) {
-      mostrarErro("Fornecedor não encontrado!");
-      return;
-    }
-    
-    // Deletar o preço
-    await js(`${API}/compras/${cotacaoId}/cotacoes/${preco.id}`, {
-      method: 'DELETE'
-    });
-    
-    mostrarSucesso("Fornecedor deletado com sucesso!");
-    
-    // Recarregar a tabela
-    abrirModalCotacaoComparacao(cotacaoId);
+    // Aguardar um pouco e depois recarregar a tabela
+    setTimeout(() => {
+      abrirModalCotacaoComparacao(parseInt(cotacaoId));
+    }, 500);
   } catch (e) {
     mostrarErro(e.message);
   }
