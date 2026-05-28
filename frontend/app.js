@@ -1,5 +1,5 @@
 // FT FLOW V2.8 - Otimizado
-const API = "/.netlify/functions/api";
+const API = "/api";
 let usuario = null;
 let tela = "dashboard";
 let adubacaoItens = [];
