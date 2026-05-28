@@ -162,40 +162,51 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
 // LOGIN COM JWT
 
 app.post("/auth/login", async (req, res) => {
-  const username = String(req.body.username || "").trim().toLowerCase();
-  const password = String(req.body.password || "").trim();
+  try {
+    const username = String(req.body.username || "").trim().toLowerCase();
+    const password = String(req.body.password || "").trim();
 
-  if (!username || !password) {
-    return res.status(400).json({ error: "Usuário e senha são obrigatórios" });
+    if (!username || !password) {
+      return res.status(400).json({ error: "Usuário e senha são obrigatórios" });
+    }
+
+    const r = await q(
+      `SELECT id, username, password, nome, role FROM usuarios WHERE username = $1`,
+      [username]
+    );
+
+    if (!r.rows[0]) {
+      console.log(`[LOGIN] Usuário '${username}' não encontrado`);
+      return res.status(401).json({ error: "Usuário ou senha inválidos" });
+    }
+
+    console.log(`[LOGIN] Usuário '${username}' encontrado. Testando bcrypt...`);
+    const senhaValida = await bcrypt.compare(password, r.rows[0].password);
+    console.log(`[LOGIN] bcrypt.compare result: ${senhaValida}`);
+    
+    if (!senhaValida) {
+      console.log(`[LOGIN] Senha inválida para '${username}'`);
+      return res.status(401).json({ error: "Usuário ou senha inválidos" });
+    }
+
+    const token = jwt.sign(
+      { id: r.rows[0].id, username: r.rows[0].username, role: r.rows[0].role },
+      JWT_SECRET,
+      { expiresIn: "24h" }
+    );
+
+    console.log(`[LOGIN] Login bem-sucedido para '${username}'`);
+    res.json({
+      id: r.rows[0].id,
+      username: r.rows[0].username,
+      nome: r.rows[0].nome,
+      role: r.rows[0].role,
+      token: token
+    });
+  } catch (e) {
+    console.error(`[LOGIN ERROR]`, e);
+    res.status(500).json({ error: e.message });
   }
-
-  const r = await q(
-    `SELECT id, username, password, nome, role FROM usuarios WHERE LOWER(TRIM(username)) = $1`,
-    [username]
-  );
-
-  if (!r.rows[0]) {
-    return res.status(401).json({ error: "Usuário ou senha inválidos" });
-  }
-
-  const senhaValida = await bcrypt.compare(password, r.rows[0].password);
-  if (!senhaValida) {
-    return res.status(401).json({ error: "Usuário ou senha inválidos" });
-  }
-
-  const token = jwt.sign(
-    { id: r.rows[0].id, username: r.rows[0].username, role: r.rows[0].role },
-    JWT_SECRET,
-    { expiresIn: "24h" }
-  );
-
-  res.json({
-    id: r.rows[0].id,
-    username: r.rows[0].username,
-    nome: r.rows[0].nome,
-    role: r.rows[0].role,
-    token: token
-  });
 });
 
 app.get("/dashboard",async(req,res)=>{const a=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status!='Concluído'`),u=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgencia='Alta (parou a operação)' AND status!='Concluído'`),p=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peça'`),c=await q(`SELECT COUNT(*)::int total FROM compras WHERE status!='Recebido'`),e=await q(`SELECT COUNT(*)::int total FROM estoque WHERE quantidade<=minimo`);res.json({manutencoesAbertas:a.rows[0].total,urgentes:u.rows[0].total,aguardandoPeca:p.rows[0].total,comprasPendentes:c.rows[0].total,estoqueBaixo:e.rows[0].total});});
