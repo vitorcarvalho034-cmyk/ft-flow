@@ -292,37 +292,29 @@ async function abrirAdicionarEstoqueComFoto() {
 
 // ===== COMPRAS RÁPIDAS (<R$2000) =====
 async function abrirCompraRapida() {
-  const item = prompt("Item:");
-  if (!item) return;
-  const qtd = prompt("Quantidade:");
-  if (!qtd) return;
-  const valorUnitario = prompt("Valor unitário (R$):");
-  if (!valorUnitario) return;
-  const categoria = prompt("Categoria:", "Diversos");
-  const solicitante = prompt("Solicitante:", usuario?.nome || "");
+  // Limpar os campos do modal
+  document.getElementById("compSolicitanteModal").value = usuario?.nome || "";
+  document.getElementById("compItemModal").value = "";
+  document.getElementById("compCatModal").value = "";
+  document.getElementById("compDestModal").value = "";
+  document.getElementById("compQtdModal").value = "";
+  document.getElementById("compUnidadeModal").value = "";
+  document.getElementById("compValorUnitModal").value = "";
+  document.getElementById("compValorTotalModal").value = "";
+  document.getElementById("compLinkModal").value = "";
+  document.getElementById("compDescricaoModal").value = "";
   
-  const valorTotal = Number(qtd) * Number(valorUnitario);
-  if (valorTotal >= 2000) {
-    return mostrarErro("Compra rápida deve ser menor que R$2.000");
-  }
+  // Mudar o título do modal
+  document.querySelector("#modalCompra .modal-head h3").innerText = "Compra Rápida (< R$2.000)";
   
-  try {
-    await js(API + "/compras/rapida", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        item,
-        quantidade: Number(qtd),
-        valor_unitario: Number(valorUnitario),
-        categoria,
-        solicitante
-      })
-    });
-    mostrarSucesso(`Compra rápida criada! Total: R$ ${valorTotal.toFixed(2)}`);
-    carregar();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
+  // Mudar o botão de submit
+  document.querySelector("#formCompra button[type='submit']").innerText = "Registrar Compra Rápida";
+  
+  // Abrir o modal
+  modalCompra.classList.remove("hidden");
+  
+  // Marcar que é compra rápida
+  formCompra.dataset.tipoCompra = "rapida";
 }
 
 async function verRelatorioSemanal() {
