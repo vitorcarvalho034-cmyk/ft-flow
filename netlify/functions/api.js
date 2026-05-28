@@ -78,9 +78,9 @@ async function ensureDb(){
   if(ready) return;
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
   await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, created_at TIMESTAMP DEFAULT NOW(), concluido_at TIMESTAMP)`);
-  await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0)`);
+  await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT, contato TEXT, telefone TEXT, tipo_produto TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', fornecedor_escolhido TEXT, valor_escolhido REAL, solicitante TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', fornecedor_escolhido TEXT, valor_escolhido REAL, solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, eh_compra_rapida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS cotacoes (id SERIAL PRIMARY KEY, compra_id INTEGER, fornecedor TEXT, valor REAL, observacao TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS notificacoes (id SERIAL PRIMARY KEY, titulo TEXT, mensagem TEXT, tipo TEXT, destino_role TEXT DEFAULT 'admin', lida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS movimentacoes_estoque (id SERIAL PRIMARY KEY, produto TEXT, categoria TEXT, quantidade REAL, unidade TEXT, destino TEXT, tipo TEXT, origem TEXT, observacao TEXT, created_at TIMESTAMP DEFAULT NOW())`);
@@ -422,3 +422,146 @@ app.get("/auth/verificar-usuarios", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// ===== ROTAS PARA ESTOQUE MELHORADO =====
+app.put("/estoque/:id", async (req, res) => {
+  const b = req.body;
+  try {
+    await q(`UPDATE estoque SET nome=$1, categoria=$2, unidade=$3, quantidade=$4, minimo=$5, foto_url=$6 WHERE id=$7`,
+      [b.nome, b.categoria, b.unidade, b.quantidade, b.minimo, b.foto_url || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/estoque/:id", async (req, res) => {
+  try {
+    await q(`DELETE FROM estoque WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ===== ROTAS PARA COMPRAS RÁPIDAS =====
+app.post("/compras/rapida", async (req, res) => {
+  const b = req.body;
+  const valor_total = Number(b.quantidade || 0) * Number(b.valor_unitario || 0);
+  
+  if (valor_total >= 2000) {
+    return res.status(400).json({ error: "Compra rápida deve ser menor que R$2000" });
+  }
+  
+  try {
+    const r = await q(
+      `INSERT INTO compras (item, quantidade, categoria, destino, solicitante, status, valor_unitario, valor_total, eh_compra_rapida, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id`,
+      [b.item, b.quantidade, b.categoria || "Diversos", b.destino || "", b.solicitante || "Não informado", "Aprovado", b.valor_unitario || 0, valor_total, 1]
+    );
+    
+    await notify("Nova compra rápida (<R$2000)", `Item: ${b.item} | Total: R$ ${valor_total.toFixed(2)}`, "compra", {
+      Item: b.item,
+      Quantidade: b.quantidade,
+      Solicitante: b.solicitante,
+      Total: `R$ ${valor_total.toFixed(2)}`
+    });
+    
+    res.json({ id: r.rows[0].id, eh_compra_rapida: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/compras/relatorio/semanal", async (req, res) => {
+  try {
+    const data_inicio = new Date();
+    data_inicio.setDate(data_inicio.getDate() - 7);
+    
+    const r = await q(
+      `SELECT * FROM compras WHERE eh_compra_rapida=1 AND created_at >= $1 ORDER BY created_at DESC`,
+      [data_inicio]
+    );
+    
+    const total = r.rows.reduce((a, c) => a + Number(c.valor_total || 0), 0);
+    
+    res.json({
+      periodo: "Últimos 7 dias",
+      total: total.toFixed(2),
+      quantidade: r.rows.length,
+      compras: r.rows
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ===== ROTAS PARA COTAÇÕES LADO A LADO =====
+app.get("/cotacoes/:id/comparacao", async (req, res) => {
+  try {
+    const cotacao = await q(`SELECT * FROM cotacoes_gerais WHERE id=$1`, [req.params.id]);
+    const itens = await q(`SELECT * FROM cotacao_itens WHERE cotacao_id=$1 ORDER BY id`, [req.params.id]);
+    const fornecedores = await q(`SELECT * FROM cotacao_fornecedores WHERE cotacao_id=$1 ORDER BY id`, [req.params.id]);
+    const precos = await q(`SELECT * FROM cotacao_precos WHERE cotacao_id=$1`, [req.params.id]);
+    
+    const matriz = {};
+    itens.rows.forEach(item => {
+      matriz[item.id] = {};
+      fornecedores.rows.forEach(forn => {
+        const preco = precos.rows.find(p => p.item_id === item.id && p.fornecedor_id === forn.id);
+        matriz[item.id][forn.id] = preco ? preco.valor : null;
+      });
+    });
+    
+    res.json({
+      cotacao: cotacao.rows[0],
+      itens: itens.rows,
+      fornecedores: fornecedores.rows,
+      precos: precos.rows,
+      matriz: matriz
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/cotacoes/:id/precos/:preco_id", async (req, res) => {
+  try {
+    await q(`UPDATE cotacao_precos SET valor=$1 WHERE id=$2`, [req.body.valor, req.params.preco_id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/cotacoes/:id/precos/:preco_id", async (req, res) => {
+  try {
+    await q(`DELETE FROM cotacao_precos WHERE id=$1`, [req.params.preco_id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.put("/compras/:id", async (req, res) => {
+  const b = req.body;
+  try {
+    await q(
+      `UPDATE compras SET item=$1, quantidade=$2, categoria=$3, destino=$4, valor_unitario=$5 WHERE id=$6`,
+      [b.item, b.quantidade, b.categoria, b.destino, b.valor_unitario || 0, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/compras/:id", async (req, res) => {
+  try {
+    await q(`DELETE FROM cotacoes WHERE compra_id=$1`, [req.params.id]);
+    await q(`DELETE FROM compras WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+

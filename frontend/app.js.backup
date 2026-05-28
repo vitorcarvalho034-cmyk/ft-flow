@@ -167,7 +167,7 @@ function renderEstoque(lista){
   const semAlerta=lista.filter(i=>!i.baixo);
   const ordenado=[...comAlerta,...semAlerta];
   tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
-  const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];listaEstoque.innerHTML=ordenado.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row"><div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`).join("")||"Nenhum item.";
+  listaEstoque.innerHTML=lista.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row"><div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button></div></div></div>`).join("")||"Nenhum item.";
 }
 function filtrarEstoque(c){const data=window._estoqueData||[];renderEstoque(c==="Todos"?data:data.filter(i=>(i.categoria||"Sem categoria")===c));}
 async function addEstoque(){ 
@@ -184,148 +184,13 @@ function abrirBaixaEstoque(id,nome,disponivel,unidade){
   const quantidade=Number(String(qtd).replace(",",".")); if(!quantidade||quantidade<=0)return mostrarErro("Quantidade inválida."); if(quantidade>disponivel)return mostrarErro("Quantidade maior que estoque disponível.");
   const destino=prompt("Destino / uso da baixa:",""); if(destino===null)return; const observacao=prompt("Observação (opcional):","")||"";
   fetch(API+`/estoque/${id}/baixa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({quantidade,destino,observacao,usuario:(usuario?.nome||usuario?.username||"Usuário")})}).then(async r=>{const data=await r.json().catch(()=>({}));if(!r.ok)return mostrarErro(data.error||"Erro ao dar baixa.");mostrarSucesso("Baixa realizada com sucesso!");carregar();atualizarContadorNotificacoes();});
-
-// ===== ESTOQUE MELHORADO =====
-async function abrirEditarEstoque(id, nome, categoria, unidade, qtd, minimo) {
-  const novoNome = prompt("Nome do item:", nome);
-  if (!novoNome) return;
-  const novaCategoria = prompt("Categoria:", categoria);
-  const novaUnidade = prompt("Unidade:", unidade);
-  const novaQtd = prompt("Quantidade:", qtd);
-  const novoMinimo = prompt("Mínimo:", minimo);
-  
-  try {
-    await js(API + `/estoque/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nome: novoNome,
-        categoria: novaCategoria,
-        unidade: novaUnidade,
-        quantidade: Number(novaQtd),
-        minimo: Number(novoMinimo)
-      })
-    });
-    mostrarSucesso("Item atualizado com sucesso!");
-    carregar();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-async function deletarEstoque(id) {
-  if (!confirm("Tem certeza que deseja deletar este item?")) return;
-  try {
-    await js(API + `/estoque/${id}`, { method: "DELETE" });
-    mostrarSucesso("Item deletado com sucesso!");
-    carregar();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-// ===== COMPRAS RÁPIDAS (<R$2000) =====
-async function abrirCompraRapida() {
-  const item = prompt("Item:");
-  if (!item) return;
-  const qtd = prompt("Quantidade:");
-  if (!qtd) return;
-  const valorUnitario = prompt("Valor unitário (R$):");
-  if (!valorUnitario) return;
-  const categoria = prompt("Categoria:", "Diversos");
-  const solicitante = prompt("Solicitante:", usuario?.nome || "");
-  
-  const valorTotal = Number(qtd) * Number(valorUnitario);
-  if (valorTotal >= 2000) {
-    return mostrarErro("Compra rápida deve ser menor que R$2.000");
-  }
-  
-  try {
-    await js(API + "/compras/rapida", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        item,
-        quantidade: Number(qtd),
-        valor_unitario: Number(valorUnitario),
-        categoria,
-        solicitante
-      })
-    });
-    mostrarSucesso(`Compra rápida criada! Total: R$ ${valorTotal.toFixed(2)}`);
-    carregar();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-async function verRelatorioSemanal() {
-  try {
-    const relatorio = await js(API + "/compras/relatorio/semanal");
-    const html = `
-      <div class="panel">
-        <h3>📊 Relatório Semanal - Compras Rápidas</h3>
-        <p><b>Período:</b> ${relatorio.periodo}</p>
-        <p><b>Total gasto:</b> <span style="color: #10b981; font-size: 20px; font-weight: bold;">R$ ${relatorio.total}</span></p>
-        <p><b>Quantidade de compras:</b> ${relatorio.quantidade}</p>
-        <h4>Detalhes:</h4>
-        ${relatorio.compras.map(c => `
-          <div class="card">
-            <b>${c.item}</b><br>
-            Quantidade: ${c.quantidade} | Total: R$ ${Number(c.valor_total || 0).toFixed(2)}<br>
-            Solicitante: ${c.solicitante}
-          </div>
-        `).join("")}
-      </div>
-    `;
-    content.innerHTML = html;
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
-
-// ===== COTAÇÕES LADO A LADO =====
-async function verComparativoCotacoes(cotacaoId) {
-  try {
-    const dados = await js(API + `/cotacoes/${cotacaoId}/comparacao`);
-    
-    let html = `
-      <div class="panel">
-        <h3>📊 Comparativo de Cotações</h3>
-        <p><b>Cotação:</b> ${dados.cotacao?.titulo || "Sem título"}</p>
-        <table class="table" style="overflow-x: auto;">
-          <thead>
-            <tr>
-              <th>Produto</th>
-              ${dados.fornecedores.map(f => `<th>${f.nome}</th>`).join("")}
-            </tr>
-          </thead>
-          <tbody>
-            ${dados.itens.map(item => `
-              <tr>
-                <td><b>${item.descricao}</b><br><small>${item.quantidade} ${item.unidade}</small></td>
-                ${dados.fornecedores.map(forn => {
-                  const preco = dados.matriz[item.id]?.[forn.id];
-                  return `<td>${preco ? `R$ ${Number(preco).toFixed(2)}` : "-"}</td>`;
-                }).join("")}
-              </tr>
-            `).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
-    content.innerHTML = html;
-  } catch (e) {
-    mostrarErro(e.message);
-  }
-}
 }
 
 async function compras(){
   const data=await js(API+"/compras");
   const compData = data.data || data;
   const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="grid"><input id="compSolicitante" placeholder="Nome do solicitante"><input id="compItem" placeholder="Item"><input id="compQtd" type="number" placeholder="Quantidade"><input id="compCat" placeholder="Categoria"><input id="compDest" placeholder="Destino / uso"></div><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Solicitação Detalhada</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div><button class="primary full" onclick="addCompra()">Enviar solicitação rápida</button></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${compData.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.valor_total?`<br>Total: ${dinheiro(c.valor_total)}`:""} ${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirCotacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="grid"><input id="compSolicitante" placeholder="Nome do solicitante"><input id="compItem" placeholder="Item"><input id="compQtd" type="number" placeholder="Quantidade"><input id="compCat" placeholder="Categoria"><input id="compDest" placeholder="Destino / uso"></div><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Solicitação Detalhada</button><button class="secondary" onclick="carregar()">Atualizar</button></div><button class="primary full" onclick="addCompra()">Enviar solicitação rápida</button></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${compData.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirCotacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
 }
 function abrirModalCompra() {
   modalCompra.classList.remove("hidden");
