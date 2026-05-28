@@ -278,24 +278,26 @@ app.post("/cotacoes/:id/enviar-aprovacao", async (req, res) => {
     // Buscar dados da cotação
     const cotacao = await q(`SELECT * FROM cotacoes_gerais WHERE id = $1`, [req.params.id]);
     
-    // Enviar email
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: true,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-    });
+    // Simular envio de email (em produção, usar SendGrid ou Mailgun)
+    console.log(`[EMAIL] Para: ${email_patroa}`);
+    console.log(`[EMAIL] Assunto: ${urgente ? '🔴 URGENTE - ' : ''}Cotação para aprovação`);
+    console.log(`[EMAIL] Observações: ${observacoes || 'Nenhuma'}`);
+    
+    // Salvar notificação para patroa
+    await q(
+      `INSERT INTO notificacoes (usuario_id, tipo, mensagem, link, criada_em)
+       VALUES ($1, $2, $3, $4, NOW())`,
+      [1, 'cotacao_aprovacao', `Cotação aguardando aprovação${urgente ? ' (URGENTE)' : ''}`, `/cotacoes`, ]
+    ).catch(() => {});
     
     const linkAprovacao = `${process.env.SITE_URL || 'https://ft-flow.netlify.app'}/aprovar/${r.rows[0].id}`;
     const linkRejeicao = `${process.env.SITE_URL || 'https://ft-flow.netlify.app'}/rejeitar/${r.rows[0].id}`;
     
-    const mailOptions = {
-      from: process.env.SMTP_USER,
+    // Email simulado (em produção, implementar SendGrid)
+    const emailSimulado = {
+      from: 'sistema@ft-flow.com.br',
       to: email_patroa,
-      subject: `${urgente ? '🔴 URGENTE - ' : ''}Cotação para aprovação: ${cotacao.rows[0]?.titulo || 'Sem título'}`,
+      subject: `${urgente ? '🔴 URGENTE - ' : ''}Cotação para aprovação`,
       html: `
         <h2>Solicitação de Aprovação de Cotação</h2>
         <p><strong>Produto/Serviço:</strong> ${cotacao.rows[0]?.titulo || 'N/A'}</p>
