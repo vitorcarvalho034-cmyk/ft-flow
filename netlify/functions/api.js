@@ -20,6 +20,43 @@ app.use((req, res, next) => {
   next();
 });
 
+// ENDPOINT DE DEBUG (SEM AUTENTICACAO)
+app.get("/auth/debug", async (req, res) => {
+  try {
+    const pool2 = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+    });
+    const c = await pool2.connect();
+    try {
+      const usuarios = await c.query(`SELECT id, username, password FROM usuarios`);
+      const debug = {
+        DATABASE_URL_SET: !!process.env.DATABASE_URL,
+        DATABASE_URL_PREVIEW: process.env.DATABASE_URL ? process.env.DATABASE_URL.substring(0, 50) + "..." : "NOT SET",
+        JWT_SECRET_SET: !!process.env.JWT_SECRET,
+        usuarios: usuarios.rows.map(u => ({
+          id: u.id,
+          username: u.username,
+          password_hash_preview: u.password ? u.password.substring(0, 30) + "..." : "NULL",
+          password_length: u.password ? u.password.length : 0
+        })),
+        bcrypt_test: {}
+      };
+      
+      // Test bcrypt.compare for each user
+      for (const user of usuarios.rows) {
+        const result = await bcrypt.compare("123", user.password);
+        debug.bcrypt_test[user.username] = result;
+      }
+      
+      res.json(debug);
+    } finally { c.release(); }
+    pool2.end();
+  } catch (e) {
+    res.status(500).json({ error: e.message, stack: e.stack });
+  }
+});
+
 // ENDPOINT TEMPORARIO ANTES DO MIDDLEWARE (SEM AUTENTICACAO)
 app.post("/auth/reset-usuarios-temp", async (req, res) => {
   try {
