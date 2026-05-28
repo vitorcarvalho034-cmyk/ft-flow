@@ -644,6 +644,8 @@ async function salvarCompraRapida(e) {
 }
 
 // ===== COTAÇÕES: COMPARAÇÃO DE FORNECEDORES =====
+let fornecedorSelecionado = null;
+
 function abrirModalCotacaoComparacao(cotacaoId) {
   try {
     js(`${API}/cotacoes/${cotacaoId}`).then(cotacao => {
@@ -655,16 +657,19 @@ function abrirModalCotacaoComparacao(cotacaoId) {
         <td><strong>${cotacao.produto}</strong></td>`;
       
       cotacao.fornecedores.forEach((f, i) => {
-        html += `<td>
+        const selecionado = fornecedorSelecionado?.id === f.id;
+        html += `<td style="${selecionado ? 'background-color: #e8f5e9; border: 2px solid green;' : ''}">
           <strong>${f.nome}</strong><br>
           <span style="color: green; font-size: 16px;">R$ ${f.valor.toFixed(2)}</span><br>
-          <small>${f.observacao || ""}</small>
+          <small>${f.observacao || ""}</small><br>
+          <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${i}, '${f.nome}', ${f.valor})">\u2713 ${selecionado ? 'SELECIONADO' : 'Selecionar'}</button>
         </td>`;
       });
       
       html += `<td>
         <button class="small" onclick="editarCotacao(${cotacaoId})">✏️ Editar</button>
         <button class="small danger" onclick="excluirCotacao(${cotacaoId})">🗑️ Excluir</button>
+        ${fornecedorSelecionado ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})">✉️ Enviar para Aprovação</button>` : ''}
       </td></tr>`;
       
       tbody.innerHTML = html;
@@ -673,6 +678,12 @@ function abrirModalCotacaoComparacao(cotacaoId) {
   } catch (e) {
     mostrarErro(e.message);
   }
+}
+
+function selecionarFornecedor(cotacaoId, indice, nome, valor) {
+  fornecedorSelecionado = { id: indice, nome, valor, cotacaoId };
+  mostrarSucesso(`Fornecedor "${nome}" selecionado! (R$ ${valor.toFixed(2)})`);
+  abrirModalCotacaoComparacao(cotacaoId);
 }
 
 function fecharModalCotacaoComparacao() {
