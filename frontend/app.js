@@ -163,8 +163,6 @@ async function estoque(){
 }
 function renderEstoque(lista){
   const baixo=lista.filter(i=>i.baixo).length;
-  const semAlerta=lista.filter(i=>!i.baixo);
-  const ordenado=[...comAlerta,...semAlerta];
   tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
   const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];listaEstoque.innerHTML=ordenado.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row">${i.foto_url?`<img src="${i.foto_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-right:15px;">`:''}<div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`).join("")||"Nenhum item.";
 }
