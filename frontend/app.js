@@ -640,9 +640,13 @@ let fornecedorSelecionado = null;
 
 function abrirModalCotacaoComparacao(cotacaoId) {
   try {
-    js(`${API}/cotacoes/${cotacaoId}`).then(cotacao => {
+    js(`${API}/cotacoes/${cotacaoId}`).then(dados => {
       const modal = document.getElementById("modalCotacaoComparacao");
       const container = document.getElementById("cotacaoComparacaoContainer");
+      
+      const compra = dados.compra;
+      const fornecedores = dados.fornecedores || [];
+      const precos = dados.precos || [];
       
       // Montar tabela comparativa lado a lado
       let html = `
@@ -654,46 +658,44 @@ function abrirModalCotacaoComparacao(cotacaoId) {
       `;
       
       // Adicionar cabeçalho com fornecedores
-      if (cotacao.fornecedores && cotacao.fornecedores.length > 0) {
-        cotacao.fornecedores.forEach((f, i) => {
-          html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>${f.nome}</strong></th>`;
-        });
-      }
+      fornecedores.forEach((f) => {
+        html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>${f.nome}</strong></th>`;
+      });
       
       html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Ações</strong></th>
               </tr>
             </thead>
             <tbody>
               <tr style="background-color: #f5f5f5;">
-                <td style="padding: 12px; border: 1px solid #ddd;"><strong>${cotacao.produto || 'Produto'}</strong></td>
+                <td style="padding: 12px; border: 1px solid #ddd;"><strong>${compra.item || 'Produto'}</strong></td>
       `;
       
       // Adicionar valores dos fornecedores
-      if (cotacao.fornecedores && cotacao.fornecedores.length > 0) {
-        cotacao.fornecedores.forEach((f, i) => {
-          const selecionado = fornecedorSelecionado?.id === f.id;
-          const bgColor = selecionado ? '#e8f5e9' : 'white';
-          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
-          
-          html += `
-            <td style="padding: 12px; text-align: center; border: ${borderStyle}; background-color: ${bgColor};">
-              <div style="margin-bottom: 8px;">
-                <span style="color: green; font-size: 18px; font-weight: bold;">R$ ${Number(f.valor || 0).toFixed(2)}</span>
-              </div>
-              ${f.observacao ? `<small style="color: #666;">${f.observacao}</small><br>` : ''}
-              <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${i}, '${f.nome}', ${f.valor})" style="margin-top: 8px;">
-                ${selecionado ? '✓ SELECIONADO' : 'Selecionar'}
-              </button>
-            </td>
-          `;
-        });
-      }
+      fornecedores.forEach((f) => {
+        const preco = precos.find(p => p.fornecedor === f.nome);
+        const valor = preco ? preco.valor : null;
+        const selecionado = fornecedorSelecionado?.id === f.id && fornecedorSelecionado?.cotacaoId === cotacaoId;
+        const bgColor = selecionado ? '#e8f5e9' : 'white';
+        const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+        
+        html += `
+          <td style="padding: 12px; text-align: center; border: ${borderStyle}; background-color: ${bgColor};">
+            <div style="margin-bottom: 8px;">
+              ${valor ? `<span style="color: green; font-size: 18px; font-weight: bold;">R$ ${Number(valor).toFixed(2)}</span>` : '<span style="color: #999;">-</span>'}
+            </div>
+            ${preco?.observacao ? `<small style="color: #666;">${preco.observacao}</small><br>` : ''}
+            <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${f.id}, '${f.nome}', ${valor || 0})" style="margin-top: 8px;">
+              ${selecionado ? '✓ SELECIONADO' : 'Selecionar'}
+            </button>
+          </td>
+        `;
+      });
       
       html += `
                 <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">
                   <button class="small" onclick="editarCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">✏️ Editar</button>
                   <button class="small danger" onclick="excluirCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">🗑️ Excluir</button>
-                  ${fornecedorSelecionado ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})" style="width: 100%;">✉️ Enviar</button>` : ''}
+                  ${fornecedorSelecionado && fornecedorSelecionado.cotacaoId === cotacaoId ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})" style="width: 100%;">✉️ Enviar</button>` : ''}
                 </td>
               </tr>
             </tbody>
@@ -702,15 +704,6 @@ function abrirModalCotacaoComparacao(cotacaoId) {
       `;
       
       container.innerHTML = html;
-      
-      // Mostrar/esconder botão de envio baseado na seleção
-      const btnEnviar = document.getElementById("btnEnviarAprovacao");
-      if (fornecedorSelecionado && fornecedorSelecionado.cotacaoId === cotacaoId) {
-        btnEnviar.classList.remove("hidden");
-      } else {
-        btnEnviar.classList.add("hidden");
-      }
-      
       modal.classList.remove("hidden");
     });
   } catch (e) {

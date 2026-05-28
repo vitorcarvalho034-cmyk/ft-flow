@@ -501,24 +501,25 @@ app.get("/compras/relatorio/semanal", async (req, res) => {
 // Rota para obter dados de uma cotação (compatível com frontend)
 app.get("/cotacoes/:id", async (req, res) => {
   try {
-    const cotacao = await q(`SELECT * FROM cotacoes_gerais WHERE id=$1`, [req.params.id]);
-    const itens = await q(`SELECT * FROM cotacao_itens WHERE cotacao_id=$1 ORDER BY id`, [req.params.id]);
-    const fornecedores = await q(`SELECT * FROM cotacao_fornecedores WHERE cotacao_id=$1 ORDER BY id`, [req.params.id]);
-    const precos = await q(`SELECT * FROM cotacao_precos WHERE cotacao_id=$1`, [req.params.id]);
+    const compra = await q(`SELECT * FROM compras WHERE id=$1`, [req.params.id]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra nao encontrada' });
+    
+    const precos = await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`, [req.params.id]);
+    
+    const fornecedores = [...new Set(precos.rows.map(p => p.fornecedor))].map((nome, idx) => ({
+      id: idx + 1,
+      nome: nome
+    }));
     
     const matriz = {};
-    itens.rows.forEach(item => {
-      matriz[item.id] = {};
-      fornecedores.rows.forEach(forn => {
-        const preco = precos.rows.find(p => p.item_id === item.id && p.fornecedor_id === forn.id);
-        matriz[item.id][forn.id] = preco ? preco.valor : null;
-      });
+    fornecedores.forEach(forn => {
+      const preco = precos.rows.find(p => p.fornecedor === forn.nome);
+      matriz[forn.id] = preco ? preco.valor : null;
     });
     
     res.json({
-      cotacao: cotacao.rows[0],
-      itens: itens.rows,
-      fornecedores: fornecedores.rows,
+      compra: compra.rows[0],
+      fornecedores: fornecedores,
       precos: precos.rows,
       matriz: matriz
     });
