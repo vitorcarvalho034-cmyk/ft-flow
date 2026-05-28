@@ -498,6 +498,35 @@ app.get("/compras/relatorio/semanal", async (req, res) => {
 });
 
 // ===== ROTAS PARA COTAÇÕES LADO A LADO =====
+// Rota para obter dados de uma cotação (compatível com frontend)
+app.get("/cotacoes/:id", async (req, res) => {
+  try {
+    const cotacao = await q(`SELECT * FROM cotacoes_gerais WHERE id=$1`, [req.params.id]);
+    const itens = await q(`SELECT * FROM cotacao_itens WHERE cotacao_id=$1 ORDER BY id`, [req.params.id]);
+    const fornecedores = await q(`SELECT * FROM cotacao_fornecedores WHERE cotacao_id=$1 ORDER BY id`, [req.params.id]);
+    const precos = await q(`SELECT * FROM cotacao_precos WHERE cotacao_id=$1`, [req.params.id]);
+    
+    const matriz = {};
+    itens.rows.forEach(item => {
+      matriz[item.id] = {};
+      fornecedores.rows.forEach(forn => {
+        const preco = precos.rows.find(p => p.item_id === item.id && p.fornecedor_id === forn.id);
+        matriz[item.id][forn.id] = preco ? preco.valor : null;
+      });
+    });
+    
+    res.json({
+      cotacao: cotacao.rows[0],
+      itens: itens.rows,
+      fornecedores: fornecedores.rows,
+      precos: precos.rows,
+      matriz: matriz
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/cotacoes/:id/comparacao", async (req, res) => {
   try {
     const cotacao = await q(`SELECT * FROM cotacoes_gerais WHERE id=$1`, [req.params.id]);
