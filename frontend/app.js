@@ -1,4 +1,36 @@
-// FT FLOW V2.8 - Otimizado
+/
+
+async function deletarFornecedor(cotacaoId, fornecedorNome) {
+  if (!confirm("Tem certeza que quer deletar este fornecedor?")) return;
+  
+  try {
+    // Buscar todos os preços dessa compra
+    const precos = await js(`${API}/compras/${cotacaoId}/cotacoes`);
+    
+    // Encontrar o preço com esse fornecedor
+    const preco = precos.find(p => p.fornecedor === fornecedorNome);
+    
+    if (!preco) {
+      mostrarErro("Fornecedor não encontrado!");
+      return;
+    }
+    
+    // Deletar o preço
+    await js(`${API}/compras/${cotacaoId}/cotacoes/${preco.id}`, {
+      method: 'DELETE'
+    });
+    
+    mostrarSucesso("Fornecedor deletado com sucesso!");
+    
+    // Recarregar a tabela
+    setTimeout(() => {
+      abrirModalCotacaoComparacao(parseInt(cotacaoId));
+    }, 500);
+  } catch (e) {
+    mostrarErro("Erro ao deletar: " + e.message);
+  }
+}
+/ FT FLOW V2.8 - Otimizado
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
