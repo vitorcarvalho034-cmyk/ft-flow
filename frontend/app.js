@@ -894,3 +894,36 @@ async function salvarNovoFornecedor(event) {
     mostrarErro(e.message);
   }
 }
+
+
+// ===== DRAWER MENU MOBILE =====
+function toggleMenu() {
+  const drawer = document.getElementById("drawer");
+  drawer.classList.toggle("hidden");
+  
+  // Fechar ao clicar fora
+  if (!drawer.classList.contains("hidden")) {
+    document.addEventListener("click", closeDrawerOnClickOutside);
+  } else {
+    document.removeEventListener("click", closeDrawerOnClickOutside);
+  }
+}
+
+function closeDrawerOnClickOutside(event) {
+  const drawer = document.getElementById("drawer");
+  const menuToggle = document.getElementById("menuToggle");
+  
+  if (!drawer.contains(event.target) && !menuToggle.contains(event.target)) {
+    drawer.classList.add("hidden");
+    document.removeEventListener("click", closeDrawerOnClickOutside);
+  }
+}
+
+function trocarTelaDrawer(tela) {
+  // Fechar o drawer
+  document.getElementById("drawer").classList.add("hidden");
+  document.removeEventListener("click", closeDrawerOnClickOutside);
+  
+  // Trocar a tela
+  trocarTela(tela);
+}

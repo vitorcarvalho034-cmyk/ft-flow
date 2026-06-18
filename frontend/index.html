@@ -41,8 +41,37 @@
     <div class="userbox"><div id="userName"></div><small id="userRole"></small><button class="logout" onclick="location.reload()">Sair</button></div>
   </aside>
 
+<!-- Drawer Menu Mobile -->
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-content">
+    <div class="drawer-header">
+      <img src="logo.png" class="logo-mini">
+      <b>FT FLOW</b>
+      <button onclick="toggleMenu()" class="close-drawer">✕</button>
+    </div>
+    <nav class="drawer-nav">
+      <button class="drawer-nav-item" onclick="trocarTelaDrawer('dashboard')">Dashboard</button>
+      <button class="drawer-nav-item" onclick="trocarTelaDrawer('manutencoes')">Manutenções</button>
+      <button class="drawer-nav-item" onclick="trocarTelaDrawer('estoque')">Estoque</button>
+      <button class="drawer-nav-item" onclick="trocarTelaDrawer('compras')">Compras</button>
+      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('cotacoes')">Cotações</button>
+      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('recomendacoes')">Recomendações</button>
+      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('adubacao')">Adubação</button>
+      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('relatorios')">Relatórios</button>
+      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('fornecedores')">Fornecedores</button>
+    </nav>
+    <div class="drawer-footer">
+      <div id="userName"></div>
+      <small id="userRole"></small>
+      <button class="logout" onclick="location.reload()">Sair</button>
+    </div>
+  </div>
+</div>
+
+
   <main class="main">
     <header class="topbar">
+      <button id="menuToggle" class="menu-toggle" onclick="toggleMenu()">☰</button>
       <div><h2 id="pageTitle">Dashboard</h2><p>Sistema interno de gestão operacional</p></div>
       <div class="top-actions admin-only">
         <button class="bell-btn" onclick="abrirNotificacoes()">🔔 <span id="notifCount" class="notif-count hidden">0</span></button>
