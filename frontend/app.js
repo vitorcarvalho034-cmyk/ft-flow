@@ -1,4 +1,3 @@
-/
 
 async function deletarFornecedor(cotacaoId, fornecedorNome) {
   if (!confirm("Tem certeza que quer deletar este fornecedor?")) return;
@@ -30,7 +29,7 @@ async function deletarFornecedor(cotacaoId, fornecedorNome) {
     mostrarErro("Erro ao deletar: " + e.message);
   }
 }
-/ FT FLOW V2.8 - Otimizado
+// FT FLOW V2.8 - Otimizado
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
