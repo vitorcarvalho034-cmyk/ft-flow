@@ -77,8 +77,8 @@ button, input, select, textarea { font-size: 16px; }
   }
 
   .app {
-    min-height: 100vh;
-    padding-bottom: 86px;
+    min-height: 100dvh;
+    padding-bottom: 0;
     background:
       radial-gradient(circle at 10% 0%, rgba(34,197,94,.18), transparent 30%),
       linear-gradient(180deg,#06130c,#0b1810);
@@ -135,7 +135,8 @@ button, input, select, textarea { font-size: 16px; }
 
   .main {
     padding: 14px !important;
-    padding-bottom: 140px !important;
+    padding-bottom: 24px !important;
+    overflow-y: auto !important;
     width: 100% !important;
   }
 
@@ -798,5 +799,20 @@ button, input, select, textarea { font-size: 16px; }
 
   .topbar > div {
     flex: 1 !important;
+  }
+}
+
+
+@media (max-width: 900px) {
+
+  html,
+  body {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow-x: hidden !important;
+  }
+
+  .main {
+    min-height: auto !important;
   }
 }
