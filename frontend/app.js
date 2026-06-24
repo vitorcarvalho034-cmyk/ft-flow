@@ -16,7 +16,9 @@ const STATUS_ATIVOS_COMPRAS = [
 
 const STATUS_HISTORICO_COMPRAS = [
   "aprovada",
+  "aprovado",
   "comprado",
+  "recebido",
   "entregue",
   "concluído",
   "concluido",
