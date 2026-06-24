@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FT FLOW</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=29">
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#052e16">
@@ -33,12 +33,17 @@
     <button class="nav" onclick="trocarTela('manutencoes',this)">Manutenções</button>
     <button class="nav" onclick="trocarTela('estoque',this)">Estoque</button>
     <button class="nav" onclick="trocarTela('compras',this)">Compras</button>
+    <button class="nav" onclick="trocarTela('historico',this)">Histórico</button>
     <button class="nav admin-only" onclick="trocarTela('cotacoes',this)">Cotações</button>
     <button class="nav admin-only" onclick="trocarTela('recomendacoes',this)">Recomendações</button>
     <button class="nav admin-only" onclick="trocarTela('adubacao',this)">Adubação</button>
     <button class="nav admin-only" onclick="trocarTela('relatorios',this)">Relatórios</button>
     <button class="nav admin-only" onclick="trocarTela('fornecedores',this)">Fornecedores</button>
-    <div class="userbox"><div id="userName"></div><small id="userRole"></small><button class="logout" onclick="location.reload()">Sair</button></div>
+    <div class="userbox">
+      <div id="userNameDesktop"></div>
+      <small id="userRoleDesktop"></small>
+      <button class="logout" onclick="location.reload()">Sair</button>
+    </div>
   </aside>
 
 <!-- Drawer Menu Mobile -->
@@ -50,19 +55,20 @@
       <button onclick="toggleMenu()" class="close-drawer">✕</button>
     </div>
     <nav class="drawer-nav">
-      <button class="drawer-nav-item" onclick="trocarTelaDrawer('dashboard')">Dashboard</button>
-      <button class="drawer-nav-item" onclick="trocarTelaDrawer('manutencoes')">Manutenções</button>
-      <button class="drawer-nav-item" onclick="trocarTelaDrawer('estoque')">Estoque</button>
-      <button class="drawer-nav-item" onclick="trocarTelaDrawer('compras')">Compras</button>
-      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('cotacoes')">Cotações</button>
-      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('recomendacoes')">Recomendações</button>
-      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('adubacao')">Adubação</button>
-      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('relatorios')">Relatórios</button>
-      <button class="drawer-nav-item admin-only" onclick="trocarTelaDrawer('fornecedores')">Fornecedores</button>
+      <button class="drawer-nav-item active" data-tela="dashboard" onclick="trocarTelaDrawer('dashboard')"><span class="nav-icon">📊</span>Dashboard</button>
+      <button class="drawer-nav-item" data-tela="manutencoes" onclick="trocarTelaDrawer('manutencoes')"><span class="nav-icon">🔧</span>Manutenções</button>
+      <button class="drawer-nav-item" data-tela="estoque" onclick="trocarTelaDrawer('estoque')"><span class="nav-icon">📦</span>Estoque</button>
+      <button class="drawer-nav-item" data-tela="compras" onclick="trocarTelaDrawer('compras')"><span class="nav-icon">🛒</span>Compras</button>
+      <button class="drawer-nav-item" data-tela="historico" onclick="trocarTelaDrawer('historico')"><span class="nav-icon">🕘</span>Histórico</button>
+      <button class="drawer-nav-item admin-only" data-tela="cotacoes" onclick="trocarTelaDrawer('cotacoes')"><span class="nav-icon">📋</span>Cotações</button>
+      <button class="drawer-nav-item admin-only" data-tela="recomendacoes" onclick="trocarTelaDrawer('recomendacoes')"><span class="nav-icon">🌱</span>Recomendações</button>
+      <button class="drawer-nav-item admin-only" data-tela="adubacao" onclick="trocarTelaDrawer('adubacao')"><span class="nav-icon">🧪</span>Adubação</button>
+      <button class="drawer-nav-item admin-only" data-tela="relatorios" onclick="trocarTelaDrawer('relatorios')"><span class="nav-icon">📈</span>Relatórios</button>
+      <button class="drawer-nav-item admin-only" data-tela="fornecedores" onclick="trocarTelaDrawer('fornecedores')"><span class="nav-icon">🏭</span>Fornecedores</button>
     </nav>
     <div class="drawer-footer">
-      <div id="userName"></div>
-      <small id="userRole"></small>
+      <div id="userNameMobile"></div>
+      <small id="userRoleMobile"></small>
       <button class="logout" onclick="location.reload()">Sair</button>
     </div>
   </div>
@@ -229,10 +235,10 @@
     <div class="modal-head"><h3>Enviar para Aprovação</h3><button onclick="fecharModalAprovacao()">×</button></div>
     <form id="formAprovacao" onsubmit="confirmarEnvioAprovacao(event)">
       <input type="hidden" id="aprovacaoCotacaoId">
-      <label>Email da Patroa<input id="aprovacaoEmail" type="email" placeholder="patroa@email.com" required></label>
+      <label>Email do aprovador<input id="aprovacaoEmail" type="email" placeholder="aprovador@empresa.com" required></label>
       <label>Observações (opcional)<textarea id="aprovacaoObs" placeholder="Adicione alguma observação importante"></textarea></label>
       <label class="check"><input type="checkbox" id="aprovacaoUrgente"> Marcar como urgente</label>
-      <p style="color:#999; font-size:12px;">Um email será enviado para a patroa com os detalhes da cotação para aprovação.</p>
+      <p style="color:#999; font-size:12px;">Um email será enviado ao responsável com os detalhes da cotação para aprovação.</p>
       <button class="primary full">Enviar para Aprovação</button>
     </form>
   </div>
@@ -252,6 +258,6 @@
   </div>
 </div>
 
-<script src="app.js?v=28"></script>
+<script src="app.js?v=29"></script>
 </body>
 </html>

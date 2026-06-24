@@ -32,9 +32,55 @@ async function deletarFornecedor(cotacaoId, fornecedorNome) {
 // FT FLOW V2.8 - Otimizado
 const API = "/api";
 let usuario = null;
+  atualizarInfosUsuario();
 let tela = "dashboard";
 let adubacaoItens = [];
 let token = localStorage.getItem('ft_flow_token');
+
+const STATUS_ATIVOS_COMPRAS = [
+  "pendente",
+  "em cotação",
+  "pendente_aprovacao",
+  "aguardando aprovação",
+  "em andamento"
+];
+
+const STATUS_HISTORICO_COMPRAS = [
+  "aprovada",
+  "comprado",
+  "entregue",
+  "concluído",
+  "concluido",
+  "rejeitado",
+  "cancelado"
+];
+
+function normalizarStatus(status) {
+  return String(status || "").trim().toLowerCase();
+}
+
+function statusEhAtivo(status) {
+  return STATUS_ATIVOS_COMPRAS.includes(normalizarStatus(status));
+}
+
+function statusEhHistorico(status) {
+  return STATUS_HISTORICO_COMPRAS.includes(normalizarStatus(status));
+}
+
+function atualizarInfosUsuario() {
+  const nome = usuario?.nome || usuario?.user || "Usuário";
+  const role = usuario?.role || "";
+
+  const userNameDesktop = document.getElementById("userNameDesktop");
+  const userRoleDesktop = document.getElementById("userRoleDesktop");
+  const userNameMobile = document.getElementById("userNameMobile");
+  const userRoleMobile = document.getElementById("userRoleMobile");
+
+  if (userNameDesktop) userNameDesktop.innerText = nome;
+  if (userRoleDesktop) userRoleDesktop.innerText = role;
+  if (userNameMobile) userNameMobile.innerText = nome;
+  if (userRoleMobile) userRoleMobile.innerText = role;
+}
 
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function dinheiro(v){ return `R$ ${Number(v||0).toFixed(2)}`; }
@@ -96,9 +142,14 @@ async function fazerLogin(){
 
 function trocarTela(n,b){
   tela=n;
+  // Sidebar desktop
   document.querySelectorAll(".nav").forEach(x=>x.classList.remove("active"));
   if(b) b.classList.add("active");
-  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",compras:"Compras",cotacoes:"Cotações",recomendacoes:"Recomendações",adubacao:"Adubação",relatorios:"Relatórios",fornecedores:"Fornecedores"};
+  // Drawer mobile — marca item ativo
+  document.querySelectorAll(".drawer-nav-item").forEach(x=>{
+    x.classList.toggle("active", x.dataset.tela===n);
+  });
+  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",recomendacoes:"Recomendações",adubacao:"Adubação",relatorios:"Relatórios",fornecedores:"Fornecedores"};
   pageTitle.innerText=titles[n]||"FT FLOW";
   carregar();
 }
@@ -110,6 +161,7 @@ async function carregar(){
     if(tela==="manutencoes") return manutencoes();
     if(tela==="estoque") return estoque();
     if(tela==="compras") return compras();
+    if(tela==="historico") return historico();
     if(tela==="cotacoes") return cotacoesGerais();
     if(tela==="recomendacoes") return recomendacoesPDF();
     if(tela==="adubacao") return adubacaoSemanal();
@@ -413,8 +465,9 @@ async function verComparativoCotacoes(cotacaoId) {
 async function compras(){
   const data=await js(API+"/compras");
   const compData = data.data || data;
+  const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
   const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${compData.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.valor_total?`<br>Total: ${dinheiro(c.valor_total)}`:""} ${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${comprasAtivas.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.valor_total?`<br>Total: ${dinheiro(c.valor_total)}`:""} ${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
 }
 function abrirModalCompra() {
   modalCompra.classList.remove("hidden");
@@ -521,10 +574,42 @@ async function salvarCotacao(id){
   }
 }
 
+async function historico(){
+  const data = await js(API + "/compras");
+  const compData = data.data || data;
+  const historicoData = compData.filter(c => statusEhHistorico(c.status));
+
+  content.innerHTML = `
+    <div class="panel">
+      <h3>Histórico</h3>
+      <p style="color:#647066">Itens aprovados, comprados, concluídos, rejeitados ou cancelados.</p>
+
+      ${
+        historicoData.length
+          ? historicoData.map(c => `
+            <div class="card">
+              <b>#${c.id} - ${c.item || "-"}</b><br>
+              <small>Solicitante: ${c.solicitante || "-"}</small><br>
+              <small>Categoria: ${c.categoria || "-"}</small><br>
+              <small>Quantidade: ${c.quantidade || "-"} ${c.unidade || ""}</small><br>
+              <small>Status: ${c.status || "-"}</small><br>
+              ${c.destino ? `<small>Destino: ${c.destino}</small><br>` : ""}
+              ${c.valor ? `<small>Valor: ${dinheiro(c.valor)}</small><br>` : ""}
+            </div>
+          `).join("")
+          : `<div class="card"><small>Nenhum item no histórico.</small></div>`
+      }
+    </div>
+  `;
+}
+
 async function cotacoesGerais(){
   const data=await js(API+"/compras");
   const compData = data.data || data;
-  const comCotacao=compData.filter(c=>c.status==="Em cotação");
+  const comCotacao = compData.filter(c => {
+  const status = normalizarStatus(c.status);
+  return status === "em cotação" || status === "pendente_aprovacao";
+});
   content.innerHTML=`<div class="panel"><h3>Cotações em aberto</h3>${comCotacao.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante}<br>Quantidade: ${c.quantidade} ${c.categoria}<br><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div></div>`).join("")||"Nenhuma cotação em aberto."}</div>`;
 }
 
@@ -898,31 +983,36 @@ async function salvarNovoFornecedor(event) {
 // ===== DRAWER MENU MOBILE =====
 function toggleMenu() {
   const drawer = document.getElementById("drawer");
-  drawer.classList.toggle("hidden");
-  
-  // Fechar ao clicar fora
-  if (!drawer.classList.contains("hidden")) {
+  const isHidden = drawer.classList.contains("hidden");
+  if (isHidden) {
+    drawer.classList.remove("hidden");
     document.addEventListener("click", closeDrawerOnClickOutside);
+    document.addEventListener("keydown", closeDrawerOnEscape);
   } else {
-    document.removeEventListener("click", closeDrawerOnClickOutside);
+    fecharDrawer();
   }
+}
+
+function fecharDrawer() {
+  const drawer = document.getElementById("drawer");
+  drawer.classList.add("hidden");
+  document.removeEventListener("click", closeDrawerOnClickOutside);
+  document.removeEventListener("keydown", closeDrawerOnEscape);
 }
 
 function closeDrawerOnClickOutside(event) {
   const drawer = document.getElementById("drawer");
   const menuToggle = document.getElementById("menuToggle");
-  
-  if (!drawer.contains(event.target) && !menuToggle.contains(event.target)) {
-    drawer.classList.add("hidden");
-    document.removeEventListener("click", closeDrawerOnClickOutside);
+  if (!drawer.querySelector(".drawer-content").contains(event.target) && !menuToggle.contains(event.target)) {
+    fecharDrawer();
   }
 }
 
+function closeDrawerOnEscape(event) {
+  if (event.key === "Escape") fecharDrawer();
+}
+
 function trocarTelaDrawer(tela) {
-  // Fechar o drawer
-  document.getElementById("drawer").classList.add("hidden");
-  document.removeEventListener("click", closeDrawerOnClickOutside);
-  
-  // Trocar a tela
+  fecharDrawer();
   trocarTela(tela);
 }
