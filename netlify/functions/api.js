@@ -200,35 +200,7 @@ app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.put("/compras/:id/status",async(req,res)=>{
-  const novoStatus = req.body.status;
-  await q(`UPDATE compras SET status=$1 WHERE id=$2`,[novoStatus,req.params.id]);
-  
-  // Quando recebido/entregue, adiciona ou atualiza o estoque automaticamente
-  if (novoStatus === 'Recebido' || novoStatus === 'entregue') {
-    try {
-      const compra = (await q(`SELECT * FROM compras WHERE id=$1`,[req.params.id])).rows[0];
-      if (compra) {
-        // Verificar se já existe no estoque pelo nome do item
-        const existente = (await q(`SELECT * FROM estoque WHERE LOWER(nome) = LOWER($1)`, [compra.item])).rows[0];
-        if (existente) {
-          // Produto já existe — soma a quantidade
-          await q(`UPDATE estoque SET quantidade = quantidade + $1 WHERE id=$2`, [Number(compra.quantidade)||1, existente.id]);
-          await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [existente.nome, existente.categoria, Number(compra.quantidade)||1, existente.unidade, compra.destino||"", "entrada", "compra_recebida", `Compra #${compra.id} recebida`]);
-        } else {
-          // Produto novo — cria no estoque
-          await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo) VALUES ($1,$2,$3,$4,$5)`,
-            [compra.item, compra.categoria||"Outros", "un", Number(compra.quantidade)||1, 0]);
-          await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [compra.item, compra.categoria||"Outros", Number(compra.quantidade)||1, "un", compra.destino||"", "entrada", "compra_recebida", `Compra #${compra.id} - novo item no estoque`]);
-        }
-        await notify("Estoque atualizado", `${compra.item} (${compra.quantidade}) adicionado ao estoque via compra #${compra.id}`, "estoque", {Item:compra.item, Quantidade:compra.quantidade});
-      }
-    } catch(e) { console.error("Erro ao atualizar estoque:", e.message); }
-  }
-  res.json({ok:true});
-});
+app.put("/compras/:id/status",async(req,res)=>{await q(`UPDATE compras SET status=$1 WHERE id=$2`,[req.body.status,req.params.id]);res.json({ok:true});});
 app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});});
 
 app.get("/fornecedores",async(req,res)=>res.json((await q(`SELECT * FROM fornecedores ORDER BY nome`)).rows));
