@@ -20,35 +20,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// ENDPOINT TEMPORARIO ANTES DO MIDDLEWARE (SEM AUTENTICACAO)
-app.post("/auth/reset-usuarios-temp", async (req, res) => {
-  try {
-    const senhaAdmin = await bcrypt.hash("123", 10);
-    const senhaOperador = await bcrypt.hash("123", 10);
-    const pool2 = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
-    });
-    const c = await pool2.connect();
-    try {
-      await c.query(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username VARCHAR(50) UNIQUE NOT NULL, password VARCHAR(255) NOT NULL, nome VARCHAR(100), role VARCHAR(20) DEFAULT 'funcionario', criado_em TIMESTAMP DEFAULT NOW())`); await c.query("DELETE FROM usuarios");
-      await c.query(
-        `INSERT INTO usuarios (username, password, nome, role) VALUES ($1, $2, $3, $4), ($5, $6, $7, $8)`,
-        ["admin", senhaAdmin, "Administrador", "admin", "operador", senhaOperador, "Operador", "funcionario"]
-      );
-    } finally { c.release(); }
-    pool2.end();
-    res.json({ ok: true, message: "Usuarios resetados com sucesso. Use admin/123 e operador/123" });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-
 // Middleware de autenticação (exceto login)
 function autenticar(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token && req.path !== "/auth/login" && req.path !== "/auth/reset-usuarios-temp") {
+  if (!token && req.path !== "/auth/login") {
     return res.status(401).json({ error: "Token não fornecido" });
   }
   if (token) {
@@ -93,6 +68,7 @@ async function ensureDb(){
   await q(`CREATE TABLE IF NOT EXISTS aplicacoes_adubacao (id SERIAL PRIMARY KEY, titulo TEXT, status TEXT DEFAULT 'Confirmada', created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS aplicacao_adubacao_itens (id SERIAL PRIMARY KEY, aplicacao_id INTEGER, produto TEXT, quantidade_total REAL, unidade TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS aplicacao_adubacao_destinos (id SERIAL PRIMARY KEY, aplicacao_id INTEGER, produto TEXT, destino TEXT, quantidade REAL, unidade TEXT)`);
+  await q(`CREATE TABLE IF NOT EXISTS aprovacoes_cotacao (id SERIAL PRIMARY KEY, cotacao_id INTEGER, email_patroa TEXT, observacoes TEXT, urgente INTEGER DEFAULT 0, status TEXT DEFAULT 'pendente', aprovado_por TEXT, rejeitado_por TEXT, motivo_rejeicao TEXT, created_at TIMESTAMP DEFAULT NOW(), respondida_em TIMESTAMP)`);
   
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
   if(u.rows[0].total===0) {
@@ -192,7 +168,7 @@ app.get("/compras",async(req,res)=>{
 });
 app.post("/compras",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO compras (item,quantidade,categoria,destino,solicitante,status) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[b.item,b.quantidade,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação"]);await notify("Nova solicitação de compra",`Item: ${b.item}`,"compra",{Item:b.item,Quantidade:b.quantidade,Solicitante:b.solicitante});res.json({id:r.rows[0].id});});
 app.get("/compras/:id/cotacoes",async(req,res)=>res.json((await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id])).rows));
-app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;
+app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao||""]);res.json({id:r.rows[0].id});});
 app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
   try {
     await q(`DELETE FROM cotacoes WHERE id=$1 AND compra_id=$2`, [req.params.preco_id, req.params.id]);
@@ -200,7 +176,7 @@ app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
-});const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao||""]);res.json({id:r.rows[0].id});});
+});
 app.put("/compras/:id/status",async(req,res)=>{await q(`UPDATE compras SET status=$1 WHERE id=$2`,[req.body.status,req.params.id]);res.json({ok:true});});
 app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});});
 
@@ -234,42 +210,7 @@ app.post("/adubacao/aplicar",async(req,res)=>{const {titulo,itens,distribuicao}=
 
 app.get("/relatorios/mensal/html",async(req,res)=>{const month=req.query.month||new Date().toISOString().slice(0,7);const movs=await q(`SELECT produto,categoria,unidade,destino,origem,SUM(quantidade) total FROM movimentacoes_estoque WHERE to_char(created_at,'YYYY-MM')=$1 GROUP BY produto,categoria,unidade,destino,origem ORDER BY categoria,produto`,[month]);const est=await q(`SELECT nome,categoria,unidade,quantidade,minimo FROM estoque ORDER BY categoria,nome`);res.setHeader("Content-Type","text/html; charset=utf-8");res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>FT FLOW Relatório</title><style>body{font-family:Arial;background:#f3f7f4;padding:28px}.page{max-width:1000px;margin:auto;background:white;padding:30px;border-radius:22px}table{width:100%;border-collapse:collapse}td,th{padding:10px;border-bottom:1px solid #ddd;text-align:left}th{background:#ecfdf5}.btn{background:#15803d;color:white;padding:12px 18px;border:0;border-radius:12px}@media print{.btn{display:none}}</style></head><body><div class="page"><h1>🌿 FT FLOW - Relatório Mensal</h1><p>Mês: <b>${month}</b></p><button class="btn" onclick="window.print()">Salvar PDF</button><h2>Consumo</h2><table><tr><th>Produto</th><th>Categoria</th><th>Total</th><th>Destino</th><th>Origem</th></tr>${movs.rows.map(m=>`<tr><td>${m.produto}</td><td>${m.categoria||"-"}</td><td>${Number(m.total||0).toFixed(2)} ${m.unidade||""}</td><td>${m.destino||"-"}</td><td>${m.origem||"-"}</td></tr>`).join("")||"<tr><td colspan='5'>Sem consumo</td></tr>"}</table><h2>Estoque atual</h2><table><tr><th>Produto</th><th>Categoria</th><th>Atual</th><th>Mínimo</th></tr>${est.rows.map(e=>`<tr><td>${e.nome}</td><td>${e.categoria}</td><td>${e.quantidade} ${e.unidade}</td><td>${e.minimo}</td></tr>`).join("")}</table></div></body></html>`);});
 
-module.exports.handler = serverless(app);
-
-// DEBUG: Verificar usuários
-app.get("/debug/usuarios", async (req, res) => {
-  try {
-    const r = await q("SELECT id, username, nome, role FROM usuarios");
-    res.json({ usuarios: r.rows, total: r.rows.length });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-
 // ===== APROVAÇÃO DE COTAÇÕES =====
-
-// Criar tabela de aprovações se não existir
-app.post("/setup-aprovacoes", async (req, res) => {
-  try {
-    await q(`CREATE TABLE IF NOT EXISTS aprovacoes_cotacao (
-      id SERIAL PRIMARY KEY,
-      cotacao_id INTEGER,
-      email_patroa TEXT,
-      observacoes TEXT,
-      urgente INTEGER DEFAULT 0,
-      status TEXT DEFAULT 'pendente',
-      aprovado_por TEXT,
-      rejeitado_por TEXT,
-      motivo_rejeicao TEXT,
-      created_at TIMESTAMP DEFAULT NOW(),
-      respondida_em TIMESTAMP
-    )`);
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // Enviar cotação para aprovação
 app.post("/cotacoes/:id/enviar-aprovacao", async (req, res) => {
@@ -326,7 +267,18 @@ app.post("/cotacoes/:id/enviar-aprovacao", async (req, res) => {
       `
     };
     
-    await transporter.sendMail(mailOptions);
+    // Enviar email via helper existente
+    await email(
+      `${urgente ? '🔴 URGENTE - ' : ''}Cotação para aprovação`,
+      {
+        "Produto/Serviço": cotacao.rows[0]?.titulo || 'N/A',
+        "Categoria": cotacao.rows[0]?.categoria || 'N/A',
+        "Observações": observacoes || 'Nenhuma',
+        "Prioridade": urgente ? 'URGENTE' : 'Normal',
+        "Link Aprovação": linkAprovacao,
+        "Link Rejeição": linkRejeicao
+      }
+    );
     
     res.json({ ok: true, id: r.rows[0].id });
   } catch (e) {
@@ -415,23 +367,6 @@ app.get("/historico-aprovacoes", async (req, res) => {
   }
 });
 
-// Endpoint para verificar usuários (SEM AUTENTICACAO)
-app.get("/auth/verificar-usuarios", async (req, res) => {
-  try {
-    const pool2 = new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
-    });
-    const c = await pool2.connect();
-    try {
-      const r = await c.query("SELECT id, username, nome, role FROM usuarios");
-      res.json({ usuarios: r.rows, total: r.rows.length });
-    } finally { c.release(); }
-    pool2.end();
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
 
 // ===== ROTAS PARA ESTOQUE MELHORADO =====
 app.put("/estoque/:id", async (req, res) => {
@@ -604,4 +539,7 @@ app.delete("/compras/:id", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Handler - MUST be the last line
+module.exports.handler = serverless(app);
 

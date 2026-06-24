@@ -1,38 +1,7 @@
 
-async function deletarFornecedor(cotacaoId, fornecedorNome) {
-  if (!confirm("Tem certeza que quer deletar este fornecedor?")) return;
-  
-  try {
-    // Buscar todos os preços dessa compra
-    const precos = await js(`${API}/compras/${cotacaoId}/cotacoes`);
-    
-    // Encontrar o preço com esse fornecedor
-    const preco = precos.find(p => p.fornecedor === fornecedorNome);
-    
-    if (!preco) {
-      mostrarErro("Fornecedor não encontrado!");
-      return;
-    }
-    
-    // Deletar o preço
-    await js(`${API}/compras/${cotacaoId}/cotacoes/${preco.id}`, {
-      method: 'DELETE'
-    });
-    
-    mostrarSucesso("Fornecedor deletado com sucesso!");
-    
-    // Recarregar a tabela
-    setTimeout(() => {
-      abrirModalCotacaoComparacao(parseInt(cotacaoId));
-    }, 500);
-  } catch (e) {
-    mostrarErro("Erro ao deletar: " + e.message);
-  }
-}
 // FT FLOW V2.8 - Otimizado
 const API = "/api";
 let usuario = null;
-  atualizarInfosUsuario();
 let tela = "dashboard";
 let adubacaoItens = [];
 let token = localStorage.getItem('ft_flow_token');
@@ -264,6 +233,7 @@ function abrirBaixaEstoque(id,nome,disponivel,unidade){
   const quantidade=Number(String(qtd).replace(",",".")); if(!quantidade||quantidade<=0)return mostrarErro("Quantidade inválida."); if(quantidade>disponivel)return mostrarErro("Quantidade maior que estoque disponível.");
   const destino=prompt("Destino / uso da baixa:",""); if(destino===null)return; const observacao=prompt("Observação (opcional):","")||"";
   fetch(API+`/estoque/${id}/baixa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({quantidade,destino,observacao,usuario:(usuario?.nome||usuario?.username||"Usuário")})}).then(async r=>{const data=await r.json().catch(()=>({}));if(!r.ok)return mostrarErro(data.error||"Erro ao dar baixa.");mostrarSucesso("Baixa realizada com sucesso!");carregar();atualizarContadorNotificacoes();});
+}
 
 // ===== ESTOQUE MELHORADO =====
 async function abrirEditarEstoque(id, nome, categoria, unidade, qtd, minimo) {
@@ -460,7 +430,6 @@ async function verComparativoCotacoes(cotacaoId) {
     mostrarErro(e.message);
   }
 }
-}
 
 async function compras(){
   const data=await js(API+"/compras");
@@ -614,19 +583,85 @@ async function cotacoesGerais(){
 }
 
 async function recomendacoesPDF(){
-  content.innerHTML=`<div class="panel"><h3>Recomendações</h3><p>Carregando...</p></div>`;
+  const data=await js(API+"/recomendacoes");
+  content.innerHTML=`<div class="panel"><h3>Recomendações de Defensivos (PDF)</h3><div class="actions"><button class="primary" onclick="uploadPdfRecomendacao()">📄 Upload PDF</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel">${data.length?data.map(r=>`<div class="card"><b>📋 ${r.arquivo}</b><br>Semana: ${r.semana||"N/A"} | Status: ${st(r.status)}<div class="actions" style="margin-top:8px"><button class="secondary" onclick="verItensRecomendacao(${r.id})">Ver itens</button>${r.status==='Pendente'?`<button class="primary" onclick="confirmarBaixaRecomendacao(${r.id})">Confirmar baixa</button>`:''}</div></div>`).join(""):"<p>Nenhuma recomendação carregada.</p>"}</div>`;
+}
+
+async function verItensRecomendacao(id){
+  const itens=await js(API+`/recomendacoes/${id}/itens`);
+  content.innerHTML=`<div class="panel"><button class="secondary" onclick="recomendacoesPDF()">← Voltar</button><h3>Itens da Recomendação #${id}</h3><table class="table"><thead><tr><th>Produto</th><th>Qtd</th><th>Unidade</th><th>Destino</th><th>Confirmado</th></tr></thead><tbody>${itens.map(i=>`<tr><td>${i.produto}</td><td>${i.quantidade}</td><td>${i.unidade}</td><td>${i.destino||"-"}</td><td>${i.confirmado?'✅':'⏳'}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+async function uploadPdfRecomendacao(){
+  const input=document.createElement('input');input.type='file';input.accept='.pdf';
+  input.onchange=async(e)=>{
+    const file=e.target.files[0]; if(!file)return;
+    const reader=new FileReader();
+    reader.onload=async()=>{
+      try{
+        content.innerHTML='<div class="panel"><div class="spinner"></div> Processando PDF...</div>';
+        const r=await js(API+"/recomendacoes/upload-base64",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({base64:reader.result,filename:file.name})});
+        mostrarSucesso(`PDF processado! ${r.itens?.length||0} itens encontrados.`);
+        recomendacoesPDF();
+      }catch(err){mostrarErro(err.message);recomendacoesPDF();}
+    };
+    reader.readAsDataURL(file);
+  };
+  input.click();
+}
+
+async function confirmarBaixaRecomendacao(id){
+  if(!confirm("Confirmar baixa de estoque para todos os itens desta recomendação?"))return;
+  try{
+    const r=await js(API+`/recomendacoes/${id}/confirmar-baixa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
+    if(r.naoEncontrados&&r.naoEncontrados.length>0){mostrarErro(`Produtos não encontrados no estoque: ${r.naoEncontrados.join(", ")}`);}
+    else{mostrarSucesso("Baixa confirmada com sucesso!");}
+    recomendacoesPDF();
+  }catch(e){mostrarErro(e.message);}
 }
 
 async function adubacaoSemanal(){
-  content.innerHTML=`<div class="panel"><h3>Adubação Semanal</h3><p>Carregando...</p></div>`;
+  const [adubos,destinos]=await Promise.all([js(API+"/adubacao/adubos"),js(API+"/adubacao/destinos")]);
+  adubacaoItens=adubos.map(a=>({produto:a.nome,quantidade:0,unidade:"kg",disponivel:a.quantidade}));
+  content.innerHTML=`<div class="panel"><h3>Adubação Semanal</h3><p>Selecione os adubos e distribua entre os destinos.</p></div><div class="panel"><h3>Adubos disponíveis</h3>${adubos.map((a,i)=>`<div class="card stock-ok"><b>${a.nome}</b> — Disponível: ${a.quantidade} ${a.unidade}<br><label>Quantidade a usar: <input type="number" id="adub-qtd-${i}" value="0" min="0" max="${a.quantidade}" style="width:100px"></label></div>`).join("")}</div><div class="panel"><h3>Destinos</h3><p>${destinos.join(" • ")}</p></div><div class="panel"><button class="primary full" onclick="mostrarSucesso('Funcionalidade de aplicação em desenvolvimento')">Aplicar Adubação</button></div>`;
 }
 
 async function relatoriosMensais(){
-  content.innerHTML=`<div class="panel"><h3>Relatórios Mensais</h3><p>Carregando...</p></div>`;
+  const mesAtual=new Date().toISOString().slice(0,7);
+  content.innerHTML=`<div class="panel"><h3>Relatórios Mensais</h3><p>Selecione o mês para gerar o relatório de consumo e estoque.</p><div class="grid"><label>Mês<input type="month" id="relMes" value="${mesAtual}"></label></div><div class="actions" style="margin-top:12px"><button class="primary" onclick="abrirRelatorio()">📊 Gerar Relatório</button></div></div><div id="relatorioContainer"></div>`;
+}
+
+function abrirRelatorio(){
+  const mes=document.getElementById("relMes").value;
+  if(!mes)return mostrarErro("Selecione um mês");
+  window.open(API+`/relatorios/mensal/html?month=${mes}`,'_blank');
 }
 
 async function fornecedores(){
-  content.innerHTML=`<div class="panel"><h3>Fornecedores</h3><p>Carregando...</p></div>`;
+  const data=await js(API+"/fornecedores");
+  content.innerHTML=`<div class="panel"><h3>Cadastro de Fornecedores</h3><div class="grid"><input id="fornNome" placeholder="Nome"><input id="fornContato" placeholder="Contato"><input id="fornTel" placeholder="Telefone"><input id="fornTipo" placeholder="Tipo de produto"></div><button class="primary full" onclick="addFornecedor()">Salvar fornecedor</button></div><div class="panel"><h3>Fornecedores cadastrados</h3>${data.length?`<table class="table"><thead><tr><th>Nome</th><th>Contato</th><th>Telefone</th><th>Tipo</th></tr></thead><tbody>${data.map(f=>`<tr><td><b>${f.nome}</b></td><td>${f.contato||"-"}</td><td>${f.telefone||"-"}</td><td>${f.tipo_produto||"-"}</td></tr>`).join("")}</tbody></table>`:"<p>Nenhum fornecedor cadastrado.</p>"}</div>`;
+}
+
+async function addFornecedor(){
+  const nome=document.getElementById("fornNome").value;
+  if(!nome)return mostrarErro("Informe o nome do fornecedor");
+  try{
+    await js(API+"/fornecedores",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nome,contato:document.getElementById("fornContato").value,telefone:document.getElementById("fornTel").value,tipo_produto:document.getElementById("fornTipo").value})});
+    mostrarSucesso("Fornecedor cadastrado!");
+    fornecedores();
+  }catch(e){mostrarErro(e.message);}
+}
+
+async function deletarFornecedor(cotacaoId, fornecedorNome) {
+  if (!confirm("Tem certeza que quer deletar este fornecedor?")) return;
+  try {
+    const precos = await js(`${API}/compras/${cotacaoId}/cotacoes`);
+    const preco = precos.find(p => p.fornecedor === fornecedorNome);
+    if (!preco) { mostrarErro("Fornecedor não encontrado!"); return; }
+    await js(`${API}/compras/${cotacaoId}/cotacoes/${preco.id}`, { method: 'DELETE' });
+    mostrarSucesso("Fornecedor deletado com sucesso!");
+    setTimeout(() => { abrirModalCotacaoComparacao(parseInt(cotacaoId)); }, 500);
+  } catch (e) { mostrarErro("Erro ao deletar: " + e.message); }
 }
 
 function abrirNotificacoes(){
@@ -638,7 +673,7 @@ function abrirNotificacoes(){
   }
 }
 function fecharNotificacoes(){ notifPanel.classList.add("hidden"); }
-function marcarTodasNotificacoes(){ js(API+"/notificacoes/marcar-lidas",{method:"POST"}); atualizarContadorNotificacoes(); }
+function marcarTodasNotificacoes(){ js(API+"/notificacoes/marcar-todas/lidas",{method:"PUT"}); atualizarContadorNotificacoes(); }
 async function atualizarContadorNotificacoes(){
   try{
     const notifs=await js(API+"/notificacoes");
