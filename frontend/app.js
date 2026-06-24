@@ -319,48 +319,35 @@ async function uploadFotoCloudinary(file) {
 }
 
 async function abrirAdicionarEstoqueComFoto() {
-  const nome = prompt('Nome do item:');
-  if (!nome) return;
-  const categoria = prompt('Categoria:');
-  const unidade = prompt('Unidade:');
-  const qtd = prompt('Quantidade:');
-  const minimo = prompt('Mínimo:');
+  // Perguntar se quer usar câmera ou galeria
+  const opcao = confirm("Usar câmera para tirar foto?\n\nOK = Abrir câmera\nCancelar = Escolher da galeria");
   
-  // Criar input de arquivo
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';
+  if (opcao) input.setAttribute('capture', 'environment');
+  
   input.onchange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
-    content.innerHTML = '<div class="panel"><div class="spinner"></div> Fazendo upload da foto...</div>';
-    const fotoUrl = await uploadFotoCloudinary(file);
+    // Abrir modal de estoque com a foto já selecionada
+    document.getElementById("formEstoque").reset();
+    document.getElementById("estoqueId").value = "";
+    document.getElementById("tituloEstoque").innerText = "Novo Produto (com foto)";
+    document.getElementById("modalEstoque").classList.remove("hidden");
     
-    if (!fotoUrl) {
-      carregar();
-      return;
-    }
+    // Guardar arquivo para usar no submit
+    window._estoqueFotoPendente = file;
     
-    try {
-      await js(API + '/estoque', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nome,
-          categoria,
-          unidade,
-          quantidade: Number(qtd),
-          minimo: Number(minimo),
-          foto_url: fotoUrl
-        })
-      });
-      mostrarSucesso('Item adicionado com foto com sucesso!');
-      carregar();
-    } catch (e) {
-      mostrarErro(e.message);
-      carregar();
-    }
+    // Mostrar preview da foto
+    const preview = document.createElement('img');
+    preview.src = URL.createObjectURL(file);
+    preview.style.cssText = 'width:100%;max-height:200px;object-fit:cover;border-radius:12px;margin:10px 0';
+    preview.id = 'fotoPreview';
+    const old = document.getElementById('fotoPreview');
+    if (old) old.remove();
+    document.getElementById("formEstoque").prepend(preview);
   };
   input.click();
 }
@@ -747,13 +734,23 @@ async function salvarProdutoEstoque(e) {
       minimo: parseFloat(document.getElementById("estoqueMin").value)
     };
     
+    // Upload de foto se houver (do botão "Adicionar com Foto" ou do campo file)
+    const fotoFile = window._estoqueFotoPendente || document.getElementById("estoqueFoto")?.files[0];
+    if (fotoFile) {
+      const fotoUrl = await uploadFotoCloudinary(fotoFile);
+      if (fotoUrl) dados.foto_url = fotoUrl;
+      window._estoqueFotoPendente = null;
+    }
+    
     const url = id ? `${API}/estoque/${id}` : `${API}/estoque`;
     const method = id ? "PUT" : "POST";
     
-    await js(url, { method, body: JSON.stringify(dados) });
+    await js(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify(dados) });
     mostrarSucesso("Produto salvo com sucesso!");
+    const preview = document.getElementById('fotoPreview');
+    if (preview) preview.remove();
     fecharModalEstoque();
-    estoque(); // Recarregar lista
+    estoque();
   } catch (e) {
     mostrarErro(e.message);
   }

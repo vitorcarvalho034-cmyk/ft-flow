@@ -178,7 +178,7 @@ app.get("/estoque",async(req,res)=>{
   }
   res.json(estoqueRows);
 });
-app.post("/estoque",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo) VALUES ($1,$2,$3,$4,$5) RETURNING id`,[b.nome,b.categoria,b.unidade,b.quantidade,b.minimo]);res.json({id:r.rows[0].id});});
+app.post("/estoque",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo,foto_url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[b.nome,b.categoria,b.unidade,b.quantidade,b.minimo,b.foto_url||null]);res.json({id:r.rows[0].id});});
 app.post("/estoque/:id/baixa",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});if(Number(item.quantidade)<qtd)return res.status(400).json({error:"Quantidade maior que estoque disponível"});await q(`UPDATE estoque SET quantidade=quantidade-$1 WHERE id=$2`,[qtd,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.destino||"","saida","baixa_manual",req.body.observacao||""]);res.json({ok:true});});
 
 app.get("/compras",async(req,res)=>{
