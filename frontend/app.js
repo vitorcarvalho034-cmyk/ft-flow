@@ -159,7 +159,16 @@ async function dashboard(){
   ]);
   
   const manData = man.data || man;
-  content.innerHTML=`<div class="cards"><div class="kpi"><small>Manutenções abertas</small><strong>${d.manutencoesAbertas}</strong></div><div class="kpi"><small>Urgentes</small><strong>${d.urgentes}</strong></div><div class="kpi"><small>Aguardando peça</small><strong>${d.aguardandoPeca}</strong></div><div class="kpi"><small>Compras pendentes</small><strong>${d.comprasPendentes}</strong></div><div class="kpi"><small>Estoque baixo</small><strong>${d.estoqueBaixo}</strong></div></div><div class="panel"><h3>Últimas manutenções</h3>${tabelaMan(manData.slice(0,5))}</div><div class="panel"><h3>Itens com estoque baixo</h3>${est.filter(i=>i.baixo).map(i=>`<div class="card stock-low"><b>${i.nome}</b><br>${i.quantidade} ${i.unidade} | mínimo ${i.minimo}</div>`).join("")||"Nenhum item crítico."}</div>`;
+  const estoqueBaixo = est.filter(i=>i.baixo);
+  content.innerHTML=`<div class="cards"><div class="kpi"><small>Manutenções abertas</small><strong>${d.manutencoesAbertas}</strong></div><div class="kpi"><small>Urgentes</small><strong>${d.urgentes}</strong></div><div class="kpi"><small>Aguardando peça</small><strong>${d.aguardandoPeca}</strong></div><div class="kpi"><small>Compras pendentes</small><strong>${d.comprasPendentes}</strong></div><div class="kpi"><small>Estoque baixo</small><strong>${d.estoqueBaixo}</strong></div></div><div class="panel"><h3>Últimas manutenções</h3>${tabelaMan(manData.slice(0,5))}</div><div class="panel"><h3>Itens com estoque baixo</h3>${estoqueBaixo.map(i=>{
+    let limiteInfo = '';
+    if (i.data_limite) {
+      const dias = i.dias_restantes;
+      const icone = dias <= 7 ? '🔴' : dias <= 15 ? '🟡' : '🟢';
+      limiteInfo = ` — ${icone} ${dias <= 0 ? 'ESGOTADO' : `acaba em ${dias} dias`}`;
+    }
+    return `<div class="card stock-low"><b>${i.nome}</b><br>${i.quantidade} ${i.unidade} | mínimo ${i.minimo}${limiteInfo}</div>`;
+  }).join("")||"Nenhum item crítico."}</div>`;
 }
 
 async function manutencoes(){
@@ -216,7 +225,20 @@ async function estoque(){
 function renderEstoque(lista){
   const baixo=lista.filter(i=>i.baixo).length;
   tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
-  const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];listaEstoque.innerHTML=ordenado.map(i=>`<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row">${i.foto_url?`<img src="${i.foto_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-right:15px;">`:''}<div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`).join("")||"Nenhum item.";
+  const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];
+  listaEstoque.innerHTML=ordenado.map(i=>{
+    let dataLimiteHtml = '';
+    if (i.data_limite) {
+      const dias = i.dias_restantes;
+      const classe = dias <= 7 ? 'critico' : dias <= 15 ? 'atencao' : 'ok';
+      const icone = dias <= 7 ? '🔴' : dias <= 15 ? '🟡' : '🟢';
+      const dataFormatada = new Date(i.data_limite + 'T00:00:00').toLocaleDateString('pt-BR');
+      dataLimiteHtml = `<br><span class="data-limite-alerta ${classe}">${icone} ${dias <= 0 ? 'ESGOTADO!' : `Acaba em ${dias} dias (${dataFormatada})`} • Consumo: ${i.consumo_diario} ${i.unidade}/dia</span>`;
+    } else {
+      dataLimiteHtml = `<br><span class="data-limite-alerta ok">📊 Sem histórico de consumo</span>`;
+    }
+    return `<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row">${i.foto_url?`<img src="${i.foto_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-right:15px;">`:''}<div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}${dataLimiteHtml}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`;
+  }).join("")||"Nenhum item.";
 }
 function filtrarEstoque(c){const data=window._estoqueData||[];renderEstoque(c==="Todos"?data:data.filter(i=>(i.categoria||"Sem categoria")===c));}
 async function addEstoque(){ 

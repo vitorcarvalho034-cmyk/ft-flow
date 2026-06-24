@@ -208,6 +208,19 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 .pagination button.active { background: #15803d; color: white; border-color: #15803d; }
 .pagination button:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ── Data limite de reposição ── */
+.data-limite-alerta { 
+  display: inline-block;
+  font-size: 12px; 
+  font-weight: 700; 
+  padding: 4px 10px; 
+  border-radius: 8px;
+  margin-top: 4px;
+}
+.data-limite-alerta.critico { background: #fee2e2; color: #991b1b; }
+.data-limite-alerta.atencao { background: #fef3c7; color: #92400e; }
+.data-limite-alerta.ok { background: #dcfce7; color: #166534; }
+
 /* ── Confirm dialog ── */
 .confirm-dialog { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: grid; place-items: center; z-index: 100; }
 .confirm-card { background: white; padding: 24px; border-radius: 16px; max-width: 400px; box-shadow: 0 25px 70px rgba(0,0,0,.3); }
@@ -502,10 +515,45 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .cotacao-box { margin-top: 12px; }
 
   /* ── Toasts ── */
-  .success-toast, .error-toast { left: 16px; right: 16px; bottom: 16px; }
+  .success-toast, .error-toast { left: 16px; right: 16px; bottom: 90px; }
 
   /* ── FAB ── */
-  .fab { width: 56px; height: 56px; font-size: 24px; }
+  .fab { width: 56px; height: 56px; font-size: 24px; bottom: 20px; right: 16px; }
+
+  /* ── Ações responsivas ── */
+  .actions { gap: 6px; }
+  .actions button { flex: 1; min-width: 0; font-size: 13px; padding: 10px 8px; text-align: center; }
+
+  /* ── Estoque cards mobile ── */
+  .stock-row { gap: 8px; }
+  .stock-row img { width: 60px !important; height: 60px !important; border-radius: 8px; }
+  .stock-row .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .stock-row .actions button { min-height: 40px; }
+
+  /* ── Cotação modal comparação mobile ── */
+  .modal-card table { font-size: 13px !important; }
+  .modal-card table th,
+  .modal-card table td { padding: 8px 6px !important; }
+  .modal-card .small { font-size: 12px; padding: 6px 8px; }
+
+  /* ── Badges mobile ── */
+  .badge { font-size: 11px; padding: 4px 8px; }
+
+  /* ── Pagination mobile ── */
+  .pagination button { min-width: 40px; min-height: 40px; }
+
+  /* ── Data limite alerta ── */
+  .data-limite-alerta { 
+    display: inline-block;
+    font-size: 12px; 
+    font-weight: 700; 
+    padding: 3px 8px; 
+    border-radius: 8px;
+    margin-top: 4px;
+  }
+  .data-limite-alerta.critico { background: #fee2e2; color: #991b1b; }
+  .data-limite-alerta.atencao { background: #fef3c7; color: #92400e; }
+  .data-limite-alerta.ok { background: #dcfce7; color: #166534; }
 
   /* ── Login ── */
   .login-screen {

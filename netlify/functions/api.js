@@ -154,7 +154,30 @@ app.post("/manutencoes",async(req,res)=>{
   const precisa=String(b.precisa_compra)==="1"?1:0,status=precisa?"Aguardando peça":"Aberto";const r=await q(`INSERT INTO manutencoes (solicitante,data_ocorrencia,tipo,local_item,defeito,urgencia,status,responsavel,solucao,precisa_compra,item_compra,quantidade_compra,categoria_compra,destino_compra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[b.solicitante,b.data_ocorrencia,b.tipo,b.local_item,b.defeito,b.urgencia,status,b.responsavel||"",b.solucao||"",precisa,b.item_compra||"",b.quantidade_compra||0,b.categoria_compra||"",b.destino_compra||""]);await notify(precisa?"Nova manutenção com solicitação de compra":"Nova manutenção criada",`Solicitante: ${b.solicitante||"-"}\nLocal: ${b.local_item||"-"}`,"manutencao",{Solicitante:b.solicitante,Local:b.local_item,Problema:b.defeito});if(precisa)await q(`INSERT INTO compras (manutencao_id,item,quantidade,categoria,destino,status,solicitante) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[r.rows[0].id,b.item_compra||"Item não informado",b.quantidade_compra||1,b.categoria_compra||"Peças",b.destino_compra||b.local_item||"Não informado","Em cotação",b.solicitante||"Não informado"]);res.json({id:r.rows[0].id});});
 app.put("/manutencoes/:id",async(req,res)=>{await q(`UPDATE manutencoes SET status=$1,responsavel=$2,solucao=$3,concluido_at=$4 WHERE id=$5`,[req.body.status,req.body.responsavel||"",req.body.solucao||"",req.body.status==="Concluído"?new Date():null,req.params.id]);res.json({ok:true});});
 
-app.get("/estoque",async(req,res)=>res.json((await q(`SELECT *, CASE WHEN quantidade<=minimo THEN 1 ELSE 0 END baixo FROM estoque ORDER BY categoria,nome`)).rows));
+app.get("/estoque",async(req,res)=>{
+  const estoqueRows = (await q(`SELECT *, CASE WHEN quantidade<=minimo THEN 1 ELSE 0 END baixo FROM estoque ORDER BY categoria,nome`)).rows;
+  // Calcular data limite de reposição baseado no consumo médio dos últimos 30 dias
+  for (const item of estoqueRows) {
+    try {
+      const consumo = await q(`SELECT COALESCE(SUM(quantidade),0)::float total, COUNT(*)::int movs FROM movimentacoes_estoque WHERE produto=$1 AND tipo='saida' AND criado_em >= NOW() - INTERVAL '30 days'`, [item.nome]);
+      const totalConsumo = consumo.rows[0].total;
+      if (totalConsumo > 0) {
+        const consumoDiario = totalConsumo / 30;
+        const diasRestantes = Math.floor(item.quantidade / consumoDiario);
+        const dataLimite = new Date();
+        dataLimite.setDate(dataLimite.getDate() + diasRestantes);
+        item.consumo_diario = Math.round(consumoDiario * 100) / 100;
+        item.dias_restantes = diasRestantes;
+        item.data_limite = dataLimite.toISOString().slice(0, 10);
+      } else {
+        item.consumo_diario = 0;
+        item.dias_restantes = null;
+        item.data_limite = null;
+      }
+    } catch(e) { item.dias_restantes = null; item.data_limite = null; item.consumo_diario = 0; }
+  }
+  res.json(estoqueRows);
+});
 app.post("/estoque",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo) VALUES ($1,$2,$3,$4,$5) RETURNING id`,[b.nome,b.categoria,b.unidade,b.quantidade,b.minimo]);res.json({id:r.rows[0].id});});
 app.post("/estoque/:id/baixa",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});if(Number(item.quantidade)<qtd)return res.status(400).json({error:"Quantidade maior que estoque disponível"});await q(`UPDATE estoque SET quantidade=quantidade-$1 WHERE id=$2`,[qtd,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.destino||"","saida","baixa_manual",req.body.observacao||""]);res.json({ok:true});});
 
