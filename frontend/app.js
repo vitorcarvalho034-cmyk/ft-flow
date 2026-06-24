@@ -102,8 +102,7 @@ async function fazerLogin(){
     usuario = data;
     loginScreen.classList.add("hidden");
     app.classList.remove("hidden");
-    userName.innerText = usuario.nome || usuario.username;
-    userRole.innerText = usuario.role === "admin" ? "Administrador" : "Funcionário";
+    atualizarInfosUsuario();
     if(usuario.role !== "admin") document.querySelectorAll(".admin-only").forEach(e=>e.style.display="none");
     await trocarTela("dashboard", document.querySelector(".nav"));
     atualizarContadorNotificacoes();
