@@ -36,6 +36,18 @@ let tela = "dashboard";
 let adubacaoItens = [];
 let token = localStorage.getItem('ft_flow_token');
 
+// Elementos do DOM
+const userName = document.getElementById("userName");
+const userRole = document.getElementById("userRole");
+const loginScreen = document.getElementById("loginScreen");
+const app = document.getElementById("app");
+const loginUser = document.getElementById("loginUser");
+const loginPass = document.getElementById("loginPass");
+const drawer = document.getElementById("drawer");
+const menuToggle = document.getElementById("menuToggle");
+const main = document.querySelector(".main");
+const topbar = document.querySelector(".topbar");
+
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function dinheiro(v){ return `R$ ${Number(v||0).toFixed(2)}`; }
 function esc(s){ return String(s ?? "").replace(/'/g,"\\'" ).replace(/`/g,"\\`"); }
