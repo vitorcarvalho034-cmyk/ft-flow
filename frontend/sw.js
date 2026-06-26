@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v33";
+const CACHE_VERSION = "v34";
 const CACHE_NAME = `ft-flow-${CACHE_VERSION}`;
 const ASSETS = [
   "/",
@@ -22,6 +22,10 @@ self.addEventListener("activate", (event) => {
       Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)))
     ).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
 self.addEventListener("fetch", (event) => {

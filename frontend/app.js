@@ -1,5 +1,6 @@
 
-// FT FLOW V2.8 - Otimizado
+// FT FLOW V2.9 - Otimizado
+const APP_VERSION = "v34";
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
@@ -68,19 +69,19 @@ function htmlEsc(s){
 function cardPedidoCompra(c, options = {}) {
   const isAdmin = options.admin ?? false;
   const modo = options.modo || "full";
-  const unidade = c.unidade ? ` ${htmlEsc(c.unidade)}` : "";
-  const descricao = c.descricao
-    ? `<div class="pedido-descricao"><span class="pedido-label">Descrição:</span> ${htmlEsc(c.descricao)}</div>`
-    : "";
+  const unidadeTxt = c.unidade ? htmlEsc(c.unidade) : "não informada";
+  const descricaoTxt = c.descricao
+    ? htmlEsc(c.descricao)
+    : "<em class=\"pedido-vazio\">Sem descrição</em>";
   const link = c.link_produto
-    ? `<a href="${htmlEsc(c.link_produto)}" target="_blank" rel="noopener" class="pedido-link">Ver link do produto ↗</a>`
+    ? `<a href="${htmlEsc(c.link_produto)}" target="_blank" rel="noopener" class="pedido-link">🔗 Ver link do produto</a>`
     : "";
   const foto = c.foto_url
     ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto">`
     : "";
-  const valor = c.valor_total ? `<span>Total: ${dinheiro(c.valor_total)}</span>` : "";
+  const valor = c.valor_total ? `<div class="pedido-linha"><span>Valor total</span><b>${dinheiro(c.valor_total)}</b></div>` : "";
   const fornecedor = c.fornecedor_escolhido
-    ? `<span class="chosen">Fornecedor: <b>${htmlEsc(c.fornecedor_escolhido)}</b> • ${dinheiro(c.valor_escolhido)}</span>`
+    ? `<div class="pedido-linha"><span>Fornecedor</span><b>${htmlEsc(c.fornecedor_escolhido)} • ${dinheiro(c.valor_escolhido)}</b></div>`
     : "";
 
   let acoes = "";
@@ -91,18 +92,24 @@ function cardPedidoCompra(c, options = {}) {
   }
 
   return `<div class="card pedido-card">
-    <b>#${c.id} - ${htmlEsc(c.item)}</b>
-    ${foto}
-    <div class="pedido-meta">
-      <span>Solicitante: ${htmlEsc(c.solicitante || "-")}</span>
-      <span>Quantidade: <b>${c.quantidade || "-"}${unidade}</b></span>
-      <span>Categoria: ${htmlEsc(c.categoria || "-")}</span>
-      <span>Destino: <b>${htmlEsc(c.destino || "Não informado")}</b></span>
-      <span>Status: ${st(c.status)}</span>
-      ${valor}${fornecedor}
-      ${descricao}
-      ${link}
+    <div class="pedido-top">
+      <b class="pedido-titulo">#${c.id} — ${htmlEsc(c.item)}</b>
+      <span class="pedido-status-wrap">${st(c.status)}</span>
     </div>
+    ${foto}
+    <div class="pedido-detalhes">
+      <div class="pedido-linha"><span>Solicitante</span><b>${htmlEsc(c.solicitante || "-")}</b></div>
+      <div class="pedido-linha"><span>Quantidade</span><b>${c.quantidade ?? "-"}</b></div>
+      <div class="pedido-linha"><span>Unidade</span><b>${unidadeTxt}</b></div>
+      <div class="pedido-linha"><span>Categoria</span><b>${htmlEsc(c.categoria || "-")}</b></div>
+      <div class="pedido-linha"><span>Destino</span><b>${htmlEsc(c.destino || "Não informado")}</b></div>
+      ${valor}${fornecedor}
+    </div>
+    <div class="pedido-descricao-box">
+      <span class="pedido-label">Descrição do produto</span>
+      <p class="pedido-descricao-texto">${descricaoTxt}</p>
+    </div>
+    ${link}
     ${acoes}
   </div>`;
 }
@@ -647,7 +654,7 @@ async function compras(){
   const compData = data.data || data;
   const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
   const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${comprasAtivas.map(c=>cardPedidoCompra(c,{admin:isAdmin})).join("")||"Nenhuma solicitação."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3><p class="app-version">Versão ${APP_VERSION} — pedidos mostram unidade, descrição e foto</p>${comprasAtivas.map(c=>cardPedidoCompra(c,{admin:isAdmin})).join("")||"Nenhuma solicitação."}</div>`;
 }
 function abrirModalCompra() {
   modalCompra.classList.remove("hidden");
@@ -678,16 +685,10 @@ async function salvarCompraDetalhada(e) {
     if(!quantidade) return mostrarErro("Informe a quantidade");
     if(!unidade) return mostrarErro("Informe a unidade");
     
-    // Se houver foto, fazer upload
+    // Upload foto via Cloudinary
     let fotoUrl = null;
-    if(foto) {
-      const formData = new FormData();
-      formData.append('file', foto);
-      const uploadRes = await fetch(API+"/upload", {method:"POST", body:formData});
-      if(uploadRes.ok) {
-        const uploadData = await uploadRes.json();
-        fotoUrl = uploadData.url;
-      }
+    if (foto) {
+      fotoUrl = await uploadFotoCloudinary(foto);
     }
     
     await js(API+"/compras",{
