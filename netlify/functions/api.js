@@ -104,9 +104,127 @@ async function email(titulo,dados={}){
   const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
   await t.sendMail({from:process.env.SMTP_USER,to:String(process.env.ADMIN_ALERT_EMAIL).split(",").map(e=>e.trim()),subject:titulo,html});
 }
+
+function normalizarTelefone(num) {
+  let n = String(num || "").replace(/\D/g, "");
+  if (n.startsWith("0")) n = n.slice(1);
+  if (!n.startsWith("55") && n.length <= 11) n = "55" + n;
+  return n;
+}
+
+function telefonesWhatsAppAdmin() {
+  const raw = process.env.ADMIN_WHATSAPP || process.env.ADMIN_WHATSAPP_NUMBERS || "";
+  return String(raw).split(",").map(normalizarTelefone).filter(Boolean);
+}
+
+function montarTextoWhatsApp(titulo, dados = {}, msgExtra = "") {
+  let text = `*FT FLOW*\n*${titulo}*\n\n`;
+  for (const [k, v] of Object.entries(dados)) {
+    if (v != null && String(v).trim() !== "") text += `*${k}:* ${v}\n`;
+  }
+  if (msgExtra && !Object.keys(dados).length) text += `${msgExtra}\n`;
+  const appUrl = process.env.APP_URL || "https://ft-flow.netlify.app";
+  text += `\n${appUrl}`;
+  return text.slice(0, 4000);
+}
+
+async function whatsappCallMeBot(phone, text) {
+  const apikey = process.env.CALLMEBOT_API_KEY;
+  if (!apikey) throw new Error("CALLMEBOT_API_KEY não configurada");
+  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(apikey)}`;
+  const r = await fetch(url);
+  const body = await r.text();
+  if (!r.ok || /error/i.test(body)) throw new Error(body.slice(0, 120) || `CallMeBot HTTP ${r.status}`);
+}
+
+async function whatsappTwilio(phone, text) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
+  if (!sid || !token) throw new Error("Twilio não configurado");
+  const auth = Buffer.from(`${sid}:${token}`).toString("base64");
+  const params = new URLSearchParams({
+    From: from.startsWith("whatsapp:") ? from : `whatsapp:${from}`,
+    To: `whatsapp:+${phone}`,
+    Body: text
+  });
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString()
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.message || "Twilio falhou");
+}
+
+async function whatsappZapi(phone, text) {
+  const instance = process.env.ZAPI_INSTANCE_ID;
+  const token = process.env.ZAPI_TOKEN;
+  if (!instance || !token) throw new Error("Z-API não configurada");
+  const headers = { "Content-Type": "application/json" };
+  if (process.env.ZAPI_CLIENT_TOKEN) headers["Client-Token"] = process.env.ZAPI_CLIENT_TOKEN;
+  const r = await fetch(`https://api.z-api.io/instances/${instance}/token/${token}/send-text`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ phone, message: text })
+  });
+  if (!r.ok) {
+    const err = await r.text();
+    throw new Error(err.slice(0, 120) || `Z-API HTTP ${r.status}`);
+  }
+}
+
+async function whatsappWebhook(phone, text) {
+  const url = process.env.WHATSAPP_WEBHOOK_URL;
+  if (!url) throw new Error("WHATSAPP_WEBHOOK_URL não configurada");
+  const headers = { "Content-Type": "application/json" };
+  if (process.env.WHATSAPP_WEBHOOK_TOKEN) headers.Authorization = `Bearer ${process.env.WHATSAPP_WEBHOOK_TOKEN}`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ phone, number: phone, text, message: text })
+  });
+  if (!r.ok) throw new Error(`Webhook HTTP ${r.status}`);
+}
+
+async function whatsapp(titulo, dados = {}, msgExtra = "") {
+  const phones = telefonesWhatsAppAdmin();
+  if (!phones.length) return;
+
+  const provider = String(process.env.WHATSAPP_PROVIDER || "callmebot").toLowerCase();
+  const senders = {
+    callmebot: whatsappCallMeBot,
+    twilio: whatsappTwilio,
+    zapi: whatsappZapi,
+    webhook: whatsappWebhook
+  };
+  const send = senders[provider];
+  if (!send) {
+    console.log("WhatsApp provider desconhecido:", provider);
+    return;
+  }
+
+  const text = montarTextoWhatsApp(titulo, dados, msgExtra);
+
+  if (provider === "callmebot") {
+    await send(phones[0], text);
+    return;
+  }
+
+  for (const phone of phones) {
+    await send(phone, text);
+  }
+}
+
+const WHATSAPP_TIPOS = new Set(["manutencao", "compra"]);
+
 async function notify(titulo,msg,tipo="sistema",dados={}){
   await q(`INSERT INTO notificacoes (titulo,mensagem,tipo,destino_role) VALUES ($1,$2,$3,$4)`,[titulo,msg,tipo,"admin"]);
-  try{await email(titulo,dados)}catch(e){console.log(e.message)}
+  const tasks = [email(titulo,dados).catch(e => console.log("Email:", e.message))];
+  if (WHATSAPP_TIPOS.has(tipo)) {
+    tasks.push(whatsapp(titulo, dados, msg).catch(e => console.log("WhatsApp:", e.message)));
+  }
+  await Promise.allSettled(tasks);
 }
 
 // LOGIN COM JWT
@@ -174,7 +292,25 @@ app.post("/manutencoes",async(req,res)=>{
     `INSERT INTO manutencoes (solicitante,data_ocorrencia,tipo,local_item,defeito,urgencia,status,responsavel,solucao,precisa_compra,item_compra,quantidade_compra,categoria_compra,destino_compra,unidade_compra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
     [b.solicitante,b.data_ocorrencia,b.tipo,b.local_item,b.defeito,b.urgencia,status,b.responsavel||"",b.solucao||"",precisa,b.item_compra||"",b.quantidade_compra||0,b.categoria_compra||"",b.destino_compra||"",b.unidade_compra||null]
   );
-  await notify(precisa?"Nova manutenção com solicitação de compra":"Nova manutenção criada",`Solicitante: ${b.solicitante||"-"}\nLocal: ${b.local_item||"-"}`,"manutencao",{Solicitante:b.solicitante,Local:b.local_item,Problema:b.defeito});
+  await notify(
+    precisa ? "Nova manutenção com solicitação de compra" : "Nova manutenção criada",
+    `Solicitante: ${b.solicitante || "-"}\nLocal: ${b.local_item || "-"}`,
+    "manutencao",
+    {
+      ID: `#${r.rows[0].id}`,
+      Solicitante: b.solicitante,
+      Tipo: b.tipo,
+      Local: b.local_item,
+      Urgência: b.urgencia,
+      Problema: String(b.defeito || "").slice(0, 300),
+      ...(precisa ? {
+        "Item (compra)": b.item_compra,
+        Quantidade: `${b.quantidade_compra} ${b.unidade_compra}`,
+        Categoria: b.categoria_compra,
+        Destino: b.destino_compra || b.local_item
+      } : {})
+    }
+  );
   if(precisa){
     await q(
       `INSERT INTO compras (manutencao_id,item,quantidade,unidade,categoria,destino,status,solicitante) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
@@ -267,7 +403,16 @@ app.post("/compras",async(req,res)=>{
     [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null]
   );
   const unidadeTxt=b.unidade?` ${b.unidade}`:"";
-  await notify("Nova solicitação de compra",`Item: ${b.item}`,"compra",{Item:b.item,Quantidade:`${b.quantidade}${unidadeTxt}`,Solicitante:b.solicitante});
+  await notify("Nova solicitação de compra", `Item: ${b.item}`, "compra", {
+    ID: `#${r.rows[0].id}`,
+    Item: b.item,
+    Quantidade: `${b.quantidade}${unidadeTxt}`,
+    Solicitante: b.solicitante,
+    Categoria: b.categoria,
+    Destino: b.destino,
+    ...(b.descricao_detalhada || b.descricao ? { Descrição: String(b.descricao_detalhada || b.descricao).slice(0, 200) } : {}),
+    ...(b.foto_url ? { Foto: b.foto_url } : {})
+  });
   res.json({id:r.rows[0].id});
 });
 app.get("/compras/:id/cotacoes",async(req,res)=>res.json((await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id])).rows));
@@ -513,10 +658,13 @@ app.post("/compras/rapida", async (req, res) => {
     );
     
     await notify("Nova compra rápida (<R$2000)", `Item: ${b.item} | Total: R$ ${valor_total.toFixed(2)}`, "compra", {
+      ID: `#${r.rows[0].id}`,
       Item: b.item,
-      Quantidade: b.quantidade,
+      Quantidade: `${b.quantidade}${b.unidade ? " " + b.unidade : ""}`,
       Solicitante: b.solicitante,
-      Total: `R$ ${valor_total.toFixed(2)}`
+      Destino: b.destino,
+      Total: `R$ ${valor_total.toFixed(2)}`,
+      ...(b.foto_url ? { Foto: b.foto_url } : {})
     });
     
     res.json({ id: r.rows[0].id, eh_compra_rapida: true });
