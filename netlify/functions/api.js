@@ -58,7 +58,11 @@ async function ensureDb(){
   await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS local TEXT`);
   await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS observacoes TEXT`);
   await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT, contato TEXT, telefone TEXT, tipo_produto TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', fornecedor_escolhido TEXT, valor_escolhido REAL, solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, eh_compra_rapida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, unidade TEXT, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', fornecedor_escolhido TEXT, valor_escolhido REAL, solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, descricao TEXT, link_produto TEXT, foto_url TEXT, eh_compra_rapida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS unidade TEXT`);
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS descricao TEXT`);
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS link_produto TEXT`);
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS foto_url TEXT`);
   await q(`CREATE TABLE IF NOT EXISTS cotacoes (id SERIAL PRIMARY KEY, compra_id INTEGER, fornecedor TEXT, valor REAL, observacao TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS notificacoes (id SERIAL PRIMARY KEY, titulo TEXT, mensagem TEXT, tipo TEXT, destino_role TEXT DEFAULT 'admin', lida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS movimentacoes_estoque (id SERIAL PRIMARY KEY, produto TEXT, categoria TEXT, quantidade REAL, unidade TEXT, destino TEXT, tipo TEXT, origem TEXT, observacao TEXT, created_at TIMESTAMP DEFAULT NOW())`);
@@ -195,7 +199,16 @@ app.get("/compras",async(req,res)=>{
   const data = await q(`SELECT * FROM compras ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
   res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
 });
-app.post("/compras",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO compras (item,quantidade,categoria,destino,solicitante,status) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[b.item,b.quantidade,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação"]);await notify("Nova solicitação de compra",`Item: ${b.item}`,"compra",{Item:b.item,Quantidade:b.quantidade,Solicitante:b.solicitante});res.json({id:r.rows[0].id});});
+app.post("/compras",async(req,res)=>{
+  const b=req.body;
+  const r=await q(
+    `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+    [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null]
+  );
+  const unidadeTxt=b.unidade?` ${b.unidade}`:"";
+  await notify("Nova solicitação de compra",`Item: ${b.item}`,"compra",{Item:b.item,Quantidade:`${b.quantidade}${unidadeTxt}`,Solicitante:b.solicitante});
+  res.json({id:r.rows[0].id});
+});
 app.get("/compras/:id/cotacoes",async(req,res)=>res.json((await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id])).rows));
 app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao||""]);res.json({id:r.rows[0].id});});
 app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
@@ -431,8 +444,8 @@ app.post("/compras/rapida", async (req, res) => {
   
   try {
     const r = await q(
-      `INSERT INTO compras (item, quantidade, categoria, destino, solicitante, status, valor_unitario, valor_total, eh_compra_rapida, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING id`,
-      [b.item, b.quantidade, b.categoria || "Diversos", b.destino || "", b.solicitante || "Não informado", "Aprovado", b.valor_unitario || 0, valor_total, 1]
+      `INSERT INTO compras (item, quantidade, unidade, categoria, destino, solicitante, status, valor_unitario, valor_total, descricao, eh_compra_rapida, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING id`,
+      [b.item, b.quantidade, b.unidade || null, b.categoria || "Diversos", b.destino || "", b.solicitante || "Não informado", "Aprovado", b.valor_unitario || 0, valor_total, b.descricao || null, 1]
     );
     
     await notify("Nova compra rápida (<R$2000)", `Item: ${b.item} | Total: R$ ${valor_total.toFixed(2)}`, "compra", {

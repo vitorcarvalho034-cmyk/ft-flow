@@ -61,6 +61,51 @@ const loginPass = document.getElementById("loginPass");
 function hoje(){ return new Date().toISOString().slice(0,10); }
 function dinheiro(v){ return `R$ ${Number(v||0).toFixed(2)}`; }
 function esc(s){ return String(s ?? "").replace(/'/g,"\\'" ).replace(/`/g,"\\`"); }
+function htmlEsc(s){
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function cardPedidoCompra(c, options = {}) {
+  const isAdmin = options.admin ?? false;
+  const modo = options.modo || "full";
+  const unidade = c.unidade ? ` ${htmlEsc(c.unidade)}` : "";
+  const descricao = c.descricao
+    ? `<div class="pedido-descricao"><span class="pedido-label">Descrição:</span> ${htmlEsc(c.descricao)}</div>`
+    : "";
+  const link = c.link_produto
+    ? `<a href="${htmlEsc(c.link_produto)}" target="_blank" rel="noopener" class="pedido-link">Ver link do produto ↗</a>`
+    : "";
+  const foto = c.foto_url
+    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto">`
+    : "";
+  const valor = c.valor_total ? `<span>Total: ${dinheiro(c.valor_total)}</span>` : "";
+  const fornecedor = c.fornecedor_escolhido
+    ? `<span class="chosen">Fornecedor: <b>${htmlEsc(c.fornecedor_escolhido)}</b> • ${dinheiro(c.valor_escolhido)}</span>`
+    : "";
+
+  let acoes = "";
+  if (modo === "cotacao") {
+    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+  } else if (modo === "full" && isAdmin) {
+    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+  }
+
+  return `<div class="card pedido-card">
+    <b>#${c.id} - ${htmlEsc(c.item)}</b>
+    ${foto}
+    <div class="pedido-meta">
+      <span>Solicitante: ${htmlEsc(c.solicitante || "-")}</span>
+      <span>Quantidade: <b>${c.quantidade || "-"}${unidade}</b></span>
+      <span>Categoria: ${htmlEsc(c.categoria || "-")}</span>
+      <span>Destino: <b>${htmlEsc(c.destino || "Não informado")}</b></span>
+      <span>Status: ${st(c.status)}</span>
+      ${valor}${fornecedor}
+      ${descricao}
+      ${link}
+    </div>
+    ${acoes}
+  </div>`;
+}
 
 async function apiJson(url, options={}){
   const headers = options.headers || {};
@@ -602,7 +647,7 @@ async function compras(){
   const compData = data.data || data;
   const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
   const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${comprasAtivas.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante||"-"}<br>Quantidade: ${c.quantidade} | Categoria: ${c.categoria||"-"}<br>Destino: <b>${c.destino||"Não informado"}</b><br>Status: ${st(c.status)}${c.valor_total?`<br>Total: ${dinheiro(c.valor_total)}`:""} ${c.fornecedor_escolhido?`<br><span class="chosen">Fornecedor escolhido: <b>${c.fornecedor_escolhido}</b> • ${dinheiro(c.valor_escolhido)}</span>`:""}${isAdmin?`<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`:""}</div>`).join("")||"Nenhuma solicitação."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3>${comprasAtivas.map(c=>cardPedidoCompra(c,{admin:isAdmin})).join("")||"Nenhuma solicitação."}</div>`;
 }
 function abrirModalCompra() {
   modalCompra.classList.remove("hidden");
@@ -619,8 +664,11 @@ async function salvarCompraDetalhada(e) {
     const solicitante = compSolicitanteModal.value.trim();
     const item = compItemModal.value.trim();
     const quantidade = compQtdModal.value;
+    const unidade = compUnidadeModal.value.trim();
     const categoria = compCatModal.value;
     const destino = compDestModal.value.trim();
+    const valorUnitario = compValorUnitModal.value;
+    const valorTotal = compValorTotalModal.value;
     const link = compLinkModal.value.trim();
     const descricao = compDescricaoModal.value.trim();
     const foto = compFotoModal.files[0];
@@ -628,6 +676,7 @@ async function salvarCompraDetalhada(e) {
     if(!solicitante) return mostrarErro("Informe o solicitante");
     if(!item) return mostrarErro("Informe o item");
     if(!quantidade) return mostrarErro("Informe a quantidade");
+    if(!unidade) return mostrarErro("Informe a unidade");
     
     // Se houver foto, fazer upload
     let fotoUrl = null;
@@ -648,8 +697,11 @@ async function salvarCompraDetalhada(e) {
         solicitante,
         item,
         quantidade,
+        unidade,
         categoria,
         destino,
+        valor_unitario: Number(valorUnitario) || 0,
+        valor_total: Number(valorTotal) || 0,
         link_produto: link,
         descricao_detalhada: descricao,
         foto_url: fotoUrl
@@ -721,17 +773,7 @@ async function historico(){
 
       ${
         historicoData.length
-          ? historicoData.map(c => `
-            <div class="card">
-              <b>#${c.id} - ${c.item || "-"}</b><br>
-              <small>Solicitante: ${c.solicitante || "-"}</small><br>
-              <small>Categoria: ${c.categoria || "-"}</small><br>
-              <small>Quantidade: ${c.quantidade || "-"} ${c.unidade || ""}</small><br>
-              <small>Status: ${c.status || "-"}</small><br>
-              ${c.destino ? `<small>Destino: ${c.destino}</small><br>` : ""}
-              ${c.valor ? `<small>Valor: ${dinheiro(c.valor)}</small><br>` : ""}
-            </div>
-          `).join("")
+          ? historicoData.map(c => cardPedidoCompra(c)).join("")
           : `<div class="card"><small>Nenhum item no histórico.</small></div>`
       }
     </div>
@@ -745,7 +787,7 @@ async function cotacoesGerais(){
   const status = normalizarStatus(c.status);
   return status === "em cotação" || status === "pendente_aprovacao";
 });
-  content.innerHTML=`<div class="panel"><h3>Cotações em aberto</h3>${comCotacao.map(c=>`<div class="card"><b>#${c.id} - ${c.item}</b><br>Solicitante: ${c.solicitante}<br>Quantidade: ${c.quantidade} ${c.categoria}<br><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div></div>`).join("")||"Nenhuma cotação em aberto."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>Cotações em aberto</h3>${comCotacao.map(c=>cardPedidoCompra(c,{modo:"cotacao"})).join("")||"Nenhuma cotação em aberto."}</div>`;
 }
 
 async function recomendacoesPDF(){

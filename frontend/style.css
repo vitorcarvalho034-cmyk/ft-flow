@@ -163,6 +163,14 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 .modal-head button { background: #f1f5f9; font-size: 22px; }
 .purchase-box { background: var(--soft); border: 1px dashed #86efac; border-radius: 20px; padding: 16px; margin: 14px 0; }
 
+/* ── Pedidos / Compras ── */
+.pedido-card .pedido-meta { display: grid; gap: 6px; margin-top: 10px; font-size: 14px; color: var(--muted); }
+.pedido-card .pedido-meta b { color: var(--dark); }
+.pedido-descricao { margin-top: 8px; padding: 10px 12px; background: var(--soft); border-radius: 12px; color: var(--text); line-height: 1.45; }
+.pedido-label { font-weight: 800; color: #15803d; display: block; margin-bottom: 4px; }
+.pedido-link { display: inline-block; margin-top: 8px; color: #15803d; font-weight: 700; text-decoration: none; }
+.pedido-foto { width: 100%; max-height: 160px; object-fit: cover; border-radius: 12px; margin-top: 10px; display: block; }
+
 /* ── Estoque V6 ── */
 .estoque-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .estoque-stats { display: flex; gap: 10px; flex-wrap: wrap; }
@@ -594,6 +602,12 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .estoque-foto-btns button { min-height: 48px; }
   .estoque-modal-sub { color: #eafff0; }
   .estoque-modal-saldo { color: #8fb59c; }
+
+  .pedido-descricao { background: rgba(34,197,94,.1); color: #d1fae5; }
+  .pedido-label { color: #86efac; }
+  .pedido-link { color: #4ade80; }
+  .pedido-card .pedido-meta { color: #8fb59c; }
+  .pedido-card .pedido-meta b { color: #eafff0; }
 
   /* ── Estoque ── */
   .stock-row { display: grid; grid-template-columns: 1fr; gap: 12px; }
