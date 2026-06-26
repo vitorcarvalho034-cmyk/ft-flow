@@ -15,7 +15,14 @@
 
 * { box-sizing: border-box; }
 html { -webkit-tap-highlight-color: transparent; }
-body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); overscroll-behavior-y: none; }
+body { margin: 0; font-family: Arial, sans-serif; background: var(--bg); color: var(--text); }
+body.scroll-locked {
+  position: fixed;
+  width: 100%;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+}
 button, input, select, textarea { font-size: 16px; }
 .hidden { display: none !important; }
 
@@ -140,12 +147,82 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ── Modal ── */
-.modal { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; padding: 18px; z-index: 10; }
-.modal-card { background: white; width: min(900px, 96vw); max-height: 92vh; overflow: auto; border-radius: 28px; padding: 22px; }
+.modal {
+  position: fixed; inset: 0; background: #0008;
+  display: grid; place-items: center; padding: 18px; z-index: 10;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.modal-card {
+  background: white; width: min(900px, 96vw);
+  max-height: 92dvh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; border-radius: 28px; padding: 22px;
+}
 .small-modal { width: min(520px, 96vw); }
 .modal-head { display: flex; justify-content: space-between; align-items: center; }
 .modal-head button { background: #f1f5f9; font-size: 22px; }
 .purchase-box { background: var(--soft); border: 1px dashed #86efac; border-radius: 20px; padding: 16px; margin: 14px 0; }
+
+/* ── Estoque V6 ── */
+.estoque-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.estoque-stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.estoque-stat { background: #ecfdf5; color: #14532d; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; border: 1px solid #bbf7d0; }
+.estoque-stat.warn { background: #fef3c7; color: #92400e; border-color: #fde68a; }
+.estoque-add-btn { min-height: 44px; }
+.estoque-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.estoque-card {
+  position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  background: white; border: 1px solid #e3eee7; border-radius: 18px; padding: 16px;
+  cursor: pointer; text-align: left; transition: transform .15s, box-shadow .15s;
+  min-height: 110px; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.estoque-card:active { transform: scale(.98); }
+.estoque-card:hover { box-shadow: 0 8px 24px rgba(5,46,22,.08); }
+.estoque-card.stock-normal { border-left: 5px solid #22c55e; }
+.estoque-card.stock-baixo { border-left: 5px solid #eab308; background: #fffbeb; }
+.estoque-card.stock-critico { border-left: 5px solid #ef4444; background: #fef2f2; }
+.estoque-card-status { position: absolute; top: 10px; right: 10px; font-size: 14px; }
+.estoque-card-emoji { font-size: 28px; line-height: 1; }
+.estoque-card-nome { font-weight: 800; color: #052e16; font-size: 15px; line-height: 1.25; }
+.estoque-card-qtd { font-size: 13px; color: #647066; }
+.estoque-card-qtd b { color: #15803d; font-size: 15px; }
+.estoque-vazio { color: #647066; text-align: center; padding: 24px; }
+.estoque-fab { display: none; }
+.estoque-foto-area { margin-bottom: 14px; }
+.estoque-foto-preview { margin-bottom: 10px; border-radius: 16px; overflow: hidden; max-height: 220px; }
+.estoque-foto-preview img { width: 100%; max-height: 220px; object-fit: cover; display: block; }
+.estoque-foto-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.estoque-modal-sub { font-weight: 800; color: #052e16; margin: 0 0 4px; }
+.estoque-modal-saldo { color: #647066; margin: 0 0 14px; font-size: 14px; }
+.detalhe-foto { width: 100%; max-height: 260px; object-fit: cover; border-radius: 18px; margin-bottom: 12px; }
+.detalhe-foto-placeholder { width: 100%; height: 180px; display: grid; place-items: center; font-size: 64px; background: #ecfdf5; border-radius: 18px; margin-bottom: 12px; }
+.detalhe-status { display: inline-block; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; margin-bottom: 14px; }
+.detalhe-status.stock-normal { background: #dcfce7; color: #166534; }
+.detalhe-status.stock-baixo { background: #fef3c7; color: #92400e; }
+.detalhe-status.stock-critico { background: #fee2e2; color: #991b1b; }
+.detalhe-info { display: grid; gap: 10px; margin-bottom: 16px; }
+.detalhe-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid #e3eee7; font-size: 14px; }
+.detalhe-row span { color: #647066; }
+.detalhe-row strong { color: #052e16; text-align: right; }
+.detalhe-obs { margin-top: 4px; }
+.detalhe-obs span { color: #647066; font-size: 13px; }
+.detalhe-obs p { margin: 6px 0 0; color: #052e16; }
+.detalhe-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.detalhe-acoes button { min-height: 48px; font-size: 14px; }
+.detalhe-historico h4 { margin: 0 0 10px; color: #052e16; font-size: 15px; }
+.historico-lista {
+  max-height: 200px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; border: 1px solid #e3eee7; border-radius: 14px; padding: 8px;
+}
+.estoque-detalhe-card { max-height: 94dvh; }
+.historico-item { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-bottom: 1px solid #f0f4f1; font-size: 14px; }
+.historico-item:last-child { border-bottom: 0; }
+.hist-data { min-width: 44px; font-weight: 700; color: #647066; }
+.hist-qtd { min-width: 52px; font-weight: 900; }
+.hist-entrada .hist-qtd { color: #15803d; }
+.hist-saida .hist-qtd { color: #dc2626; }
+.hist-info { color: #647066; font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.historico-vazio { color: #647066; font-size: 13px; text-align: center; padding: 12px; margin: 0; }
 
 /* ── Estoque ── */
 .stock-low { border-left: 6px solid var(--danger); }
@@ -359,10 +436,17 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
    ══════════════════════════════════════ */
 @media (max-width: 900px) {
 
-  html, body {
+  html {
+    height: auto;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
     height: auto;
     min-height: 100dvh;
     overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: auto;
     background: #06130c;
   }
 
@@ -383,8 +467,13 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 
   .main {
     padding: 14px;
-    padding-bottom: 28px;
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
     width: 100%;
+    min-height: 0;
+  }
+  #content {
+    overflow: visible;
+    -webkit-overflow-scrolling: touch;
   }
 
   /* ── Topbar ── */
@@ -460,12 +549,64 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .table th { background: #102116; color: #bbf7d0; }
   .table td { color: #e5e7eb; border-bottom: 1px solid rgba(255,255,255,.07); }
 
+  /* ── Estoque V6 mobile ── */
+  .estoque-header { flex-direction: column; align-items: stretch; }
+  .estoque-add-btn { display: none; }
+  .estoque-fab {
+    display: grid;
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+  }
+  .estoque-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .estoque-card {
+    min-height: 100px; padding: 14px 12px; border-radius: 16px;
+    background: rgba(17,24,20,.96);
+    border-color: rgba(74,222,128,.13);
+    color: #e5e7eb;
+  }
+  .estoque-card-nome { font-size: 14px; color: #eafff0; }
+  .estoque-card-qtd { font-size: 12px; color: #8fb59c; }
+  .estoque-card-qtd b { color: #4ade80; }
+  .estoque-stat { background: rgba(34,197,94,.12); color: #d1fae5; border-color: rgba(34,197,94,.22); }
+  .estoque-stat.warn { background: rgba(234,179,8,.15); color: #fde68a; border-color: rgba(234,179,8,.25); }
+  .estoque-cat-scroll {
+    display: flex; overflow-x: auto; overflow-y: hidden;
+    gap: 8px; padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
+  .estoque-cat-scroll .cat-btn { scroll-snap-align: start; flex-shrink: 0; min-height: 44px; min-width: 130px; }
+  .estoque-categorias-panel { padding: 12px; overflow: hidden; }
+  .estoque-lista-panel { padding: 14px; margin-bottom: 8px; }
+  .detalhe-row span { color: #8fb59c; }
+  .detalhe-row strong { color: #eafff0; }
+  .detalhe-historico h4 { color: #eafff0; }
+  .detalhe-foto-placeholder { background: rgba(34,197,94,.1); }
+  .historico-lista { max-height: 180px; border-color: rgba(74,222,128,.18); }
+  .historico-item { border-bottom-color: rgba(255,255,255,.07); }
+  .hist-data { color: #8fb59c; }
+  .hist-info { color: #8fb59c; }
+  .detalhe-acoes { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .detalhe-acoes button { min-height: 48px; font-size: 14px; }
+  .estoque-foto-btns { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .estoque-foto-btns button { min-height: 48px; }
+  .estoque-modal-sub { color: #eafff0; }
+  .estoque-modal-saldo { color: #8fb59c; }
+
   /* ── Estoque ── */
   .stock-row { display: grid; grid-template-columns: 1fr; gap: 12px; }
   .stock-row .actions { display: grid; grid-template-columns: 1fr; }
   .stock-low { border-left: 5px solid #ef4444; }
   .stock-ok  { border-left: 5px solid #22c55e; }
-  .category-grid { display: flex; overflow-x: auto; gap: 10px; padding-bottom: 6px; }
+  .category-grid {
+    display: flex; overflow-x: auto; overflow-y: hidden;
+    gap: 10px; padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
+  }
   .category-grid::-webkit-scrollbar { display: none; }
   .cat-btn {
     min-width: 150px;
@@ -475,20 +616,41 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   }
 
   /* ── Modal (bottom sheet) ── */
-  .modal { align-items: flex-end; padding: 0; }
+  .modal {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: stretch;
+    padding: 0;
+    touch-action: none;
+  }
   .modal-card {
     width: 100%;
-    max-height: 92vh;
+    max-height: 92dvh;
+    min-height: 0;
+    flex: 0 1 auto;
     border-radius: 28px 28px 0 0;
     background: #0b1810;
     color: #e5e7eb;
     padding: 18px;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
     border: 1px solid rgba(74,222,128,.12);
     margin-bottom: 0;
+    touch-action: pan-y;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
   }
   .modal-head {
     position: sticky; top: 0;
     background: #0b1810; z-index: 5; padding-bottom: 8px;
+    margin: -4px 0 8px;
+  }
+  .modal-head h3 { font-size: 17px; margin: 0; padding-right: 8px; }
+  .modal-head button {
+    min-width: 44px; min-height: 44px;
+    display: grid; place-items: center;
+    flex-shrink: 0;
   }
 
   /* ── Notificações ── */
@@ -518,7 +680,11 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .success-toast, .error-toast { left: 16px; right: 16px; bottom: 90px; }
 
   /* ── FAB ── */
-  .fab { width: 56px; height: 56px; font-size: 24px; bottom: 20px; right: 16px; }
+  .fab {
+    width: 56px; height: 56px; font-size: 24px;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+  }
 
   /* ── Ações responsivas ── */
   .actions { gap: 6px; }
@@ -570,4 +736,6 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 @media (max-width: 420px) {
   .cards { grid-template-columns: 1fr 1fr; }
   .kpi strong { font-size: 22px; }
+  .estoque-grid { grid-template-columns: 1fr; }
+  .detalhe-acoes { grid-template-columns: 1fr; }
 }

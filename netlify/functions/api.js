@@ -53,7 +53,10 @@ async function ensureDb(){
   if(ready) return;
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
   await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, created_at TIMESTAMP DEFAULT NOW(), concluido_at TIMESTAMP)`);
-  await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT)`);
+  await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
+  await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS fornecedor TEXT`);
+  await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS local TEXT`);
+  await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS observacoes TEXT`);
   await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT, contato TEXT, telefone TEXT, tipo_produto TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', fornecedor_escolhido TEXT, valor_escolhido REAL, solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, eh_compra_rapida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS cotacoes (id SERIAL PRIMARY KEY, compra_id INTEGER, fornecedor TEXT, valor REAL, observacao TEXT)`);
@@ -159,7 +162,7 @@ app.get("/estoque",async(req,res)=>{
   // Calcular data limite de reposição baseado no consumo médio dos últimos 30 dias
   for (const item of estoqueRows) {
     try {
-      const consumo = await q(`SELECT COALESCE(SUM(quantidade),0)::float total, COUNT(*)::int movs FROM movimentacoes_estoque WHERE produto=$1 AND tipo='saida' AND criado_em >= NOW() - INTERVAL '30 days'`, [item.nome]);
+      const consumo = await q(`SELECT COALESCE(SUM(quantidade),0)::float total, COUNT(*)::int movs FROM movimentacoes_estoque WHERE produto=$1 AND tipo='saida' AND created_at >= NOW() - INTERVAL '30 days'`, [item.nome]);
       const totalConsumo = consumo.rows[0].total;
       if (totalConsumo > 0) {
         const consumoDiario = totalConsumo / 30;
@@ -178,8 +181,11 @@ app.get("/estoque",async(req,res)=>{
   }
   res.json(estoqueRows);
 });
-app.post("/estoque",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo,foto_url) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,[b.nome,b.categoria,b.unidade,b.quantidade,b.minimo,b.foto_url||null]);res.json({id:r.rows[0].id});});
-app.post("/estoque/:id/baixa",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});if(Number(item.quantidade)<qtd)return res.status(400).json({error:"Quantidade maior que estoque disponível"});await q(`UPDATE estoque SET quantidade=quantidade-$1 WHERE id=$2`,[qtd,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.destino||"","saida","baixa_manual",req.body.observacao||""]);res.json({ok:true});});
+app.post("/estoque",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo,foto_url,fornecedor,local,observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,[b.nome,b.categoria,b.unidade,b.quantidade,b.minimo,b.foto_url||null,b.fornecedor||null,b.local||null,b.observacoes||null]);if(Number(b.quantidade)>0)await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[b.nome,b.categoria,b.quantidade,b.unidade,b.fornecedor||"","entrada","cadastro_inicial",b.observacoes||""]);res.json({id:r.rows[0].id});});
+app.get("/estoque/:id",async(req,res)=>{const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);if(!r.rows[0])return res.status(404).json({error:"Item não encontrado"});res.json(r.rows[0]);});
+app.get("/estoque/:id/historico",async(req,res)=>{const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);if(!r.rows[0])return res.status(404).json({error:"Item não encontrado"});const movs=await q(`SELECT * FROM movimentacoes_estoque WHERE produto=$1 ORDER BY created_at DESC LIMIT 50`,[r.rows[0].nome]);res.json(movs.rows);});
+app.post("/estoque/:id/entrada",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});await q(`UPDATE estoque SET quantidade=quantidade+$1, fornecedor=COALESCE($2,fornecedor) WHERE id=$3`,[qtd,req.body.fornecedor||null,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.fornecedor||"","entrada","entrada_manual",req.body.observacao||""]);const atualizado=await q(`SELECT quantidade FROM estoque WHERE id=$1`,[req.params.id]);res.json({ok:true,quantidade:atualizado.rows[0].quantidade});});
+app.post("/estoque/:id/baixa",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});if(Number(item.quantidade)<qtd)return res.status(400).json({error:"Quantidade maior que estoque disponível"});await q(`UPDATE estoque SET quantidade=quantidade-$1 WHERE id=$2`,[qtd,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.destino||"","saida","baixa_manual",req.body.observacao||""]);const atualizado=await q(`SELECT quantidade FROM estoque WHERE id=$1`,[req.params.id]);res.json({ok:true,quantidade:atualizado.rows[0].quantidade});});
 
 app.get("/compras",async(req,res)=>{
   const page = Math.max(1, Number(req.query.page) || 1);
@@ -395,8 +401,10 @@ app.get("/historico-aprovacoes", async (req, res) => {
 app.put("/estoque/:id", async (req, res) => {
   const b = req.body;
   try {
-    await q(`UPDATE estoque SET nome=$1, categoria=$2, unidade=$3, quantidade=$4, minimo=$5, foto_url=$6 WHERE id=$7`,
-      [b.nome, b.categoria, b.unidade, b.quantidade, b.minimo, b.foto_url || null, req.params.id]);
+    const atual = await q(`SELECT foto_url FROM estoque WHERE id=$1`, [req.params.id]);
+    const fotoUrl = b.foto_url !== undefined ? b.foto_url : (atual.rows[0]?.foto_url || null);
+    await q(`UPDATE estoque SET nome=$1, categoria=$2, unidade=$3, quantidade=$4, minimo=$5, foto_url=$6, fornecedor=$7, local=$8, observacoes=$9 WHERE id=$10`,
+      [b.nome, b.categoria, b.unidade, b.quantidade, b.minimo, fotoUrl, b.fornecedor || null, b.local || null, b.observacoes || null, req.params.id]);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -217,84 +217,264 @@ async function salvarConclusao(){
   atualizarContadorNotificacoes();
 }
 
-async function estoque(){
-  const data=await js(API+"/estoque");
-  const cats=[...new Set(data.map(i=>i.categoria||"Sem categoria"))];
-  content.innerHTML=`<div class="panel"><h3>Novo item de estoque</h3><div class="grid"><input id="estNome" placeholder="Nome"><input id="estCategoria" placeholder="Categoria"><input id="estUnidade" placeholder="Unidade"><input id="estQtd" type="number" placeholder="Quantidade"><input id="estMin" type="number" placeholder="Mínimo"></div><button class="primary full" onclick="addEstoque()">Salvar item</button><button class="secondary full" onclick="abrirAdicionarEstoqueComFoto()">+ Adicionar com Foto</button></div><div class="panel"><h3>Categorias</h3><div class="category-grid"><button class="cat-btn" onclick="filtrarEstoque('Todos')">Todos <b>${data.length}</b></button>${cats.map(c=>`<button class="cat-btn" onclick="filtrarEstoque('${esc(c)}')">${c} <b>${data.filter(i=>(i.categoria||"Sem categoria")===c).length}</b></button>`).join("")}</div></div><div class="panel"><h3 id="tituloEstoque">Itens</h3><div id="listaEstoque"></div></div>`;
-  window._estoqueData=data; renderEstoque(data);
-}
-function renderEstoque(lista){
-  const baixo=lista.filter(i=>i.baixo).length;
-  tituloEstoque.innerText=`Itens ${baixo>0?`• ${baixo} em estoque mínimo`:""}`;
-  const comAlerta=lista.filter(i=>i.baixo);const semAlerta=lista.filter(i=>!i.baixo);const ordenado=[...comAlerta,...semAlerta];
-  listaEstoque.innerHTML=ordenado.map(i=>{
-    let dataLimiteHtml = '';
-    if (i.data_limite) {
-      const dias = i.dias_restantes;
-      const classe = dias <= 7 ? 'critico' : dias <= 15 ? 'atencao' : 'ok';
-      const icone = dias <= 7 ? '🔴' : dias <= 15 ? '🟡' : '🟢';
-      const dataFormatada = new Date(i.data_limite + 'T00:00:00').toLocaleDateString('pt-BR');
-      dataLimiteHtml = `<br><span class="data-limite-alerta ${classe}">${icone} ${dias <= 0 ? 'ESGOTADO!' : `Acaba em ${dias} dias (${dataFormatada})`} • Consumo: ${i.consumo_diario} ${i.unidade}/dia</span>`;
-    } else {
-      dataLimiteHtml = `<br><span class="data-limite-alerta ok">📊 Sem histórico de consumo</span>`;
-    }
-    return `<div class="card ${i.baixo?'stock-low':'stock-ok'}"><div class="stock-row">${i.foto_url?`<img src="${i.foto_url}" style="width:80px;height:80px;object-fit:cover;border-radius:8px;margin-right:15px;">`:''}<div><b>${i.nome}</b><br>${i.categoria} • Estoque: <b>${i.quantidade} ${i.unidade}</b> • mínimo ${i.minimo}<br>${i.baixo?'<span class="badge high">⚠️ ALERTA</span>':'<span class="badge done">OK</span>'}${dataLimiteHtml}</div><div class="actions"><button class="secondary" onclick="abrirBaixaEstoque(${i.id}, '${esc(i.nome)}', ${Number(i.quantidade||0)}, '${esc(i.unidade)}')">Dar baixa</button><button class="secondary" onclick="abrirEditarEstoque(${i.id}, '${esc(i.nome)}', '${esc(i.categoria)}', '${esc(i.unidade)}', ${i.quantidade}, ${i.minimo})">Editar</button><button class="danger" onclick="deletarEstoque(${i.id})">Deletar</button></div></div></div>`;
-  }).join("")||"Nenhum item.";
-}
-function filtrarEstoque(c){const data=window._estoqueData||[];renderEstoque(c==="Todos"?data:data.filter(i=>(i.categoria||"Sem categoria")===c));}
-async function addEstoque(){ 
-  try {
-    await js(API+"/estoque",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({nome:estNome.value,categoria:estCategoria.value,unidade:estUnidade.value,quantidade:estQtd.value,minimo:estMin.value})});
-    mostrarSucesso("Item adicionado com sucesso!");
-    carregar();
-  } catch(e) {
-    mostrarErro(e.message);
+// ===== ESTOQUE V6 =====
+const EMOJI_CATEGORIA = {
+  "Flor de Corte": "🌹",
+  "Adubo": "🧪",
+  "Defensivo": "🌿",
+  "Peças": "🔧",
+  "Embalagens": "📦",
+  "Outros": "📋"
+};
+
+function emojiProduto(item) {
+  const cat = item.categoria || "Outros";
+  if (cat === "Flor de Corte") {
+    const n = (item.nome || "").toLowerCase();
+    if (n.includes("girassol")) return "🌻";
+    if (n.includes("rosa")) return "🌹";
+    if (n.includes("cravo")) return "💐";
+    return "🌸";
   }
-}
-function abrirBaixaEstoque(id,nome,disponivel,unidade){
-  const qtd=prompt(`Baixa de estoque: ${nome}\nDisponível: ${disponivel} ${unidade}\n\nQuantidade a descontar:`); if(qtd===null)return;
-  const quantidade=Number(String(qtd).replace(",",".")); if(!quantidade||quantidade<=0)return mostrarErro("Quantidade inválida."); if(quantidade>disponivel)return mostrarErro("Quantidade maior que estoque disponível.");
-  const destino=prompt("Destino / uso da baixa:",""); if(destino===null)return; const observacao=prompt("Observação (opcional):","")||"";
-  fetch(API+`/estoque/${id}/baixa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({quantidade,destino,observacao,usuario:(usuario?.nome||usuario?.username||"Usuário")})}).then(async r=>{const data=await r.json().catch(()=>({}));if(!r.ok)return mostrarErro(data.error||"Erro ao dar baixa.");mostrarSucesso("Baixa realizada com sucesso!");carregar();atualizarContadorNotificacoes();});
+  return EMOJI_CATEGORIA[cat] || "📦";
 }
 
-// ===== ESTOQUE MELHORADO =====
-async function abrirEditarEstoque(id, nome, categoria, unidade, qtd, minimo) {
-  const novoNome = prompt("Nome do item:", nome);
-  if (!novoNome) return;
-  const novaCategoria = prompt("Categoria:", categoria);
-  const novaUnidade = prompt("Unidade:", unidade);
-  const novaQtd = prompt("Quantidade:", qtd);
-  const novoMinimo = prompt("Mínimo:", minimo);
-  
+function statusEstoqueV6(item) {
+  const q = Number(item.quantidade || 0);
+  const m = Number(item.minimo || 0);
+  if (q <= 0 || (m > 0 && q <= m * 0.5)) return { cls: "stock-critico", icon: "🔴", label: "Crítico" };
+  if (m > 0 && q <= m) return { cls: "stock-baixo", icon: "🟡", label: "Baixo" };
+  return { cls: "stock-normal", icon: "🟢", label: "Normal" };
+}
+
+async function estoque() {
+  const data = await js(API + "/estoque");
+  const cats = [...new Set(data.map(i => i.categoria || "Sem categoria"))];
+  const baixo = data.filter(i => i.baixo).length;
+  content.innerHTML = `
+    <div class="estoque-header">
+      <div class="estoque-stats">
+        <span class="estoque-stat">${data.length} produtos</span>
+        ${baixo ? `<span class="estoque-stat warn">${baixo} em alerta</span>` : ""}
+      </div>
+      <button class="primary estoque-add-btn" onclick="abrirModalEstoque()">+ Novo produto</button>
+    </div>
+    <div class="panel estoque-categorias-panel">
+      <div class="category-grid estoque-cat-scroll">
+        <button class="cat-btn" onclick="filtrarEstoque('Todos')">Todos <b>${data.length}</b></button>
+        ${cats.map(c => `<button class="cat-btn" onclick="filtrarEstoque('${esc(c)}')">${esc(c)} <b>${data.filter(i => (i.categoria || "Sem categoria") === c).length}</b></button>`).join("")}
+      </div>
+    </div>
+    <div class="panel estoque-lista-panel">
+      <h3 id="tituloListaEstoque">Produtos</h3>
+      <div id="listaEstoque" class="estoque-grid"></div>
+    </div>
+    <button class="fab estoque-fab" onclick="abrirModalEstoque()" title="Novo produto">+</button>`;
+  window._estoqueData = data;
+  renderEstoque(data);
+}
+
+function renderEstoque(lista) {
+  const titulo = document.getElementById("tituloListaEstoque");
+  const listaEl = document.getElementById("listaEstoque");
+  if (!titulo || !listaEl) return;
+
+  const comAlerta = lista.filter(i => statusEstoqueV6(i).cls !== "stock-normal");
+  const semAlerta = lista.filter(i => statusEstoqueV6(i).cls === "stock-normal");
+  const ordenado = [...comAlerta, ...semAlerta];
+
+  titulo.innerText = `Produtos (${lista.length})`;
+  listaEl.innerHTML = ordenado.map(i => {
+    const st = statusEstoqueV6(i);
+    return `
+      <button type="button" class="estoque-card ${st.cls}" onclick="abrirDetalheProduto(${i.id})">
+        <span class="estoque-card-status" title="${st.label}">${st.icon}</span>
+        <span class="estoque-card-emoji">${emojiProduto(i)}</span>
+        <span class="estoque-card-nome">${esc(i.nome)}</span>
+        <span class="estoque-card-qtd">Qtd: <b>${i.quantidade}</b> ${esc(i.unidade || "")}</span>
+      </button>`;
+  }).join("") || `<p class="estoque-vazio">Nenhum produto cadastrado.</p>`;
+}
+
+function filtrarEstoque(c) {
+  const data = window._estoqueData || [];
+  renderEstoque(c === "Todos" ? data : data.filter(i => (i.categoria || "Sem categoria") === c));
+}
+
+async function abrirDetalheProduto(id) {
   try {
-    await js(API + `/estoque/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        nome: novoNome,
-        categoria: novaCategoria,
-        unidade: novaUnidade,
-        quantidade: Number(novaQtd),
-        minimo: Number(novoMinimo)
-      })
-    });
-    mostrarSucesso("Item atualizado com sucesso!");
-    carregar();
+    const [produto, historico] = await Promise.all([
+      js(API + `/estoque/${id}`),
+      js(API + `/estoque/${id}/historico`)
+    ]);
+    window._produtoDetalhe = produto;
+    const st = statusEstoqueV6(produto);
+    const fotoHtml = produto.foto_url
+      ? `<img src="${esc(produto.foto_url)}" class="detalhe-foto" alt="${esc(produto.nome)}">`
+      : `<div class="detalhe-foto-placeholder">${emojiProduto(produto)}</div>`;
+
+    document.getElementById("detalheProdutoConteudo").innerHTML = `
+      ${fotoHtml}
+      <div class="detalhe-status ${st.cls}">${st.icon} Estoque ${st.label.toLowerCase()}</div>
+      <div class="detalhe-info">
+        <div class="detalhe-row"><span>Nome</span><strong>${esc(produto.nome)}</strong></div>
+        <div class="detalhe-row"><span>Categoria</span><strong>${esc(produto.categoria || "-")}</strong></div>
+        <div class="detalhe-row"><span>Quantidade</span><strong id="detalheQtd">${produto.quantidade}</strong></div>
+        <div class="detalhe-row"><span>Unidade</span><strong>${esc(produto.unidade || "-")}</strong></div>
+        <div class="detalhe-row"><span>Mínimo</span><strong>${produto.minimo ?? "-"}</strong></div>
+        <div class="detalhe-row"><span>Fornecedor</span><strong>${esc(produto.fornecedor || "-")}</strong></div>
+        <div class="detalhe-row"><span>Local</span><strong>${esc(produto.local || "-")}</strong></div>
+        ${produto.observacoes ? `<div class="detalhe-obs"><span>Observações</span><p>${esc(produto.observacoes)}</p></div>` : ""}
+      </div>
+      <div class="detalhe-acoes">
+        <button class="primary" onclick="abrirEntradaEstoque(${produto.id})">➕ Entrada</button>
+        <button class="secondary" onclick="abrirBaixaEstoqueModal(${produto.id}, '${esc(produto.nome)}', ${Number(produto.quantidade || 0)}, '${esc(produto.unidade)}')">➖ Baixa</button>
+        <button class="secondary" onclick="editarProdutoDetalhe(${produto.id})">✏️ Editar</button>
+        <button class="danger" onclick="excluirProdutoDetalhe(${produto.id})">🗑️ Excluir</button>
+      </div>
+      <div class="detalhe-historico">
+        <h4>Histórico de movimentação</h4>
+        <div class="historico-lista">${renderHistoricoProduto(historico)}</div>
+      </div>`;
+
+    document.getElementById("modalDetalheProduto").classList.remove("hidden");
   } catch (e) {
-    mostrarErro(e.message);
+    mostrarErro(e.message || "Erro ao carregar produto");
   }
 }
 
-async function deletarEstoque(id) {
-  if (!confirm("Tem certeza que deseja deletar este item?")) return;
+function renderHistoricoProduto(movs) {
+  if (!movs || !movs.length) return `<p class="historico-vazio">Sem movimentações registradas.</p>`;
+  return movs.map(m => {
+    const dt = new Date(m.created_at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+    const entrada = m.tipo === "entrada";
+    const sinal = entrada ? "+" : "-";
+    const cls = entrada ? "hist-entrada" : "hist-saida";
+    const extra = m.destino || m.observacao || m.origem || "";
+    return `<div class="historico-item ${cls}"><span class="hist-data">${dt}</span><span class="hist-qtd">${sinal}${m.quantidade}</span>${extra ? `<span class="hist-info">${esc(extra)}</span>` : ""}</div>`;
+  }).join("");
+}
+
+function fecharDetalheProduto() {
+  document.getElementById("modalDetalheProduto").classList.add("hidden");
+}
+
+function abrirEntradaEstoque(id) {
+  const p = window._produtoDetalhe;
+  if (!p || p.id !== id) return;
+  document.getElementById("entradaEstoqueId").value = id;
+  document.getElementById("entradaEstoqueNome").innerText = p.nome;
+  document.getElementById("entradaEstoqueSaldo").innerText = `Saldo atual: ${p.quantidade} ${p.unidade || ""}`;
+  document.getElementById("entradaQtd").value = "";
+  document.getElementById("entradaFornecedor").value = p.fornecedor || "";
+  document.getElementById("entradaObs").value = "";
+  document.getElementById("modalEntradaEstoque").classList.remove("hidden");
+}
+
+function fecharEntradaEstoque() {
+  document.getElementById("modalEntradaEstoque").classList.add("hidden");
+}
+
+async function salvarEntradaEstoque(e) {
+  e.preventDefault();
+  const id = document.getElementById("entradaEstoqueId").value;
+  const quantidade = Number(document.getElementById("entradaQtd").value);
+  const fornecedor = document.getElementById("entradaFornecedor").value.trim();
+  const observacao = document.getElementById("entradaObs").value.trim();
+  if (!quantidade || quantidade <= 0) return mostrarErro("Quantidade inválida.");
+  try {
+    const r = await js(API + `/estoque/${id}/entrada`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantidade, fornecedor, observacao })
+    });
+    mostrarSucesso(`Entrada registrada! Novo saldo: ${r.quantidade}`);
+    fecharEntradaEstoque();
+    fecharDetalheProduto();
+    if (tela === "estoque") estoque();
+    else carregar();
+  } catch (err) {
+    mostrarErro(err.message);
+  }
+}
+
+function abrirBaixaEstoqueModal(id, nome, disponivel, unidade) {
+  document.getElementById("baixaEstoqueId").value = id;
+  document.getElementById("baixaEstoqueNome").innerText = nome;
+  document.getElementById("baixaEstoqueSaldo").innerText = `Disponível: ${disponivel} ${unidade}`;
+  document.getElementById("baixaQtd").value = "";
+  document.getElementById("baixaQtd").max = disponivel;
+  document.getElementById("baixaDestino").value = "";
+  document.getElementById("baixaObs").value = "";
+  document.getElementById("modalBaixaEstoque").classList.remove("hidden");
+}
+
+function fecharBaixaEstoque() {
+  document.getElementById("modalBaixaEstoque").classList.add("hidden");
+}
+
+async function salvarBaixaEstoque(e) {
+  e.preventDefault();
+  const id = document.getElementById("baixaEstoqueId").value;
+  const quantidade = Number(document.getElementById("baixaQtd").value);
+  const destino = document.getElementById("baixaDestino").value.trim();
+  const observacao = document.getElementById("baixaObs").value.trim();
+  if (!quantidade || quantidade <= 0) return mostrarErro("Quantidade inválida.");
+  try {
+    const r = await js(API + `/estoque/${id}/baixa`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ quantidade, destino, observacao, usuario: usuario?.nome || usuario?.username || "Usuário" })
+    });
+    mostrarSucesso(`Baixa realizada! Saldo: ${r.quantidade}`);
+    fecharBaixaEstoque();
+    fecharDetalheProduto();
+    if (tela === "estoque") estoque();
+    else carregar();
+    atualizarContadorNotificacoes();
+  } catch (err) {
+    mostrarErro(err.message);
+  }
+}
+
+function editarProdutoDetalhe(id) {
+  fecharDetalheProduto();
+  abrirModalEstoque(id);
+}
+
+async function excluirProdutoDetalhe(id) {
+  if (!confirm("Tem certeza que deseja excluir este produto?")) return;
   try {
     await js(API + `/estoque/${id}`, { method: "DELETE" });
-    mostrarSucesso("Item deletado com sucesso!");
-    carregar();
+    mostrarSucesso("Produto excluído!");
+    fecharDetalheProduto();
+    if (tela === "estoque") estoque();
+    else carregar();
   } catch (e) {
     mostrarErro(e.message);
   }
+}
+
+function escolherFotoEstoque(modo) {
+  const input = document.getElementById("estoqueFoto");
+  input.value = "";
+  if (modo === "camera") input.setAttribute("capture", "environment");
+  else input.removeAttribute("capture");
+  input.onchange = () => previewFotoEstoque(input.files[0]);
+  input.click();
+}
+
+function previewFotoEstoque(file) {
+  if (!file) return;
+  window._estoqueFotoPendente = file;
+  const preview = document.getElementById("estoqueFotoPreview");
+  const img = document.getElementById("estoqueFotoPreviewImg");
+  img.src = URL.createObjectURL(file);
+  preview.classList.remove("hidden");
+}
+
+async function abrirAdicionarEstoqueComFoto() {
+  abrirModalEstoque();
 }
 
 // ===== UPLOAD DE FOTO COM CLOUDINARY =====
@@ -318,38 +498,9 @@ async function uploadFotoCloudinary(file) {
   }
 }
 
-async function abrirAdicionarEstoqueComFoto() {
-  // Perguntar se quer usar câmera ou galeria
-  const opcao = confirm("Usar câmera para tirar foto?\n\nOK = Abrir câmera\nCancelar = Escolher da galeria");
-  
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  if (opcao) input.setAttribute('capture', 'environment');
-  
-  input.onchange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    // Abrir modal de estoque com a foto já selecionada
-    document.getElementById("formEstoque").reset();
-    document.getElementById("estoqueId").value = "";
-    document.getElementById("tituloEstoque").innerText = "Novo Produto (com foto)";
-    document.getElementById("modalEstoque").classList.remove("hidden");
-    
-    // Guardar arquivo para usar no submit
-    window._estoqueFotoPendente = file;
-    
-    // Mostrar preview da foto
-    const preview = document.createElement('img');
-    preview.src = URL.createObjectURL(file);
-    preview.style.cssText = 'width:100%;max-height:200px;object-fit:cover;border-radius:12px;margin:10px 0';
-    preview.id = 'fotoPreview';
-    const old = document.getElementById('fotoPreview');
-    if (old) old.remove();
-    document.getElementById("formEstoque").prepend(preview);
-  };
-  input.click();
+// Legacy alias
+function abrirBaixaEstoque(id, nome, disponivel, unidade) {
+  abrirBaixaEstoqueModal(id, nome, disponivel, unidade);
 }
 
 
@@ -697,29 +848,40 @@ async function atualizarContadorNotificacoes(){
 // ===== ESTOQUE: INCLUIR/EDITAR PRODUTOS =====
 function abrirModalEstoque(id = null) {
   const modal = document.getElementById("modalEstoque");
-  const titulo = document.getElementById("tituloEstoque");
-  
+  const titulo = document.getElementById("tituloModalEstoque");
+  const preview = document.getElementById("estoqueFotoPreview");
+  window._estoqueFotoPendente = null;
+
+  document.getElementById("formEstoque").reset();
+  document.getElementById("estoqueId").value = "";
+  if (preview) preview.classList.add("hidden");
+
   if (id) {
     titulo.innerText = "Editar Produto";
-    // Carregar dados do produto
     js(API + `/estoque/${id}`).then(p => {
       document.getElementById("estoqueId").value = p.id;
-      document.getElementById("estoqueName").value = p.nome;
-      document.getElementById("estoqueCat").value = p.categoria;
-      document.getElementById("estoqueUnit").value = p.unidade;
-      document.getElementById("estoqueQtd").value = p.quantidade;
-      document.getElementById("estoqueMin").value = p.minimo;
+      document.getElementById("estoqueName").value = p.nome || "";
+      document.getElementById("estoqueCat").value = p.categoria || "Outros";
+      document.getElementById("estoqueUnit").value = p.unidade || "";
+      document.getElementById("estoqueQtd").value = p.quantidade ?? "";
+      document.getElementById("estoqueMin").value = p.minimo ?? "";
+      document.getElementById("estoqueFornecedor").value = p.fornecedor || "";
+      document.getElementById("estoqueLocal").value = p.local || "";
+      document.getElementById("estoqueObs").value = p.observacoes || "";
+      if (p.foto_url && preview) {
+        document.getElementById("estoqueFotoPreviewImg").src = p.foto_url;
+        preview.classList.remove("hidden");
+      }
     });
   } else {
     titulo.innerText = "Novo Produto";
-    document.getElementById("formEstoque").reset();
-    document.getElementById("estoqueId").value = "";
   }
   modal.classList.remove("hidden");
 }
 
 function fecharModalEstoque() {
   document.getElementById("modalEstoque").classList.add("hidden");
+  window._estoqueFotoPendente = null;
 }
 
 async function salvarProdutoEstoque(e) {
@@ -727,30 +889,34 @@ async function salvarProdutoEstoque(e) {
   try {
     const id = document.getElementById("estoqueId").value;
     const dados = {
-      nome: document.getElementById("estoqueName").value,
+      nome: document.getElementById("estoqueName").value.trim(),
       categoria: document.getElementById("estoqueCat").value,
-      unidade: document.getElementById("estoqueUnit").value,
-      quantidade: parseFloat(document.getElementById("estoqueQtd").value),
-      minimo: parseFloat(document.getElementById("estoqueMin").value)
+      unidade: document.getElementById("estoqueUnit").value.trim(),
+      quantidade: parseFloat(document.getElementById("estoqueQtd").value) || 0,
+      minimo: parseFloat(document.getElementById("estoqueMin").value) || 0,
+      fornecedor: document.getElementById("estoqueFornecedor").value.trim(),
+      local: document.getElementById("estoqueLocal").value.trim(),
+      observacoes: document.getElementById("estoqueObs").value.trim()
     };
-    
-    // Upload de foto se houver (do botão "Adicionar com Foto" ou do campo file)
+
     const fotoFile = window._estoqueFotoPendente || document.getElementById("estoqueFoto")?.files[0];
     if (fotoFile) {
       const fotoUrl = await uploadFotoCloudinary(fotoFile);
       if (fotoUrl) dados.foto_url = fotoUrl;
       window._estoqueFotoPendente = null;
+    } else if (id) {
+      const atual = await js(API + `/estoque/${id}`);
+      if (atual.foto_url) dados.foto_url = atual.foto_url;
     }
-    
+
     const url = id ? `${API}/estoque/${id}` : `${API}/estoque`;
     const method = id ? "PUT" : "POST";
-    
-    await js(url, { method, headers: {"Content-Type":"application/json"}, body: JSON.stringify(dados) });
+
+    await js(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
     mostrarSucesso("Produto salvo com sucesso!");
-    const preview = document.getElementById('fotoPreview');
-    if (preview) preview.remove();
     fecharModalEstoque();
-    estoque();
+    if (tela === "estoque") estoque();
+    else carregar();
   } catch (e) {
     mostrarErro(e.message);
   }
@@ -761,7 +927,8 @@ async function excluirProdutoEstoque(id) {
     try {
       await js(`${API}/estoque/${id}`, { method: "DELETE" });
       mostrarSucesso("Produto excluído!");
-      estoque();
+      if (tela === "estoque") estoque();
+      else carregar();
     } catch (e) {
       mostrarErro(e.message);
     }
@@ -1070,4 +1237,41 @@ function closeDrawerOnEscape(event) {
 function trocarTelaDrawer(tela) {
   fecharDrawer();
   trocarTela(tela);
+}
+
+// ===== SCROLL MOBILE — evita travamento com modais/drawer abertos =====
+let _scrollLockY = 0;
+
+function temOverlayAberto() {
+  return !!document.querySelector(".modal:not(.hidden), .drawer:not(.hidden), .notif-panel:not(.hidden)");
+}
+
+function atualizarScrollLock() {
+  const aberto = temOverlayAberto();
+  const body = document.body;
+  if (aberto && !body.classList.contains("scroll-locked")) {
+    _scrollLockY = window.scrollY || window.pageYOffset || 0;
+    body.classList.add("scroll-locked");
+    body.style.top = `-${_scrollLockY}px`;
+  } else if (!aberto && body.classList.contains("scroll-locked")) {
+    body.classList.remove("scroll-locked");
+    body.style.top = "";
+    window.scrollTo(0, _scrollLockY);
+  }
+}
+
+function initScrollLockObserver() {
+  document.querySelectorAll(".modal, .drawer, .notif-panel").forEach(el => {
+    new MutationObserver(atualizarScrollLock).observe(el, {
+      attributes: true,
+      attributeFilter: ["class"]
+    });
+  });
+  atualizarScrollLock();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initScrollLockObserver);
+} else {
+  initScrollLockObserver();
 }
