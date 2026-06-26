@@ -1,6 +1,49 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v34";
+const APP_VERSION = "v37";
+
+const UNIDADES_MEDIDA = [
+  { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
+  { grupo: "Massa (Peso)", opcoes: [{ v: "kg", l: "Quilograma (kg)" }, { v: "g", l: "Grama (g)" }] },
+  { grupo: "Volume / Capacidade", opcoes: [{ v: "L", l: "Litro (L)" }, { v: "mL", l: "Mililitro (mL)" }] },
+  { grupo: "Quantidade", opcoes: [{ v: "un", l: "Unidade (un)" }] }
+];
+const UNIDADES_VALIDAS = UNIDADES_MEDIDA.flatMap(g => g.opcoes.map(o => o.v));
+
+function htmlOpcoesUnidade(selecionada = "") {
+  let html = '<option value="">Selecione a unidade...</option>';
+  for (const g of UNIDADES_MEDIDA) {
+    html += `<optgroup label="${htmlEsc(g.grupo)}">`;
+    for (const o of g.opcoes) {
+      html += `<option value="${htmlEsc(o.v)}"${selecionada === o.v ? " selected" : ""}>${htmlEsc(o.l)}</option>`;
+    }
+    html += "</optgroup>";
+  }
+  return html;
+}
+
+function initSelectsUnidade() {
+  ["compUnidadeModal", "crUnidade", "manUnidadeCompra"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = htmlOpcoesUnidade();
+  });
+}
+
+function unidadeMedidaValida(unidade) {
+  return UNIDADES_VALIDAS.includes(String(unidade || "").trim());
+}
+
+function toggleSolicitanteOutro(selectEl) {
+  const box = document.getElementById("solicitanteOutroBox");
+  const input = document.getElementById("manSolicitanteOutro");
+  if (!box || !selectEl) return;
+  const isOutro = selectEl.value === "Outro";
+  box.classList.toggle("hidden", !isOutro);
+  if (input) {
+    input.required = isOutro;
+    if (!isOutro) input.value = "";
+  }
+}
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
@@ -235,9 +278,21 @@ async function manutencoes(){
   content.innerHTML=`<div class="panel"><div class="actions"><button class="primary" onclick="abrirModalManutencao()">+ Nova Solicitação</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel">${tabelaMan(manData)}</div>`;
 }
 
-function abrirModalManutencao(){ modal.classList.remove("hidden"); document.querySelector("[name=data_ocorrencia]").value=hoje(); }
+function abrirModalManutencao() {
+  modal.classList.remove("hidden");
+  formManutencao.reset();
+  document.querySelector("[name=data_ocorrencia]").value = hoje();
+  camposCompra.classList.add("hidden");
+  const manSol = document.getElementById("manSolicitante");
+  if (manSol) toggleSolicitanteOutro(manSol);
+}
 function fecharModal(){ modal.classList.add("hidden"); }
-function toggleCompra(){ camposCompra.classList.toggle("hidden",!precisaCompra.checked); }
+function toggleCompra(){
+  const show = precisaCompra.checked;
+  camposCompra.classList.toggle("hidden", !show);
+  const unidadeEl = document.getElementById("manUnidadeCompra");
+  if (unidadeEl) unidadeEl.required = show;
+}
 
 async function salvarManutencao(e){
   e.preventDefault();
@@ -246,11 +301,24 @@ async function salvarManutencao(e){
     const dados=Object.fromEntries(fd.entries());
     dados.precisa_compra=precisaCompra.checked?"1":"0";
     delete dados.foto;
-    
-    // Validação no frontend
+
+    if (dados.solicitante === "Outro") {
+      dados.solicitante = (dados.solicitante_outro || "").trim();
+      if (!dados.solicitante) return mostrarErro("Informe o nome do solicitante");
+    }
+    delete dados.solicitante_outro;
+
     if(!dados.solicitante?.trim()) return mostrarErro("Selecione um solicitante");
     if(!dados.local_item?.trim()) return mostrarErro("Informe o local/item");
     if(!dados.defeito?.trim()) return mostrarErro("Descreva o problema");
+
+    if (precisaCompra.checked) {
+      if (!dados.item_compra?.trim()) return mostrarErro("Informe o item da compra");
+      if (!dados.quantidade_compra || Number(dados.quantidade_compra) <= 0) return mostrarErro("Informe a quantidade da compra");
+      if (!unidadeMedidaValida(dados.unidade_compra)) return mostrarErro("Selecione a unidade de medida da compra");
+    } else {
+      delete dados.unidade_compra;
+    }
     
     await js(API+"/manutencoes",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dados)});
     mostrarSucesso("Manutenção criada com sucesso!");
@@ -534,25 +602,74 @@ async function abrirAdicionarEstoqueComFoto() {
   abrirModalEstoque();
 }
 
-// ===== UPLOAD DE FOTO COM CLOUDINARY =====
-async function uploadFotoCloudinary(file) {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', 'ft_flow_unsigned');
-  formData.append('cloud_name', 'dxvxkz8yd');
-  
+// ===== UPLOAD DE FOTO (via API → Cloudinary) =====
+function fileParaBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function redimensionarImagem(file, maxPx = 1200, qualidade = 0.82) {
+  if (!file?.type?.startsWith("image/")) return file;
   try {
-    const response = await fetch('https://api.cloudinary.com/v1_1/dxvxkz8yd/image/upload', {
-      method: 'POST',
-      body: formData
+    const bmp = await createImageBitmap(file);
+    const maior = Math.max(bmp.width, bmp.height);
+    if (maior <= maxPx && file.size <= 900000) {
+      bmp.close();
+      return file;
+    }
+    const escala = Math.min(1, maxPx / maior);
+    const w = Math.max(1, Math.round(bmp.width * escala));
+    const h = Math.max(1, Math.round(bmp.height * escala));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
+    bmp.close();
+    const blob = await new Promise((ok) => canvas.toBlob(ok, "image/jpeg", qualidade));
+    const nome = (file.name || "foto").replace(/\.[^.]+$/, "") + ".jpg";
+    return new File([blob], nome, { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
+async function uploadFotoCloudinary(file) {
+  if (!file) return null;
+  try {
+    const preparada = await redimensionarImagem(file);
+    const base64 = await fileParaBase64(preparada);
+    const data = await js(API + "/upload/foto", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ base64, filename: preparada.name || "foto.jpg" })
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error?.message || 'Erro ao fazer upload');
-    return data.secure_url;
+    return data.url || null;
   } catch (e) {
-    mostrarErro('Erro ao fazer upload da foto: ' + e.message);
+    mostrarErro("Erro ao fazer upload da foto: " + e.message);
     return null;
   }
+}
+
+function previewFotoCompra(file) {
+  const box = document.getElementById("compFotoPreview");
+  const img = document.getElementById("compFotoPreviewImg");
+  if (!box || !img) return;
+  if (!file) {
+    img.removeAttribute("src");
+    box.classList.add("hidden");
+    return;
+  }
+  img.src = URL.createObjectURL(file);
+  box.classList.remove("hidden");
+}
+
+function limparPreviewFotoCompra() {
+  previewFotoCompra(null);
+  if (compFotoModal) compFotoModal.value = "";
 }
 
 // Legacy alias
@@ -574,6 +691,7 @@ async function abrirCompraRapida() {
   document.getElementById("compValorTotalModal").value = "";
   document.getElementById("compLinkModal").value = "";
   document.getElementById("compDescricaoModal").value = "";
+  limparPreviewFotoCompra();
   
   // Mudar o título do modal
   document.querySelector("#modalCompra .modal-head h3").innerText = "Compra Rápida (< R$2.000)";
@@ -654,15 +772,20 @@ async function compras(){
   const compData = data.data || data;
   const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
   const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3><p class="app-version">Versão ${APP_VERSION} — pedidos mostram unidade, descrição e foto</p>${comprasAtivas.map(c=>cardPedidoCompra(c,{admin:isAdmin})).join("")||"Nenhuma solicitação."}</div>`;
+  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3><p class="app-version">Versão ${APP_VERSION} — unidade de medida obrigatória (m, cm, kg, g, L, mL, un)</p>${comprasAtivas.map(c=>cardPedidoCompra(c,{admin:isAdmin})).join("")||"Nenhuma solicitação."}</div>`;
 }
 function abrirModalCompra() {
   modalCompra.classList.remove("hidden");
   formCompra.reset();
+  limparPreviewFotoCompra();
+  delete formCompra.dataset.tipoCompra;
+  document.querySelector("#modalCompra .modal-head h3").innerText = "Nova Solicitação de Compra";
+  document.querySelector("#formCompra button[type='submit']").innerText = "Enviar Solicitação";
 }
 
 function fecharModalCompra() {
   modalCompra.classList.add("hidden");
+  limparPreviewFotoCompra();
 }
 
 async function salvarCompraDetalhada(e) {
@@ -683,12 +806,12 @@ async function salvarCompraDetalhada(e) {
     if(!solicitante) return mostrarErro("Informe o solicitante");
     if(!item) return mostrarErro("Informe o item");
     if(!quantidade) return mostrarErro("Informe a quantidade");
-    if(!unidade) return mostrarErro("Informe a unidade");
+    if(!unidadeMedidaValida(unidade)) return mostrarErro("Selecione a unidade de medida");
     
-    // Upload foto via Cloudinary
     let fotoUrl = null;
     if (foto) {
       fotoUrl = await uploadFotoCloudinary(foto);
+      if (!fotoUrl) return;
     }
     
     await js(API+"/compras",{
@@ -950,7 +1073,8 @@ async function salvarProdutoEstoque(e) {
     const fotoFile = window._estoqueFotoPendente || document.getElementById("estoqueFoto")?.files[0];
     if (fotoFile) {
       const fotoUrl = await uploadFotoCloudinary(fotoFile);
-      if (fotoUrl) dados.foto_url = fotoUrl;
+      if (!fotoUrl) return;
+      dados.foto_url = fotoUrl;
       window._estoqueFotoPendente = null;
     } else if (id) {
       const atual = await js(API + `/estoque/${id}`);
@@ -996,24 +1120,44 @@ function fecharModalCompraRapida() {
 async function salvarCompraRapida(e) {
   e.preventDefault();
   try {
-    const valor = parseFloat(document.getElementById("crValor").value);
+    const valorTotal = parseFloat(document.getElementById("crValor").value);
+    const unidade = document.getElementById("crUnidade").value.trim();
+    const fotoFile = document.getElementById("crFoto")?.files?.[0];
     
-    if (valor > 2000) {
+    if (valorTotal > 2000) {
       mostrarErro("Valor máximo para compra rápida é R$ 2000!");
       return;
     }
+    if (!unidadeMedidaValida(unidade)) {
+      mostrarErro("Selecione a unidade de medida");
+      return;
+    }
+
+    let fotoUrl = null;
+    if (fotoFile) {
+      fotoUrl = await uploadFotoCloudinary(fotoFile);
+      if (!fotoUrl) return;
+    }
     
     const dados = {
-      solicitante: document.getElementById("crSolicitante").value,
-      produto: document.getElementById("crProduto").value,
+      solicitante: document.getElementById("crSolicitante").value.trim(),
+      item: document.getElementById("crProduto").value.trim(),
       quantidade: parseFloat(document.getElementById("crQtd").value),
-      valor: valor,
-      descricao: document.getElementById("crDescricao").value,
-      tipo: "rapida",
-      status: "aprovada"
+      unidade,
+      categoria: document.getElementById("crCategoria").value,
+      destino: document.getElementById("crDestino").value.trim(),
+      valor_unitario: parseFloat(document.getElementById("crValorUnit").value) || 0,
+      valor_total: valorTotal,
+      descricao: document.getElementById("crDescricao").value.trim(),
+      link_produto: document.getElementById("crLink").value.trim(),
+      foto_url: fotoUrl
     };
     
-    await js(`${API}/compras-rapidas`, { method: "POST", body: JSON.stringify(dados) });
+    await js(`${API}/compras/rapida`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(dados)
+    });
     mostrarSucesso("Compra rápida registrada! Será incluída no relatório semanal.");
     fecharModalCompraRapida();
   } catch (e) {
@@ -1318,8 +1462,15 @@ function initScrollLockObserver() {
   atualizarScrollLock();
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initScrollLockObserver);
-} else {
+function initAppUi() {
+  initSelectsUnidade();
   initScrollLockObserver();
+  const manSol = document.getElementById("manSolicitante");
+  if (manSol) toggleSolicitanteOutro(manSol);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initAppUi);
+} else {
+  initAppUi();
 }

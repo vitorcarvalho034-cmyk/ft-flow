@@ -177,6 +177,8 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 .pedido-label { font-weight: 800; color: #15803d; font-size: 13px; display: block; }
 .pedido-link { display: inline-block; margin-top: 10px; color: #15803d; font-weight: 700; text-decoration: none; }
 .pedido-foto { width: 100%; max-height: 200px; object-fit: cover; border-radius: 12px; margin: 10px 0; display: block; border: 1px solid #e3eee7; }
+.pedido-foto-preview { margin: 8px 0; }
+.pedido-foto-preview img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 12px; border: 1px solid #86efac; }
 .app-version { font-size: 12px; color: #15803d; font-weight: 700; margin: 0 0 12px; padding: 6px 10px; background: #ecfdf5; border-radius: 8px; display: inline-block; }
 
 /* ── Estoque V6 ── */

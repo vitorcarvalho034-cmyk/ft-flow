@@ -43,6 +43,10 @@ const pool = new Pool({
 });
 
 let ready = false;
+const UNIDADES_MEDIDA_VALIDAS = ["m", "cm", "kg", "g", "L", "mL", "un"];
+function unidadeMedidaValida(u) {
+  return UNIDADES_MEDIDA_VALIDAS.includes(String(u || "").trim());
+}
 async function q(sql, params=[]) {
   const c = await pool.connect();
   try { return await c.query(sql, params); }
@@ -52,7 +56,8 @@ async function q(sql, params=[]) {
 async function ensureDb(){
   if(ready) return;
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
-  await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, created_at TIMESTAMP DEFAULT NOW(), concluido_at TIMESTAMP)`);
+  await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, unidade_compra TEXT, created_at TIMESTAMP DEFAULT NOW(), concluido_at TIMESTAMP)`);
+  await q(`ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS unidade_compra TEXT`);
   await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
   await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS fornecedor TEXT`);
   await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS local TEXT`);
@@ -158,7 +163,26 @@ app.post("/manutencoes",async(req,res)=>{
   if(!b.solicitante || !b.local_item || !b.defeito) return res.status(400).json({error:"Campos obrigatórios faltando"});
   if(String(b.solicitante).length > 100) return res.status(400).json({error:"Solicitante muito longo"});
   if(String(b.defeito).length > 1000) return res.status(400).json({error:"Descrição muito longa"});
-  const precisa=String(b.precisa_compra)==="1"?1:0,status=precisa?"Aguardando peça":"Aberto";const r=await q(`INSERT INTO manutencoes (solicitante,data_ocorrencia,tipo,local_item,defeito,urgencia,status,responsavel,solucao,precisa_compra,item_compra,quantidade_compra,categoria_compra,destino_compra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`,[b.solicitante,b.data_ocorrencia,b.tipo,b.local_item,b.defeito,b.urgencia,status,b.responsavel||"",b.solucao||"",precisa,b.item_compra||"",b.quantidade_compra||0,b.categoria_compra||"",b.destino_compra||""]);await notify(precisa?"Nova manutenção com solicitação de compra":"Nova manutenção criada",`Solicitante: ${b.solicitante||"-"}\nLocal: ${b.local_item||"-"}`,"manutencao",{Solicitante:b.solicitante,Local:b.local_item,Problema:b.defeito});if(precisa)await q(`INSERT INTO compras (manutencao_id,item,quantidade,categoria,destino,status,solicitante) VALUES ($1,$2,$3,$4,$5,$6,$7)`,[r.rows[0].id,b.item_compra||"Item não informado",b.quantidade_compra||1,b.categoria_compra||"Peças",b.destino_compra||b.local_item||"Não informado","Em cotação",b.solicitante||"Não informado"]);res.json({id:r.rows[0].id});});
+  const precisa=String(b.precisa_compra)==="1"?1:0;
+  if(precisa){
+    if(!b.item_compra?.trim()) return res.status(400).json({error:"Informe o item da compra"});
+    if(!b.quantidade_compra || Number(b.quantidade_compra)<=0) return res.status(400).json({error:"Informe a quantidade da compra"});
+    if(!unidadeMedidaValida(b.unidade_compra)) return res.status(400).json({error:"Selecione uma unidade de medida válida"});
+  }
+  const status=precisa?"Aguardando peça":"Aberto";
+  const r=await q(
+    `INSERT INTO manutencoes (solicitante,data_ocorrencia,tipo,local_item,defeito,urgencia,status,responsavel,solucao,precisa_compra,item_compra,quantidade_compra,categoria_compra,destino_compra,unidade_compra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+    [b.solicitante,b.data_ocorrencia,b.tipo,b.local_item,b.defeito,b.urgencia,status,b.responsavel||"",b.solucao||"",precisa,b.item_compra||"",b.quantidade_compra||0,b.categoria_compra||"",b.destino_compra||"",b.unidade_compra||null]
+  );
+  await notify(precisa?"Nova manutenção com solicitação de compra":"Nova manutenção criada",`Solicitante: ${b.solicitante||"-"}\nLocal: ${b.local_item||"-"}`,"manutencao",{Solicitante:b.solicitante,Local:b.local_item,Problema:b.defeito});
+  if(precisa){
+    await q(
+      `INSERT INTO compras (manutencao_id,item,quantidade,unidade,categoria,destino,status,solicitante) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [r.rows[0].id,b.item_compra||"Item não informado",b.quantidade_compra||1,b.unidade_compra,b.categoria_compra||"Peças",b.destino_compra||b.local_item||"Não informado","Em cotação",b.solicitante||"Não informado"]
+    );
+  }
+  res.json({id:r.rows[0].id});
+});
 app.put("/manutencoes/:id",async(req,res)=>{await q(`UPDATE manutencoes SET status=$1,responsavel=$2,solucao=$3,concluido_at=$4 WHERE id=$5`,[req.body.status,req.body.responsavel||"",req.body.solucao||"",req.body.status==="Concluído"?new Date():null,req.params.id]);res.json({ok:true});});
 
 app.get("/estoque",async(req,res)=>{
@@ -191,6 +215,42 @@ app.get("/estoque/:id/historico",async(req,res)=>{const r=await q(`SELECT * FROM
 app.post("/estoque/:id/entrada",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});await q(`UPDATE estoque SET quantidade=quantidade+$1, fornecedor=COALESCE($2,fornecedor) WHERE id=$3`,[qtd,req.body.fornecedor||null,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.fornecedor||"","entrada","entrada_manual",req.body.observacao||""]);const atualizado=await q(`SELECT quantidade FROM estoque WHERE id=$1`,[req.params.id]);res.json({ok:true,quantidade:atualizado.rows[0].quantidade});});
 app.post("/estoque/:id/baixa",async(req,res)=>{const qtd=Number(req.body.quantidade||0);if(qtd<=0)return res.status(400).json({error:"Quantidade inválida"});const r=await q(`SELECT * FROM estoque WHERE id=$1`,[req.params.id]);const item=r.rows[0];if(!item)return res.status(404).json({error:"Item não encontrado"});if(Number(item.quantidade)<qtd)return res.status(400).json({error:"Quantidade maior que estoque disponível"});await q(`UPDATE estoque SET quantidade=quantidade-$1 WHERE id=$2`,[qtd,req.params.id]);await q(`INSERT INTO movimentacoes_estoque (produto,categoria,quantidade,unidade,destino,tipo,origem,observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,[item.nome,item.categoria,qtd,item.unidade,req.body.destino||"","saida","baixa_manual",req.body.observacao||""]);const atualizado=await q(`SELECT quantidade FROM estoque WHERE id=$1`,[req.params.id]);res.json({ok:true,quantidade:atualizado.rows[0].quantidade});});
 
+app.post("/upload/foto", async (req, res) => {
+  try {
+    const dataUri = String(req.body.base64 || "");
+    const match = dataUri.match(/^data:(image\/[\w+.-]+);base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: "Formato de imagem inválido" });
+
+    const mime = match[1];
+    const buffer = Buffer.from(match[2], "base64");
+    if (buffer.length > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: "Imagem muito grande (máx. 10 MB)" });
+    }
+
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || "dxvxkz8yd";
+    const preset = process.env.CLOUDINARY_UPLOAD_PRESET || "ft_flow_unsigned";
+    const filename = String(req.body.filename || "foto.jpg").replace(/[^\w.\-]/g, "_");
+
+    const form = new FormData();
+    form.append("file", new Blob([buffer], { type: mime }), filename);
+    form.append("upload_preset", preset);
+
+    const up = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: "POST",
+      body: form
+    });
+    const data = await up.json();
+    if (!up.ok) {
+      console.error("Cloudinary upload failed:", data);
+      return res.status(502).json({ error: data.error?.message || "Falha ao enviar foto" });
+    }
+    res.json({ url: data.secure_url });
+  } catch (e) {
+    console.error("Upload foto error:", e);
+    res.status(500).json({ error: e.message || "Erro no upload" });
+  }
+});
+
 app.get("/compras",async(req,res)=>{
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
@@ -201,6 +261,7 @@ app.get("/compras",async(req,res)=>{
 });
 app.post("/compras",async(req,res)=>{
   const b=req.body;
+  if(!unidadeMedidaValida(b.unidade)) return res.status(400).json({error:"Selecione uma unidade de medida válida"});
   const r=await q(
     `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
     [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null]
@@ -436,7 +497,10 @@ app.delete("/estoque/:id", async (req, res) => {
 // ===== ROTAS PARA COMPRAS RÁPIDAS =====
 app.post("/compras/rapida", async (req, res) => {
   const b = req.body;
-  const valor_total = Number(b.quantidade || 0) * Number(b.valor_unitario || 0);
+  if (!unidadeMedidaValida(b.unidade)) {
+    return res.status(400).json({ error: "Selecione uma unidade de medida válida" });
+  }
+  const valor_total = Number(b.valor_total || 0) || Number(b.quantidade || 0) * Number(b.valor_unitario || 0);
   
   if (valor_total >= 2000) {
     return res.status(400).json({ error: "Compra rápida deve ser menor que R$2000" });
@@ -444,8 +508,8 @@ app.post("/compras/rapida", async (req, res) => {
   
   try {
     const r = await q(
-      `INSERT INTO compras (item, quantidade, unidade, categoria, destino, solicitante, status, valor_unitario, valor_total, descricao, eh_compra_rapida, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING id`,
-      [b.item, b.quantidade, b.unidade || null, b.categoria || "Diversos", b.destino || "", b.solicitante || "Não informado", "Aprovado", b.valor_unitario || 0, valor_total, b.descricao || null, 1]
+      `INSERT INTO compras (item, quantidade, unidade, categoria, destino, solicitante, status, valor_unitario, valor_total, descricao, link_produto, foto_url, eh_compra_rapida, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW()) RETURNING id`,
+      [b.item, b.quantidade, b.unidade || null, b.categoria || "Diversos", b.destino || "", b.solicitante || "Não informado", "Aprovado", b.valor_unitario || 0, valor_total, b.descricao || null, b.link_produto || null, b.foto_url || null, 1]
     );
     
     await notify("Nova compra rápida (<R$2000)", `Item: ${b.item} | Total: R$ ${valor_total.toFixed(2)}`, "compra", {

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "v34";
+const CACHE_VERSION = "v37";
 const CACHE_NAME = `ft-flow-${CACHE_VERSION}`;
 const ASSETS = [
   "/",
