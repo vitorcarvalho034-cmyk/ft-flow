@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>FT FLOW - Login Test</title>
+  <style>body{font-family:Arial,Helvetica,sans-serif;padding:24px}label{display:block;margin-top:8px}input{padding:8px;width:300px}button{margin-top:12px;padding:8px 12px}pre{background:#f3f3f3;padding:12px;border-radius:6px}</style>
+</head>
+<body>
+  <h2>Test Login (envia POST)</h2>
+  <p>Use this page to test the /api/auth/login endpoint via the browser. It will POST to <code>/api/auth/login</code> (redirects to Netlify function).</p>
+  <label>Usuário<input id="user" value="admin"></label>
+  <label>Senha<input id="pass" value="123" type="password"></label>
+  <button id="btn">Fazer login</button>
+  <h3>Resposta</h3>
+  <pre id="out">—</pre>
+
+  <script>
+    document.getElementById('btn').addEventListener('click', async ()=>{
+      const user = document.getElementById('user').value;
+      const pass = document.getElementById('pass').value;
+      const out = document.getElementById('out');
+      out.textContent = 'Enviando...';
+      try{
+        const r = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ username: user, password: pass })
+        });
+        const txt = await r.text();
+        out.textContent = `HTTP ${r.status}\n\n` + txt;
+      }catch(e){ out.textContent = 'Erro: '+e.message; }
+    });
+  </script>
+</body>
+</html>
