@@ -2,7 +2,6 @@ const express = require("express");
 const serverless = require("serverless-http");
 const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
-const pdf = require("pdf-parse");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -42,51 +41,30 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-let ready = false;
-const UNIDADES_MEDIDA_VALIDAS = ["m", "cm", "kg", "g", "L", "mL", "un"];
-function unidadeMedidaValida(u) {
-  return UNIDADES_MEDIDA_VALIDAS.includes(String(u || "").trim());
-}
 async function q(sql, params = []) {
   const c = await pool.connect();
   try { return await c.query(sql, params); }
   finally { c.release(); }
 }
 
+let ready = false;
+const UNIDADES_MEDIDA_VALIDAS = ["m", "cm", "kg", "g", "L", "mL", "un"];
+function unidadeMedidaValida(u) {
+  return UNIDADES_MEDIDA_VALIDAS.includes(String(u || "").trim());
+}
+
 async function ensureDb(){
   if(ready) return;
+  // Create tables used by the app
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
-  await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, criado_em TIMESTAMP DEFAULT NOW())`);
-  await q(`ALTER TABLE manutencoes ADD COLUMN IF NOT EXISTS unidade_compra TEXT`);
-  await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
-  await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS fornecedor TEXT`);
-  await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS local TEXT`);
-  await q(`ALTER TABLE estoque ADD COLUMN IF NOT EXISTS observacoes TEXT`);
-  await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT, contato TEXT, telefone TEXT, tipo_produto TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, unidade TEXT, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, descricao TEXT, link_produto TEXT, foto_url TEXT, fornecedor_escolhido TEXT, valor_escolhido REAL, created_at TIMESTAMP DEFAULT NOW())`);
-  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS unidade TEXT`);
-  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS descricao TEXT`);
-  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS link_produto TEXT`);
-  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS foto_url TEXT`);
-  // Ensure received columns for approve-received
-  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`);
-  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_by INTEGER`);
+  await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, unidade TEXT, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, descricao TEXT, link_produto TEXT, foto_url TEXT, fornecedor_escolhido TEXT, valor_escolhido REAL, created_at TIMESTAMP DEFAULT NOW(), received_at TIMESTAMP, received_by INTEGER)`);
   await q(`CREATE TABLE IF NOT EXISTS cotacoes (id SERIAL PRIMARY KEY, compra_id INTEGER, fornecedor TEXT, valor REAL, observacao TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS notificacoes (id SERIAL PRIMARY KEY, titulo TEXT, mensagem TEXT, tipo TEXT, destino_role TEXT DEFAULT 'admin', lida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
-  await q(`CREATE TABLE IF NOT EXISTS movimentacoes_estoque (id SERIAL PRIMARY KEY, produto TEXT, categoria TEXT, quantidade REAL, unidade TEXT, destino TEXT, tipo TEXT, origem TEXT, observacao TEXT, created_at TIMESTAMP DEFAULT NOW())`);
-  await q(`CREATE TABLE IF NOT EXISTS recomendacoes_pdf (id SERIAL PRIMARY KEY, arquivo TEXT, semana TEXT, status TEXT DEFAULT 'Pendente', created_at TIMESTAMP DEFAULT NOW())`);
-  await q(`CREATE TABLE IF NOT EXISTS recomendacao_itens (id SERIAL PRIMARY KEY, recomendacao_id INTEGER, produto TEXT, quantidade REAL, unidade TEXT, destino TEXT, confirmado INTEGER DEFAULT 0)`);
-  await q(`CREATE TABLE IF NOT EXISTS cotacoes_gerais (id SERIAL PRIMARY KEY, titulo TEXT, categoria TEXT, status TEXT DEFAULT 'Aberta', created_at TIMESTAMP DEFAULT NOW())`);
-  await q(`CREATE TABLE IF NOT EXISTS cotacao_itens (id SERIAL PRIMARY KEY, cotacao_id INTEGER, descricao TEXT, quantidade REAL, unidade TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS cotacao_fornecedores (id SERIAL PRIMARY KEY, cotacao_id INTEGER, nome TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS cotacao_precos (id SERIAL PRIMARY KEY, cotacao_id INTEGER, item_id INTEGER, fornecedor_id INTEGER, valor REAL DEFAULT 0)`);
-  await q(`CREATE TABLE IF NOT EXISTS aplicacoes_adubacao (id SERIAL PRIMARY KEY, titulo TEXT, status TEXT DEFAULT 'Confirmada', created_at TIMESTAMP DEFAULT NOW())`);
-  await q(`CREATE TABLE IF NOT EXISTS aplicacao_adubacao_itens (id SERIAL PRIMARY KEY, aplicacao_id INTEGER, produto TEXT, quantidade_total REAL, unidade TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS aplicacao_adubacao_destinos (id SERIAL PRIMARY KEY, aplicacao_id INTEGER, produto TEXT, destino TEXT, quantidade REAL, unidade TEXT)`);
-  await q(`CREATE TABLE IF NOT EXISTS aprovacoes_cotacao (id SERIAL PRIMARY KEY, cotacao_id INTEGER, email_patroa TEXT, observacoes TEXT, urgente INTEGER DEFAULT 0, status TEXT DEFAULT 'pendente', created_at TIMESTAMP DEFAULT NOW(), aprovado_por TEXT, rejeitado_por TEXT, respondida_em TIMESTAMP, motivo_rejeicao TEXT)`);
-  // Simple audit table for sensitive ops
+  await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
+  await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, criado_em TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS audit_log (id SERIAL PRIMARY KEY, actor_id INTEGER, action TEXT, target_table TEXT, target_id INTEGER, meta JSONB, created_at TIMESTAMP DEFAULT NOW())`);
 
+  // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
   if(u.rows[0].total===0) {
     const adminPass = await bcrypt.hash("123", 10);
@@ -95,12 +73,9 @@ async function ensureDb(){
       ["admin", adminPass, "Administrador", "admin", "operador", operadorPass, "Operador", "funcionario"]
     );
   }
-  
-  const e = await q(`SELECT COUNT(*)::int total FROM estoque`);
-  if(e.rows[0].total===0) await q(`INSERT INTO estoque (nome,categoria,unidade,quantidade,minimo) VALUES
-  ('Caixa de Papelão 48','Embalagens','un',18,30),('Caixa de Papelão 58','Embalagens','un',65,40),('Adubo 04-14-08','Adubo','kg',120,50),('Defensivo Preventivo','Defensivo','L',8,10),('Bion','Defensivo','L',5,10)`);
   ready = true;
 }
+
 app.use(async (req,res,next)=>{try{await ensureDb(); next();}catch(e){console.error(e); res.status(500).json({error:e.message});}});
 
 async function email(titulo,dados={}){
@@ -142,136 +117,39 @@ async function whatsappCallMeBot(phone, text) {
   if (!r.ok || /error/i.test(body)) throw new Error(body.slice(0, 120) || `CallMeBot HTTP ${r.status}`);
 }
 
-async function whatsappTwilio(phone, text) {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  const token = process.env.TWILIO_AUTH_TOKEN;
-  const from = process.env.TWILIO_WHATSAPP_FROM || "whatsapp:+14155238886";
-  if (!sid || !token) throw new Error("Twilio não configurado");
-  const auth = Buffer.from(`${sid}:${token}`).toString("base64");
-  const params = new URLSearchParams({
-    From: from.startsWith("whatsapp:") ? from : `whatsapp:${from}`,
-    To: `whatsapp:+${phone}`,
-    Body: text
-  });
-  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-    method: "POST",
-    headers: { Authorization: `Basic ${auth}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString()
-  });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.message || "Twilio falhou");
-}
-
-async function whatsappZapi(phone, text) {
-  const instance = process.env.ZAPI_INSTANCE_ID;
-  const token = process.env.ZAPI_TOKEN;
-  if (!instance || !token) throw new Error("Z-API não configurada");
-  const headers = { "Content-Type": "application/json" };
-  if (process.env.ZAPI_CLIENT_TOKEN) headers["Client-Token"] = process.env.ZAPI_CLIENT_TOKEN;
-  const r = await fetch(`https://api.z-api.io/instances/${instance}/token/${token}/send-text`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ phone, message: text })
-  });
-  if (!r.ok) {
-    const err = await r.text();
-    throw new Error(err.slice(0, 120) || `Z-API HTTP ${r.status}`);
-  }
-}
-
-async function whatsappWebhook(phone, text) {
-  const url = process.env.WHATSAPP_WEBHOOK_URL;
-  if (!url) throw new Error("WHATSAPP_WEBHOOK_URL não configurada");
-  const headers = { "Content-Type": "application/json" };
-  if (process.env.WHATSAPP_WEBHOOK_TOKEN) headers.Authorization = `Bearer ${process.env.WHATSAPP_WEBHOOK_TOKEN}`;
-  const r = await fetch(url, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ phone, number: phone, text, message: text })
-  });
-  if (!r.ok) throw new Error(`Webhook HTTP ${r.status}`);
-}
-
-async function whatsapp(titulo, dados = {}, msgExtra = "") {
+async function whatsapp(phone, text) {
   const phones = telefonesWhatsAppAdmin();
   if (!phones.length) return;
-
   const provider = String(process.env.WHATSAPP_PROVIDER || "callmebot").toLowerCase();
-  const senders = {
-    callmebot: whatsappCallMeBot,
-    twilio: whatsappTwilio,
-    zapi: whatsappZapi,
-    webhook: whatsappWebhook
-  };
-  const send = senders[provider];
-  if (!send) {
-    console.log("WhatsApp provider desconhecido:", provider);
+  if (provider === 'callmebot') {
+    await whatsappCallMeBot(phones[0], text);
     return;
-  }
-
-  const text = montarTextoWhatsApp(titulo, dados, msgExtra);
-
-  if (provider === "callmebot") {
-    await send(phones[0], text);
-    return;
-  }
-
-  for (const phone of phones) {
-    await send(phone, text);
   }
 }
-
-const WHATSAPP_TIPOS = new Set(["manutencao", "compra"]);
 
 async function notify(titulo,msg,tipo="sistema",dados={}){
   await q(`INSERT INTO notificacoes (titulo,mensagem,tipo,destino_role) VALUES ($1,$2,$3,$4)`,[titulo,msg,tipo,"admin"]);
-  const tasks = [email(titulo,dados).catch(e => console.log("Email:", e.message))];
-  if (WHATSAPP_TIPOS.has(tipo)) {
-    tasks.push(whatsapp(titulo, dados, msg).catch(e => console.log("WhatsApp:", e.message)));
-  }
-  await Promise.allSettled(tasks);
+  // fire and forget optional channels
+  email(titulo,dados).catch(e=>console.log('Email err',e.message));
+  if (tipo === 'compra' || tipo === 'manutencao') whatsapp(titulo, montarTextoWhatsApp(titulo,dados,msg)).catch(e=>console.log('WA err',e.message));
 }
 
-// LOGIN COM JWT
-
+// LOGIN
 app.post("/auth/login", async (req, res) => {
-  const username = String(req.body.username || "").trim().toLowerCase();
-  const password = String(req.body.password || "").trim();
-
-  if (!username || !password) {
-    return res.status(400).json({ error: "Usuário e senha são obrigatórios" });
-  }
-
-  const r = await q(
-    `SELECT id, username, password, nome, role FROM usuarios WHERE username = $1`,
-    [username]
-  );
-
-  if (!r.rows[0]) {
-    return res.status(401).json({ error: "Usuário ou senha inválidos" });
-  }
-
-  const senhaValida = await bcrypt.compare(password, r.rows[0].password);
-  if (!senhaValida) {
-    return res.status(401).json({ error: "Usuário ou senha inválidos" });
-  }
-
-  const token = jwt.sign(
-    { id: r.rows[0].id, username: r.rows[0].username, role: r.rows[0].role },
-    JWT_SECRET,
-    { expiresIn: "24h" }
-  );
-
-  res.json({
-    id: r.rows[0].id,
-    username: r.rows[0].username,
-    nome: r.rows[0].nome,
-    role: r.rows[0].role,
-    token: token
-  });
+  try{
+    const username = String(req.body.username || "").trim().toLowerCase();
+    const password = String(req.body.password || "").trim();
+    if (!username || !password) return res.status(400).json({ error: "Usuário e senha são obrigatórios" });
+    const r = await q(`SELECT id, username, password, nome, role FROM usuarios WHERE username = $1`, [username]);
+    if (!r.rows[0]) return res.status(401).json({ error: "Usuário ou senha inválidos" });
+    const senhaValida = await bcrypt.compare(password, r.rows[0].password);
+    if (!senhaValida) return res.status(401).json({ error: "Usuário ou senha inválidos" });
+    const token = jwt.sign({ id: r.rows[0].id, username: r.rows[0].username, role: r.rows[0].role }, JWT_SECRET, { expiresIn: "24h" });
+    res.json({ id: r.rows[0].id, username: r.rows[0].username, nome: r.rows[0].nome, role: r.rows[0].role, token });
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
-// --- ADMIN: change password endpoint ---
+// ADMIN: change password
 app.post('/admin/change-password', async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
@@ -293,54 +171,56 @@ app.post('/admin/change-password', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
-app.get("/dashboard",async(req,res)=>{const a=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status!='Concluído'`),u=await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgenc[...`] );
-// Note: truncated original route for brevity; keep existing handlers intact below
-
-// (The rest of the existing routes are preserved unchanged until compras handlers)
-
-app.get("/manutencoes",async(req,res)=>{
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(50, Number(req.query.limit) || 20);
-  const offset = (page - 1) * limit;
-  const total = await q(`SELECT COUNT(*)::int total FROM manutencoes`);
-  const data = await q(`SELECT * FROM manutencoes ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
-  res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
-});
-// ... keep all previous route implementations up to compras ...
-
-// COMPRAS list/create
+// COMPRAS
 app.get("/compras",async(req,res)=>{
-  const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(50, Number(req.query.limit) || 20);
-  const offset = (page - 1) * limit;
-  const total = await q(`SELECT COUNT(*)::int total FROM compras`);
-  const data = await q(`SELECT * FROM compras ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
-  res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
+  try{
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(50, Number(req.query.limit) || 20);
+    const offset = (page - 1) * limit;
+    const total = await q(`SELECT COUNT(*)::int total FROM compras`);
+    const data = await q(`SELECT * FROM compras ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
 app.post("/compras",async(req,res)=>{
-  const b=req.body;
-  if(!unidadeMedidaValida(b.unidade)) return res.status(400).json({error:"Selecione uma unidade de medida válida"});
-  const r=await q(
-    `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-    [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null]
-  );
-  const unidadeTxt=b.unidade?` ${b.unidade}`:"";
-  await notify("Nova solicitação de compra", `Item: ${b.item}`, "compra", {
-    ID: `#${r.rows[0].id}`,
-    Item: b.item,
-    Quantidade: `${b.quantidade}${unidadeTxt}`,
-    Solicitante: b.solicitante,
-    Categoria: b.categoria,
-    Destino: b.destino,
-    ...(b.descricao_detalhada || b.descricao ? { Descrição: String(b.descricao_detalhada || b.descricao).slice(0, 200) } : {}),
-    ...(b.foto_url ? { Foto: b.foto_url } : {})
-  });
-  res.json({id:r.rows[0].id});
+  try{
+    const b=req.body;
+    if(!unidadeMedidaValida(b.unidade)) return res.status(400).json({error:"Selecione uma unidade de medida válida"});
+    const r=await q(
+      `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+      [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null]
+    );
+    const unidadeTxt=b.unidade?` ${b.unidade}`:"";
+    await notify("Nova solicitação de compra", `Item: ${b.item}`, "compra", {
+      ID: `#${r.rows[0].id}`,
+      Item: b.item,
+      Quantidade: `${b.quantidade}${unidadeTxt}`,
+      Solicitante: b.solicitante,
+      Categoria: b.categoria,
+      Destino: b.destino,
+      ...(b.descricao_detalhada || b.descricao ? { Descrição: String(b.descricao_detalhada || b.descricao).slice(0, 200) } : {}),
+      ...(b.foto_url ? { Foto: b.foto_url } : {})
+    });
+    res.json({id:r.rows[0].id});
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
-app.get("/compras/:id/cotacoes",async(req,res)=>res.json((await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id])).rows));
-app.post("/compras/:id/cotacoes",async(req,res)=>{const b=req.body;const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao]);res.json({id:r.rows[0].id});});
+app.get("/compras/:id/cotacoes",async(req,res)=>{
+  try{
+    const r = await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id]);
+    res.json(r.rows);
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
+});
+
+app.post("/compras/:id/cotacoes",async(req,res)=>{
+  try{
+    const b=req.body;
+    const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao]);
+    res.json({id:r.rows[0].id});
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
+});
+
 app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
   try {
     await q(`DELETE FROM cotacoes WHERE id=$1 AND compra_id=$2`, [req.params.preco_id, req.params.id]);
@@ -350,10 +230,10 @@ app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
   }
 });
 
-app.put("/compras/:id/status",async(req,res)=>{await q(`UPDATE compras SET status=$1 WHERE id=$2`,[req.body.status,req.params.id]);res.json({ok:true});});
-app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});});
+app.put("/compras/:id/status",async(req,res)=>{try{await q(`UPDATE compras SET status=$1 WHERE id=$2`,[req.body.status,req.params.id]);res.json({ok:true});}catch(e){res.status(500).json({error:e.message});}});
+app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{try{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});}catch(e){res.status(500).json({error:e.message});}});
 
-// --- Approve received endpoint (admin only) ---
+// Approve received (admin only)
 app.post('/compras/:id/approve-received', async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
@@ -366,7 +246,7 @@ app.post('/compras/:id/approve-received', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
-// Protect purchase delete: only admin may delete (hard delete)
+// DELETE compra (admin only) - hard delete
 app.delete("/compras/:id", async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
@@ -379,9 +259,9 @@ app.delete("/compras/:id", async (req, res) => {
   }
 });
 
-// (rest of routes: fornecedores, notificacoes, cotacoes-gerais, recomendacoes, adubacao, relatorios, aprovacoes, estoque, etc.)
+// Basic fornecedores/notificacoes endpoints
+app.get('/fornecedores', async (req, res) => { try{ const r = await q('SELECT * FROM fornecedores ORDER BY nome'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
+app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
 
-// For brevity we keep the rest of the original handlers unchanged — in this commit we focused on admin endpoints and DB columns.
-
-// Handler - MUST be the last line
+// Handler
 module.exports.handler = serverless(app);
