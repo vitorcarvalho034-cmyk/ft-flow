@@ -953,13 +953,17 @@ async function cotacoesGerais(){
         const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
         const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
         
-        html += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center;">
-          <div style="font-weight: bold; margin-bottom: 8px;">${htmlEsc(cot.fornecedor)}</div>
+        html += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center; display: flex; flex-direction: column;">
+          <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(cot.fornecedor)}</div>
           <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
-          <div style="font-size: 12px; color: #666; margin-bottom: 10px;">${cot.observacao || '-'}</div>
-          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, '${htmlEsc(cot.fornecedor)}', ${cot.valor})" style="width: 100%;">
+          <div style="font-size: 12px; color: #666; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; max-height: 60px; overflow-y: auto;">${cot.observacao || '-'}</div>
+          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, '${htmlEsc(cot.fornecedor)}', ${cot.valor})" style="width: 100%; margin-bottom: 6px;">
             ${selecionado ? '✓ SELECIONADO' : 'Aprovar'}
           </button>
+          <div style="display: flex; gap: 4px; justify-content: center;">
+            <button class="secondary small" onclick="editarCotacao(${cot.id})" style="flex: 1; font-size: 12px;">✏️ Editar</button>
+            <button class="danger small" onclick="deletarCotacao(${compra.id}, ${cot.id})" style="flex: 1; font-size: 12px;">🗑️ Deletar</button>
+          </div>
         </div>`;
       });
       
@@ -1297,10 +1301,22 @@ async function editarCotacao(id) {
   mostrarSucesso("Modo edição ativado!");
 }
 
+async function deletarCotacao(compraId, cotacaoId) {
+  if (confirm("Excluir esta cotação?")) {
+    try {
+      await js(`${API}/compras/${compraId}/cotacoes/${cotacaoId}`, { method: "DELETE" });
+      mostrarSucesso("Cotação excluída!");
+      cotacoesGerais();
+    } catch (e) {
+      mostrarErro(e.message);
+    }
+  }
+}
+
 async function excluirCotacao(id) {
   if (confirm("Excluir esta cotação?")) {
     try {
-      await js(`${API}/cotacoes/${id}`, { method: "DELETE" });
+      await js(`${API}/cotações/${id}`, { method: "DELETE" });
       mostrarSucesso("Cotação excluída!");
       fecharModalCotacaoComparacao();
     } catch (e) {
