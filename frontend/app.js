@@ -833,7 +833,9 @@ async function salvarCompraDetalhada(e) {
     });
     
     mostrarSucesso("Solicitação enviada com sucesso!");
-    fecharModalCompra();
+    formCompra.reset();
+    compUnidadeModal.value = '';
+    compCatModal.value = '';
     carregar();
     atualizarContadorNotificacoes();
   } catch(e) {
@@ -1179,72 +1181,35 @@ async function salvarCompraRapida(e) {
 // ===== COTAÇÕES: COMPARAÇÃO DE FORNECEDORES =====
 let fornecedorSelecionado = null;
 
-function abrirModalCotacaoComparacao(cotacaoId) {
+function abrirModalCotacaoComparacao(compraId) {
   try {
-    js(`${API}/cotacoes/${cotacaoId}`).then(dados => {
+    Promise.all([
+      js(`${API}/compras/${compraId}`),
+      js(`${API}/compras/${compraId}/cotacoes`)
+    ]).then(([compra, cotacoes]) => {
       const modal = document.getElementById("modalCotacaoComparacao");
       const container = document.getElementById("cotacaoComparacaoContainer");
       
-      const compra = dados.compra;
-      const fornecedores = dados.fornecedores || [];
-      const precos = dados.precos || [];
+      if (!cotacoes || cotacoes.length === 0) {
+        container.innerHTML = `<div class="card"><p>Nenhuma cotação adicionada ainda.</p><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-top: 10px;">+ Adicionar Fornecedor</button></div>`;
+        modal.classList.remove("hidden");
+        return;
+      }
       
-      // Montar tabela comparativa lado a lado
-      let html = `
-        <div style="overflow-x: auto; width: 100%;">
-          <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
-            <thead>
-              <tr style="background-color: #052e16; color: white;">
-                <th style="padding: 12px; text-align: left; border: 1px solid #ddd;"><strong>Produto</strong></th>
-      `;
+      const fornecedoresUnicos = [...new Set(cotacoes.map(c => c.fornecedor))];
       
-      // Adicionar cabeçalho com fornecedores
-      fornecedores.forEach((f) => {
-        html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>${f.nome}</strong></th>`;
-      });
+      let html = `<div style="overflow-x: auto; width: 100%;"><table style="width: 100%; border-collapse: collapse; font-size: 14px;"><thead><tr style="background-color: #052e16; color: white;"><th style="padding: 12px; text-align: left; border: 1px solid #ddd;"><strong>Fornecedor</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Valor</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Observação</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Ações</strong></th></tr></thead><tbody>`;
       
-      html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Ações</strong></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style="background-color: #f5f5f5;">
-                <td style="padding: 12px; border: 1px solid #ddd;"><strong>${compra.item || 'Produto'}</strong></td>
-      `;
-      
-      // Adicionar valores dos fornecedores
-      fornecedores.forEach((f) => {
-        const preco = precos.find(p => p.fornecedor === f.nome);
-        const valor = preco ? preco.valor : null;
-        const selecionado = fornecedorSelecionado?.id === f.id && fornecedorSelecionado?.cotacaoId === cotacaoId;
+      fornecedoresUnicos.forEach((fornecedor) => {
+        const cot = cotacoes.find(c => c.fornecedor === fornecedor);
+        const selecionado = fornecedorSelecionado?.nome === fornecedor && fornecedorSelecionado?.compraId === compraId;
         const bgColor = selecionado ? '#e8f5e9' : 'white';
         const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
         
-        html += `
-          <td style="padding: 12px; text-align: center; border: ${borderStyle}; background-color: ${bgColor};">
-            <div style="margin-bottom: 8px;">
-              ${valor ? `<span style="color: green; font-size: 18px; font-weight: bold;">R$ ${Number(valor).toFixed(2)}</span>` : '<span style="color: #999;">-</span>'}
-            </div>
-            ${preco?.observacao ? `<small style="color: #666;">${preco.observacao}</small><br>` : ''}
-            <button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${cotacaoId}, ${f.id}, '${f.nome}', ${valor || 0})" style="margin-top: 8px;">
-              ${selecionado ? '✓ SELECIONADO' : 'Selecionar'}
-            </button>
-            <button class="small danger" onclick="deletarFornecedor(${cotacaoId}, '${f.nome}')" style="margin-top: 4px; width: 100%;">🗑️ Deletar</button>
-          </td>
-        `;
+        html += `<tr style="background-color: ${bgColor};"><td style="padding: 12px; border: ${borderStyle};"><strong>${htmlEsc(fornecedor)}</strong></td><td style="padding: 12px; text-align: center; border: ${borderStyle}; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td><td style="padding: 12px; border: ${borderStyle};"><small>${cot.observacao || '-'}</small></td><td style="padding: 12px; text-align: center; border: ${borderStyle};"><button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right: 4px;">${selecionado ? '✓ SELECIONADO' : 'Selecionar'}</button><button class="small danger" onclick="deletarFornecedor(${compraId}, '${htmlEsc(fornecedor)}')">Deletar</button></td></tr>`;
       });
       
-      html += `
-                <td style="padding: 12px; text-align: center; border: 1px solid #ddd;">
-                  <button class="small" onclick="editarCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">✏️ Editar</button>
-                  <button class="small" onclick="abrirModalAdicionarFornecedor(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">➕ Adicionar</button>
-                  <button class="small danger" onclick="excluirCotacao(${cotacaoId})" style="margin-bottom: 4px; width: 100%;">🗑️ Excluir</button>
-                  ${fornecedorSelecionado && fornecedorSelecionado.cotacaoId === cotacaoId ? `<button class="primary" onclick="enviarParaAprovacao(${cotacaoId})" style="width: 100%;">✉️ Enviar</button>` : ''}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      `;
+      html += `</tbody></table></div><div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-right: 10px;">+ Adicionar Fornecedor</button>${fornecedorSelecionado && fornecedorSelecionado.compraId === compraId ? `<button class="primary" onclick="enviarParaAprovacao(${compraId})">Enviar para Aprovação</button>` : ''}</div>`;
       
       container.innerHTML = html;
       modal.classList.remove("hidden");

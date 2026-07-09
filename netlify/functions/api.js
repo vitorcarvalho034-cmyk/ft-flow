@@ -263,13 +263,17 @@ app.delete("/compras/:id", async (req, res) => {
 // DASHBOARD
 app.get('/dashboard', async (req, res) => {
   try {
-    const compras = await q(`SELECT COUNT(*)::int total FROM compras`);
-    const manutencoes = await q(`SELECT COUNT(*)::int total FROM manutencoes`);
-    const estoque = await q(`SELECT COUNT(*)::int total FROM estoque`);
+    const manutencoesAbertas = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aberto'`);
+    const urgentes = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgencia='Alta'`);
+    const aguardandoPeca = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peca'`);
+    const comprasPendentes = await q(`SELECT COUNT(*)::int total FROM compras WHERE status IN ('Em cotacao','Aprovado')`);
+    const estoqueBaixo = await q(`SELECT COUNT(*)::int total FROM estoque WHERE quantidade < minimo`);
     res.json({
-      compras: compras.rows[0].total,
-      manutencoes: manutencoes.rows[0].total,
-      estoque: estoque.rows[0].total
+      manutencoesAbertas: manutencoesAbertas.rows[0].total,
+      urgentes: urgentes.rows[0].total,
+      aguardandoPeca: aguardandoPeca.rows[0].total,
+      comprasPendentes: comprasPendentes.rows[0].total,
+      estoqueBaixo: estoqueBaixo.rows[0].total
     });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
