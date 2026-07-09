@@ -1296,9 +1296,17 @@ function fecharModalCotacaoComparacao() {
   document.getElementById("modalCotacaoComparacao").classList.add("hidden");
 }
 
-async function editarCotacao(id) {
-  // Abrir modal de edição
-  mostrarSucesso("Modo edição ativado!");
+async function editarCotacao(cotacaoId) {
+  try {
+    const cot = await js(`${API}/cotacoes/${cotacaoId}`);
+    document.getElementById("editCotacaoId").value = cot.id;
+    document.getElementById("editFornecedor").value = cot.fornecedor;
+    document.getElementById("editValor").value = cot.valor;
+    document.getElementById("editObservacao").value = cot.observacao || '';
+    document.getElementById("modalEditarCotacao").classList.remove("hidden");
+  } catch (e) {
+    mostrarErro(e.message);
+  }
 }
 
 async function deletarCotacao(compraId, cotacaoId) {

@@ -221,6 +221,13 @@ app.get("/compras/:id/cotacoes",async(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
+app.get("/cotacoes/:id",async(req,res)=>{
+  try{
+    const r = await q(`SELECT * FROM cotacoes WHERE id=$1`,[req.params.id]);
+    res.json(r.rows[0] || {});
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
+});
+
 app.post("/compras/:id/cotacoes",async(req,res)=>{
   try{
     const b=req.body;
