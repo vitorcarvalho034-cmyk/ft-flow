@@ -260,6 +260,98 @@ app.delete("/compras/:id", async (req, res) => {
   }
 });
 
+// DASHBOARD
+app.get('/dashboard', async (req, res) => {
+  try {
+    const compras = await q(`SELECT COUNT(*)::int total FROM compras`);
+    const manutencoes = await q(`SELECT COUNT(*)::int total FROM manutencoes`);
+    const estoque = await q(`SELECT COUNT(*)::int total FROM estoque`);
+    res.json({
+      compras: compras.rows[0].total,
+      manutencoes: manutencoes.rows[0].total,
+      estoque: estoque.rows[0].total
+    });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+// MANUTENCOES
+app.get('/manutencoes', async (req, res) => {
+  try {
+    const limit = Math.min(50, Number(req.query.limit) || 20);
+    const r = await q(`SELECT * FROM manutencoes ORDER BY id DESC LIMIT $1`, [limit]);
+    res.json(r.rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.post('/manutencoes', async (req, res) => {
+  try {
+    const b = req.body;
+    const r = await q(
+      `INSERT INTO manutencoes (solicitante, data_ocorrencia, tipo, local_item, defeito, urgencia, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [b.solicitante || 'Nao informado', b.data_ocorrencia || new Date().toISOString().split('T')[0], b.tipo, b.local_item, b.defeito, b.urgencia || 'Normal', 'Aberto']
+    );
+    await notify('Nova manutencao solicitada', `Tipo: ${b.tipo}`, 'manutencao', {
+      ID: `#${r.rows[0].id}`,
+      Tipo: b.tipo,
+      Local: b.local_item,
+      Defeito: b.defeito,
+      Solicitante: b.solicitante,
+      Urgencia: b.urgencia
+    });
+    res.json({ id: r.rows[0].id });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.get('/manutencoes/:id', async (req, res) => {
+  try {
+    const r = await q(`SELECT * FROM manutencoes WHERE id=$1`, [req.params.id]);
+    res.json(r.rows[0] || {});
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.put('/manutencoes/:id', async (req, res) => {
+  try {
+    const b = req.body;
+    await q(`UPDATE manutencoes SET status=$1, responsavel=$2, solucao=$3 WHERE id=$4`, [b.status, b.responsavel, b.solucao, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+// ESTOQUE
+app.get('/estoque', async (req, res) => {
+  try {
+    const r = await q(`SELECT * FROM estoque ORDER BY nome`);
+    res.json(r.rows);
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.post('/estoque', async (req, res) => {
+  try {
+    const b = req.body;
+    const r = await q(
+      `INSERT INTO estoque (nome, categoria, unidade, quantidade, minimo, foto_url, fornecedor, local, observacoes) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [b.nome, b.categoria, b.unidade, Number(b.quantidade || 0), Number(b.minimo || 0), b.foto_url || null, b.fornecedor || null, b.local || null, b.observacoes || null]
+    );
+    res.json({ id: r.rows[0].id });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.get('/estoque/:id', async (req, res) => {
+  try {
+    const r = await q(`SELECT * FROM estoque WHERE id=$1`, [req.params.id]);
+    res.json(r.rows[0] || {});
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.put('/estoque/:id', async (req, res) => {
+  try {
+    const b = req.body;
+    await q(`UPDATE estoque SET nome=$1, categoria=$2, unidade=$3, quantidade=$4, minimo=$5, foto_url=$6, fornecedor=$7, local=$8, observacoes=$9 WHERE id=$10`, 
+      [b.nome, b.categoria, b.unidade, Number(b.quantidade || 0), Number(b.minimo || 0), b.foto_url || null, b.fornecedor || null, b.local || null, b.observacoes || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 // Basic fornecedores/notificacoes endpoints
 app.get('/fornecedores', async (req, res) => { try{ const r = await q('SELECT * FROM fornecedores ORDER BY nome'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
 app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
