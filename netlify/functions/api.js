@@ -236,6 +236,14 @@ app.post("/compras/:id/cotacoes",async(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
+app.put("/cotacoes/:id",async(req,res)=>{
+  try{
+    const b=req.body;
+    await q(`UPDATE cotacoes SET fornecedor=$1,valor=$2,observacao=$3 WHERE id=$4`,[b.fornecedor,b.valor,b.observacao,req.params.id]);
+    res.json({ok:true});
+  }catch(e){res.status(500).json({error:e.message});}
+});
+
 app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
   try {
     await q(`DELETE FROM cotacoes WHERE id=$1 AND compra_id=$2`, [req.params.preco_id, req.params.id]);

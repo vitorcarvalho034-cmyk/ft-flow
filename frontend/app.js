@@ -1321,6 +1321,34 @@ async function deletarCotacao(compraId, cotacaoId) {
   }
 }
 
+function fecharModalEditarCotacao() {
+  document.getElementById("modalEditarCotacao").classList.add("hidden");
+}
+
+async function salvarEdicaoCotacao() {
+  const id = document.getElementById("editCotacaoId").value;
+  const fornecedor = document.getElementById("editFornecedor").value;
+  const valor = document.getElementById("editValor").value;
+  const observacao = document.getElementById("editObservacao").value;
+  
+  if (!fornecedor || !valor) {
+    return mostrarErro("Preencha fornecedor e valor");
+  }
+  
+  try {
+    await js(`${API}/cotacoes/${id}`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({fornecedor, valor: Number(valor), observacao})
+    });
+    mostrarSucesso("Cotação atualizada!");
+    fecharModalEditarCotacao();
+    cotacoesGerais();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
+}
+
 async function excluirCotacao(id) {
   if (confirm("Excluir esta cotação?")) {
     try {

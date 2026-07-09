@@ -290,6 +290,27 @@
   </div>
 </div>
 
+<!-- Modal Edição de Cotação -->
+<div id="modalEditarCotacao" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Editar Cotação</h3><button onclick="fecharModalEditarCotacao()">×</button></div>
+    <div style="padding: 20px;">
+      <input type="hidden" id="editCotacaoId">
+      <div class="grid">
+        <label>Fornecedor<input type="text" id="editFornecedor" placeholder="Nome do fornecedor"></label>
+        <label>Valor<input type="number" id="editValor" placeholder="0.00" step="0.01" min="0"></label>
+      </div>
+      <div class="grid">
+        <label>Observação<textarea id="editObservacao" placeholder="Observação (opcional)" style="min-height: 80px;"></textarea></label>
+      </div>
+    </div>
+    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; padding: 0 20px 20px;">
+      <button class="primary" onclick="salvarEdicaoCotacao()" style="flex: 1;">Salvar</button>
+      <button class="secondary" onclick="fecharModalEditarCotacao()" style="flex: 1;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Aprovação de Cotação -->
 <div id="modalAprovacaoCotacao" class="modal hidden">
   <div class="modal-card">
