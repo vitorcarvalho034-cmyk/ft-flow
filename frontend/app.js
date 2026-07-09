@@ -922,9 +922,58 @@ async function cotacoesGerais(){
   const compData = data.data || data;
   const comCotacao = compData.filter(c => {
   const status = normalizarStatus(c.status);
-  return status === "em cotação" || status === "pendente_aprovacao";
+  return status === "em cotacao" || status === "pendente_aprovacao";
 });
-  content.innerHTML=`<div class="panel"><h3>Cotações em aberto</h3>${comCotacao.map(c=>cardPedidoCompra(c,{modo:"cotacao"})).join("")||"Nenhuma cotação em aberto."}</div>`;
+  
+  let html = `<div class="panel"><h3>Cotações em aberto</h3>`;
+  
+  if (comCotacao.length === 0) {
+    html += `<p>Nenhuma cotação em aberto.</p></div>`;
+    content.innerHTML = html;
+    return;
+  }
+  
+  for (const compra of comCotacao) {
+    const cotacoes = await js(API+`/compras/${compra.id}/cotacoes`);
+    
+    html += `<div class="card" style="margin-bottom: 20px;">
+      <div style="margin-bottom: 15px;">
+        <b style="font-size: 16px;">#${compra.id} — ${htmlEsc(compra.item)}</b>
+        <span class="pedido-status-wrap" style="margin-left: 10px;">${st(compra.status)}</span>
+      </div>
+      <div style="margin-bottom: 10px; color: #666; font-size: 14px;">
+        Qtd: ${compra.quantidade} ${compra.unidade || 'un'} | Solicitante: ${htmlEsc(compra.solicitante || '-')}
+      </div>`;
+    
+    if (cotacoes && cotacoes.length > 0) {
+      html += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
+      
+      cotacoes.forEach(cot => {
+        const selecionado = compra.fornecedor_escolhido === cot.fornecedor;
+        const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
+        const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+        
+        html += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center;">
+          <div style="font-weight: bold; margin-bottom: 8px;">${htmlEsc(cot.fornecedor)}</div>
+          <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
+          <div style="font-size: 12px; color: #666; margin-bottom: 10px;">${cot.observacao || '-'}</div>
+          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, '${htmlEsc(cot.fornecedor)}', ${cot.valor})" style="width: 100%;">
+            ${selecionado ? '✓ SELECIONADO' : 'Aprovar'}
+          </button>
+        </div>`;
+      });
+      
+      html += `</div>`;
+    } else {
+      html += `<p style="color: #999; margin: 10px 0;">Nenhuma cotação adicionada ainda.</p>
+        <button class="primary" onclick="abrirModalAdicionarFornecedor(${compra.id})">+ Adicionar Fornecedor</button>`;
+    }
+    
+    html += `</div>`;
+  }
+  
+  html += `</div>`;
+  content.innerHTML = html;
 }
 
 async function recomendacoesPDF(){
@@ -1223,6 +1272,20 @@ function selecionarFornecedor(cotacaoId, indice, nome, valor) {
   fornecedorSelecionado = { id: indice, nome, valor, cotacaoId };
   mostrarSucesso(`Fornecedor "${nome}" selecionado! (R$ ${valor.toFixed(2)})`);
   abrirModalCotacaoComparacao(cotacaoId);
+}
+
+async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
+  try {
+    await js(API+`/compras/${compraId}/escolher-fornecedor`, {
+      method: "PUT",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({fornecedor, valor})
+    });
+    mostrarSucesso(`Fornecedor "${fornecedor}" aprovado! (R$ ${valor.toFixed(2)})`);
+    cotacoesGerais();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
 }
 
 function fecharModalCotacaoComparacao() {
