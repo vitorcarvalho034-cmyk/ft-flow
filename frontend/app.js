@@ -131,7 +131,7 @@ function cardPedidoCompra(c, options = {}) {
   if (modo === "cotacao") {
     acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   } else if (modo === "full" && isAdmin) {
-    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="statusCompra(${c.id},'Aprovado')">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   }
 
   return `<div class="card pedido-card">
@@ -860,6 +860,17 @@ async function statusCompra(id,status){
     mostrarSucesso("Status atualizado!");
     carregar();
   } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function excluirCompra(id) {
+  if (!confirm("Tem certeza que deseja excluir esta compra? Esta ação não pode ser desfeita.")) return;
+  try {
+    await js(API + `/compras/${id}`, { method: "DELETE" });
+    mostrarSucesso("Compra excluída com sucesso!");
+    carregar();
+  } catch (e) {
     mostrarErro(e.message);
   }
 }
