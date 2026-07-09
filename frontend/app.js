@@ -71,7 +71,7 @@ const STATUS_HISTORICO_COMPRAS = [
 ];
 
 function normalizarStatus(status) {
-  return String(status || "").trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  return String(status || "").trim().toLowerCase();
 }
 
 function statusEhAtivo(status) {
@@ -922,7 +922,7 @@ async function cotacoesGerais(){
   const compData = data.data || data;
   const comCotacao = compData.filter(c => {
   const status = normalizarStatus(c.status);
-  return status.includes("cotacao") || status.includes("pendente");
+  return status.includes("cotação") || status.includes("pendente");
 });
   
   let html = `<div class="panel"><h3>Cotações em aberto</h3>`;
