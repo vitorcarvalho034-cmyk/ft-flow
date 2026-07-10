@@ -1235,17 +1235,16 @@ function selecionarFornecedor(cotacaoId, indice, nome, valor) {
 }
 
 async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
-  try {
-    await js(API+`/compras/${compraId}/escolher-fornecedor`, {
-      method: "PUT",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({fornecedor, valor})
-    });
-    mostrarSucesso(`Fornecedor "${fornecedor}" aprovado! (R$ ${valor.toFixed(2)})`);
-    cotacoesGerais();
-  } catch (e) {
-    mostrarErro(e.message);
-  }
+  // Armazena os dados selecionados
+  window._cotacaoSelecionada = {compraId, fornecedor, valor};
+  
+  // Abre modal para enviar para aprovação
+  const modal = document.getElementById("modalEnviarAprovacao");
+  document.getElementById("envioAprovacaoCompra").value = compraId;
+  document.getElementById("envioAprovacaoFornecedor").value = fornecedor;
+  document.getElementById("envioAprovacaoValor").value = valor.toFixed(2);
+  document.getElementById("envioAprovacaoEmail").value = localStorage.getItem("patroa_email") || "";
+  modal.classList.remove("hidden");
 }
 
 function fecharModalCotacaoComparacao() {
@@ -1331,6 +1330,38 @@ function enviarParaAprovacao(cotacaoId) {
 
 function fecharModalAprovacao() {
   document.getElementById("modalAprovacaoCotacao").classList.add("hidden");
+}
+
+function fecharModalEnviarAprovacao() {
+  document.getElementById("modalEnviarAprovacao").classList.add("hidden");
+}
+
+async function confirmarEnvioAprovacaoCotacao(e) {
+  e.preventDefault();
+  try {
+    const compraId = document.getElementById("envioAprovacaoCompra").value;
+    const fornecedor = document.getElementById("envioAprovacaoFornecedor").value;
+    const valor = document.getElementById("envioAprovacaoValor").value;
+    const email = document.getElementById("envioAprovacaoEmail").value;
+    const obs = document.getElementById("envioAprovacaoObs").value;
+    const urgente = document.getElementById("envioAprovacaoUrgente").checked;
+    
+    // Salvar email da patroa no localStorage
+    localStorage.setItem("patroa_email", email);
+    
+    // Enviar para aprovação
+    await js(API+`/compras/${compraId}/enviar-aprovacao`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({fornecedor, valor, email, obs, urgente})
+    });
+    
+    mostrarSucesso(`Cotação enviada para aprovação de ${email}!`);
+    fecharModalEnviarAprovacao();
+    cotacoesGerais();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
 }
 
 async function confirmarEnvioAprovacao(e) {

@@ -269,6 +269,33 @@ app.post('/compras/:id/approve-received', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
+// Enviar cotação para aprovação
+app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
+  try {
+    const b = req.body;
+    const compraId = req.params.id;
+    
+    // Obter email de aprovação (padrão: dorian@floresdaterra.com.br)
+    const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+    
+    // Atualizar status para "Pendente_aprovacao"
+    await q(`UPDATE compras SET status='Pendente_aprovacao', fornecedor_escolhido=$1, valor_escolhido=$2 WHERE id=$3`,
+      [b.fornecedor, b.valor, compraId]);
+    
+    // Registrar no audit log
+    await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)',
+      [req.user?.id || 0, 'enviar_aprovacao', 'compras', compraId, JSON.stringify({
+        fornecedor: b.fornecedor,
+        valor: b.valor,
+        email: approvalEmail,
+        urgente: b.urgente,
+        obs: b.obs
+      })]);
+    
+    res.json({ ok: true, email: approvalEmail });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 // DELETE compra (admin only) - hard delete
 app.delete("/compras/:id", async (req, res) => {
   try {
