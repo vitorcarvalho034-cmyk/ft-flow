@@ -1243,7 +1243,7 @@ async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
   document.getElementById("envioAprovacaoCompra").value = compraId;
   document.getElementById("envioAprovacaoFornecedor").value = fornecedor;
   document.getElementById("envioAprovacaoValor").value = valor.toFixed(2);
-  document.getElementById("envioAprovacaoEmail").value = localStorage.getItem("patroa_email") || "";
+  document.getElementById("envioAprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
   modal.classList.remove("hidden");
 }
 
