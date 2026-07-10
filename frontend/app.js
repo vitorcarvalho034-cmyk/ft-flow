@@ -47,7 +47,7 @@ function toggleSolicitanteOutro(selectEl) {
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
-let adubacaoItens = [];
+
 let token = localStorage.getItem('ft_flow_token');
 
 const STATUS_ATIVOS_COMPRAS = [
@@ -219,7 +219,7 @@ function trocarTela(n,b){
   document.querySelectorAll(".drawer-nav-item").forEach(x=>{
     x.classList.toggle("active", x.dataset.tela===n);
   });
-  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",recomendacoes:"Recomendações",adubacao:"Adubação",relatorios:"Relatórios",fornecedores:"Fornecedores"};
+  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",relatorios:"Relatórios",fornecedores:"Fornecedores"};
   pageTitle.innerText=titles[n]||"FT FLOW";
   carregar();
 }
@@ -233,8 +233,7 @@ async function carregar(){
     if(tela==="compras") return compras();
     if(tela==="historico") return historico();
     if(tela==="cotacoes") return cotacoesGerais();
-    if(tela==="recomendacoes") return recomendacoesPDF();
-    if(tela==="adubacao") return adubacaoSemanal();
+
     if(tela==="relatorios") return relatoriosMensais();
     if(tela==="fornecedores") return fornecedores();
   }catch(e){ content.innerHTML=`<div class="panel"><h3>Erro</h3><p>${e.message}</p></div>`; }
@@ -980,49 +979,6 @@ async function cotacoesGerais(){
   content.innerHTML = html;
 }
 
-async function recomendacoesPDF(){
-  const data=await js(API+"/recomendacoes");
-  content.innerHTML=`<div class="panel"><h3>Recomendações de Defensivos (PDF)</h3><div class="actions"><button class="primary" onclick="uploadPdfRecomendacao()">📄 Upload PDF</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel">${data.length?data.map(r=>`<div class="card"><b>📋 ${r.arquivo}</b><br>Semana: ${r.semana||"N/A"} | Status: ${st(r.status)}<div class="actions" style="margin-top:8px"><button class="secondary" onclick="verItensRecomendacao(${r.id})">Ver itens</button>${r.status==='Pendente'?`<button class="primary" onclick="confirmarBaixaRecomendacao(${r.id})">Confirmar baixa</button>`:''}</div></div>`).join(""):"<p>Nenhuma recomendação carregada.</p>"}</div>`;
-}
-
-async function verItensRecomendacao(id){
-  const itens=await js(API+`/recomendacoes/${id}/itens`);
-  content.innerHTML=`<div class="panel"><button class="secondary" onclick="recomendacoesPDF()">← Voltar</button><h3>Itens da Recomendação #${id}</h3><table class="table"><thead><tr><th>Produto</th><th>Qtd</th><th>Unidade</th><th>Destino</th><th>Confirmado</th></tr></thead><tbody>${itens.map(i=>`<tr><td>${i.produto}</td><td>${i.quantidade}</td><td>${i.unidade}</td><td>${i.destino||"-"}</td><td>${i.confirmado?'✅':'⏳'}</td></tr>`).join("")}</tbody></table></div>`;
-}
-
-async function uploadPdfRecomendacao(){
-  const input=document.createElement('input');input.type='file';input.accept='.pdf';
-  input.onchange=async(e)=>{
-    const file=e.target.files[0]; if(!file)return;
-    const reader=new FileReader();
-    reader.onload=async()=>{
-      try{
-        content.innerHTML='<div class="panel"><div class="spinner"></div> Processando PDF...</div>';
-        const r=await js(API+"/recomendacoes/upload-base64",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({base64:reader.result,filename:file.name})});
-        mostrarSucesso(`PDF processado! ${r.itens?.length||0} itens encontrados.`);
-        recomendacoesPDF();
-      }catch(err){mostrarErro(err.message);recomendacoesPDF();}
-    };
-    reader.readAsDataURL(file);
-  };
-  input.click();
-}
-
-async function confirmarBaixaRecomendacao(id){
-  if(!confirm("Confirmar baixa de estoque para todos os itens desta recomendação?"))return;
-  try{
-    const r=await js(API+`/recomendacoes/${id}/confirmar-baixa`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});
-    if(r.naoEncontrados&&r.naoEncontrados.length>0){mostrarErro(`Produtos não encontrados no estoque: ${r.naoEncontrados.join(", ")}`);}
-    else{mostrarSucesso("Baixa confirmada com sucesso!");}
-    recomendacoesPDF();
-  }catch(e){mostrarErro(e.message);}
-}
-
-async function adubacaoSemanal(){
-  const [adubos,destinos]=await Promise.all([js(API+"/adubacao/adubos"),js(API+"/adubacao/destinos")]);
-  adubacaoItens=adubos.map(a=>({produto:a.nome,quantidade:0,unidade:"kg",disponivel:a.quantidade}));
-  content.innerHTML=`<div class="panel"><h3>Adubação Semanal</h3><p>Selecione os adubos e distribua entre os destinos.</p></div><div class="panel"><h3>Adubos disponíveis</h3>${adubos.map((a,i)=>`<div class="card stock-ok"><b>${a.nome}</b> — Disponível: ${a.quantidade} ${a.unidade}<br><label>Quantidade a usar: <input type="number" id="adub-qtd-${i}" value="0" min="0" max="${a.quantidade}" style="width:100px"></label></div>`).join("")}</div><div class="panel"><h3>Destinos</h3><p>${destinos.join(" • ")}</p></div><div class="panel"><button class="primary full" onclick="mostrarSucesso('Funcionalidade de aplicação em desenvolvimento')">Aplicar Adubação</button></div>`;
-}
 
 async function relatoriosMensais(){
   const mesAtual=new Date().toISOString().slice(0,7);
