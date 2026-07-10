@@ -369,6 +369,13 @@ app.get('/estoque/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
+app.get('/estoque/:id/historico', async (req, res) => {
+  try {
+    const r = await q(`SELECT * FROM estoque_historico WHERE estoque_id=$1 ORDER BY data DESC`, [req.params.id]);
+    res.json(r.rows || []);
+  } catch (e) { console.error(e); res.json([]); }
+});
+
 app.put('/estoque/:id', async (req, res) => {
   try {
     const b = req.body;
