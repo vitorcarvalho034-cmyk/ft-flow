@@ -394,6 +394,24 @@ app.post('/manutencoes', async (req, res) => {
       `INSERT INTO manutencoes (solicitante, data_ocorrencia, tipo, local_item, defeito, urgencia, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
       [b.solicitante || 'Nao informado', b.data_ocorrencia || new Date().toISOString().split('T')[0], b.tipo, b.local_item, b.defeito, b.urgencia || 'Normal', 'Aberto']
     );
+    
+    // Se precisa de compra, criar automaticamente
+    if (b.precisa_compra === '1' || b.precisa_compra === true) {
+      const compra = await q(
+        `INSERT INTO compras (descricao, quantidade, unidade, solicitante, categoria, destino, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        [b.item_compra || 'Peca para manutencao', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Nao informado', 'Pecas de manutencao', 'Manutencao', 'Em cotacao']
+      );
+      
+      // Registrar no audit log
+      await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)',
+        [req.user?.id || 0, 'criar_compra_manutencao', 'compras', compra.rows[0].id, JSON.stringify({
+          manutencao_id: r.rows[0].id,
+          item: b.item_compra,
+          quantidade: b.quantidade_compra
+        })]
+      );
+    }
+    
     await notify('Nova manutencao solicitada', `Tipo: ${b.tipo}`, 'manutencao', {
       ID: `#${r.rows[0].id}`,
       Tipo: b.tipo,
