@@ -272,31 +272,82 @@ app.post('/compras/:id/approve-received', async (req, res) => {
 // Enviar cotação para aprovação
 app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
   try {
-    const b = req.body;
     const compraId = req.params.id;
     
-    // Obter email de aprovação (padrão: dorian@floresdaterra.com.br)
+    // Obter email de aprovação
     const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
     
+    // Buscar a compra e todos os fornecedores
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    
+    const cotacoes = await q('SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC', [compraId]);
+    
+    if (!cotacoes.rows.length) return res.status(400).json({ error: 'Nenhuma cotação adicionada' });
+    
     // Atualizar status para "Pendente_aprovacao"
-    await q(`UPDATE compras SET status='Pendente_aprovacao', fornecedor_escolhido=$1, valor_escolhido=$2 WHERE id=$3`,
-      [b.fornecedor, b.valor, compraId]);
+    await q(`UPDATE compras SET status='Pendente_aprovacao' WHERE id=$1`, [compraId]);
     
     // Registrar no audit log
     await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)',
       [req.user?.id || 0, 'enviar_aprovacao', 'compras', compraId, JSON.stringify({
-        fornecedor: b.fornecedor,
-        valor: b.valor,
-        email: approvalEmail,
-        urgente: b.urgente,
-        obs: b.obs
+        total_fornecedores: cotacoes.rows.length,
+        email: approvalEmail
       })]);
     
-    res.json({ ok: true, email: approvalEmail });
+    // Enviar notificação com todos os fornecedores
+    const titulo = `Cotação #${compraId} - ${compra.rows[0].descricao} - Aguardando Aprovação`;
+    const dados = {
+      'Produto': compra.rows[0].descricao,
+      'Quantidade': compra.rows[0].quantidade,
+      'Unidade': compra.rows[0].unidade,
+      'Solicitante': compra.rows[0].solicitante,
+      'Total de Fornecedores': cotacoes.rows.length,
+      'Melhor Preço': `R$ ${Number(cotacoes.rows[0].valor).toFixed(2)} (${cotacoes.rows[0].fornecedor})`
+    };
+    
+    await notify(titulo, `Cotação #${compraId} pronta para aprovação. ${cotacoes.rows.length} fornecedor(es) disponível(is).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.json({ ok: true, email: approvalEmail, fornecedores: cotacoes.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
 // DELETE compra (admin only) - hard delete
+// Aprovar fornecedor selecionado pela patroa
+app.post("/compras/:id/aprovar-fornecedor", async (req, res) => {
+  try {
+    const compraId = req.params.id;
+    const { fornecedor, valor } = req.body;
+    
+    if (!fornecedor || !valor) return res.status(400).json({ error: 'Fornecedor e valor obrigatórios' });
+    
+    // Atualizar status para "Aprovado" e salvar fornecedor escolhido
+    await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2 WHERE id=$3`,
+      [fornecedor, valor, compraId]);
+    
+    // Registrar no audit log
+    await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)',
+      [req.user?.id || 0, 'aprovar_fornecedor', 'compras', compraId, JSON.stringify({
+        fornecedor,
+        valor
+      })]);
+    
+    // Buscar dados da compra para notificação
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    
+    // Enviar notificação
+    const titulo = `Cotação #${compraId} - Aprovada`;
+    const dados = {
+      'Produto': compra.rows[0].descricao,
+      'Fornecedor Escolhido': fornecedor,
+      'Valor': `R$ ${Number(valor).toFixed(2)}`
+    };
+    
+    await notify(titulo, `Cotação #${compraId} foi aprovada. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
 app.delete("/compras/:id", async (req, res) => {
   try {
     if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Acesso negado' });
