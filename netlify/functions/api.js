@@ -398,7 +398,7 @@ app.post('/manutencoes', async (req, res) => {
     // Se precisa de compra, criar automaticamente
     if (b.precisa_compra === '1' || b.precisa_compra === true) {
       const compra = await q(
-        `INSERT INTO compras (descricao, quantidade, unidade, solicitante, categoria, destino, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+        `INSERT INTO compras (item, quantidade, unidade, solicitante, categoria, destino, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
         [b.item_compra || 'Peca para manutencao', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Nao informado', 'Pecas de manutencao', 'Manutencao', 'Em cotacao']
       );
       
