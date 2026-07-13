@@ -698,8 +698,6 @@ async function abrirCompraRapida() {
   document.getElementById("compDestModal").value = "";
   document.getElementById("compQtdModal").value = "";
   document.getElementById("compUnidadeModal").value = "";
-  document.getElementById("compValorUnitModal").value = "";
-  document.getElementById("compValorTotalModal").value = "";
   document.getElementById("compLinkModal").value = "";
   document.getElementById("compDescricaoModal").value = "";
   limparPreviewFotoCompra();
@@ -808,8 +806,7 @@ async function salvarCompraDetalhada(e) {
     const unidade = compUnidadeModal.value.trim();
     const categoria = compCatModal.value;
     const destino = compDestModal.value.trim();
-    const valorUnitario = compValorUnitModal.value;
-    const valorTotal = compValorTotalModal.value;
+
     const link = compLinkModal.value.trim();
     const descricao = compDescricaoModal.value.trim();
     const foto = compFotoModal.files[0];
@@ -835,8 +832,7 @@ async function salvarCompraDetalhada(e) {
         unidade,
         categoria,
         destino,
-        valor_unitario: Number(valorUnitario) || 0,
-        valor_total: Number(valorTotal) || 0,
+
         link_produto: link,
         descricao_detalhada: descricao,
         foto_url: fotoUrl
