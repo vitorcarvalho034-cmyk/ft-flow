@@ -87,6 +87,23 @@ async function email(titulo,dados={},destinatario=null){
   await t.sendMail({from:process.env.SMTP_USER,to:toEmail,subject:titulo,html});
 }
 
+async function emailComFornecedores(titulo, compraId, cotacoes, appUrl="https://ft-flow.netlify.app"){
+  if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
+  const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+  
+  let botoesHtml = '';
+  for (const cot of cotacoes) {
+    const token = Buffer.from(`${compraId}:${cot.id}`).toString('base64');
+    const linkAprovacao = `${appUrl}/api/aprovar-cotacao/${token}`;
+    botoesHtml += `<div style="margin:10px 0"><a href="${linkAprovacao}" style="display:inline-block;background:#052e16;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">${cot.fornecedor} - R$ ${Number(cot.valor).toFixed(2)}</a></div>`;
+  }
+  
+  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px"><p>Escolha o melhor fornecedor clicando no botão abaixo:</p>${botoesHtml}<p style="margin-top:20px;color:#666;font-size:12px">Clique no fornecedor escolhido para confirmar automaticamente.</p></div></div></div>`;
+  
+  const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+  await t.sendMail({from:process.env.SMTP_USER,to:approvalEmail,subject:titulo,html});
+}
+
 function normalizarTelefone(num) {
   let n = String(num || "").replace(/\D/g, "");
   if (n.startsWith("0")) n = n.slice(1);
@@ -309,8 +326,9 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
     
     await notify(titulo, `Cotação #${compraId} pronta para aprovação. ${cotacoes.rows.length} fornecedor(es) disponível(is).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
-    // Enviar email também para a patroa
-    await email(titulo, dados, approvalEmail).catch(e => console.log('Email patroa err', e.message));
+    // Enviar email com botões interativos para a patroa
+    const appUrl = process.env.APP_URL || 'https://ft-flow.netlify.app';
+    await emailComFornecedores(titulo, compraId, cotacoes.rows, appUrl).catch(e => console.log('Email patroa err', e.message));
     
     res.json({ ok: true, email: approvalEmail, fornecedores: cotacoes.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
@@ -490,6 +508,40 @@ app.put('/estoque/:id', async (req, res) => {
       [b.nome, b.categoria, b.unidade, Number(b.quantidade || 0), Number(b.minimo || 0), b.foto_url || null, b.fornecedor || null, b.local || null, b.observacoes || null, req.params.id]);
     res.json({ ok: true });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+// Rota para processar aprovacao via email (sem autenticacao)
+app.get('/aprovar-cotacao/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [compraId, cotacaoId] = decoded.split(':');
+    
+    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token invalido' });
+    
+    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
+    if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotacao nao encontrada' });
+    
+    const { fornecedor, valor } = cotacao.rows[0];
+    
+    await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2 WHERE id=$3`,
+      [fornecedor, valor, compraId]);
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    
+    const titulo = `Cotacao #${compraId} - Aprovada pela Patroa`;
+    const dados = {
+      'Produto': compra.rows[0].descricao || compra.rows[0].item,
+      'Fornecedor Escolhido': fornecedor,
+      'Valor': `R$ ${Number(valor).toFixed(2)}`,
+      'Aprovado por': 'Patroa (via email)'
+    };
+    
+    await notify(titulo, `Cotacao #${compraId} foi aprovada. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    await email(titulo, dados, process.env.ADMIN_ALERT_EMAIL).catch(e => console.log('Email admin err', e.message));
+    
+    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#052e16;font-size:48px;margin-bottom:20px}h1{color:#052e16;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#052e16}</style></head><body><div class="card"><div class="success">✅</div><h1>Aprovacao Confirmada!</h1><p>A cotacao foi aprovada com sucesso.</p><div class="details"><p><strong>Cotacao:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p><p><strong>Valor:</strong> R$ ${Number(valor).toFixed(2)}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta aprovacao.</p></div></body></html>`);
+  } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
 // Basic fornecedores/notificacoes endpoints
