@@ -439,6 +439,13 @@ app.put('/manutencoes/:id', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/manutencoes/:id', async (req, res) => {
+  try {
+    await q(`DELETE FROM manutencoes WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 // ESTOQUE
 app.get('/estoque', async (req, res) => {
   try {

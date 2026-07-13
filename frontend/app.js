@@ -247,7 +247,7 @@ function st(s){
 function urg(u){ if((u||"").startsWith("Alta"))return `<span class="badge high">${u}</span>`; if((u||"").startsWith("Média"))return `<span class="badge mid">${u}</span>`; return `<span class="badge low">${u||""}</span>`; }
 
 function tabelaMan(data){
-  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Ações</th></tr></thead><tbody>${data.map(m=>`<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button>`}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Ações</th></tr></thead><tbody>${data.map(m=>`<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`}</td></tr>`).join("")}</tbody></table>`;
 }
 
 async function dashboard(){
@@ -339,6 +339,18 @@ async function salvarConclusao(){
   fecharConcluir(); 
   carregar(); 
   atualizarContadorNotificacoes();
+}
+
+async function excluirManutencao(id){
+  if(!confirm("Tem certeza que deseja excluir esta manutenção?")) return;
+  try {
+    await js(API+`/manutencoes/${id}`,{method:"DELETE"});
+    mostrarSucesso("Manutenção excluída com sucesso!");
+    carregar();
+    atualizarContadorNotificacoes();
+  } catch(e) {
+    mostrarErro(e.message || "Erro ao excluir manutenção");
+  }
 }
 
 // ===== ESTOQUE V6 =====
