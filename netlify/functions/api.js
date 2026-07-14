@@ -347,7 +347,7 @@ app.post("/compras/:id/aprovar-fornecedor", async (req, res) => {
     if (!fornecedor || !valor) return res.status(400).json({ error: 'Fornecedor e valor obrigatórios' });
     
     // Atualizar status para "Aprovado" e salvar fornecedor escolhido
-    await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2 WHERE id=$3`,
+    await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2, received_at=NOW() WHERE id=$3`,
       [fornecedor, valor, compraId]);
     
     // Registrar no audit log
@@ -527,7 +527,7 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
     
     const { fornecedor, valor } = cotacao.rows[0];
     
-    await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2 WHERE id=$3`,
+    await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2, received_at=NOW() WHERE id=$3`,
       [fornecedor, valor, compraId]);
     
     const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
@@ -549,7 +549,9 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
 
 // Basic fornecedores/notificacoes endpoints
 app.get('/fornecedores', async (req, res) => { try{ const r = await q('SELECT * FROM fornecedores ORDER BY nome'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
-app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
+app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message})}});
+app.put('/notificacoes/:id/marcar-lida', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1 WHERE id=$1', [req.params.id]); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
+app.put('/notificacoes/marcar-todas-lidas', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1'); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
 
 // Handler
 module.exports.handler = serverless(app);

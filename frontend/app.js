@@ -908,7 +908,11 @@ async function salvarCotacao(id){
 async function historico(){
   const data = await js(API + "/compras");
   const compData = data.data || data;
-  const historicoData = compData.filter(c => statusEhHistorico(c.status));
+  const historicoData = compData.filter(c => statusEhHistorico(c.status)).sort((a, b) => {
+    const dataA = new Date(a.received_at || a.updated_at || a.created_at || 0);
+    const dataB = new Date(b.received_at || b.updated_at || b.created_at || 0);
+    return dataB - dataA;
+  });
 
   content.innerHTML = `
     <div class="panel">
@@ -1036,12 +1040,13 @@ function abrirNotificacoes(){
   notifPanel.classList.toggle("hidden");
   if(!notifPanel.classList.contains("hidden")){
     js(API+"/notificacoes").then(notifs=>{
-      notifList.innerHTML=notifs.map(n=>`<div class="notif-item ${n.lida?'':'unread'}"><div class="notif-type">${n.tipo}</div><p>${n.mensagem}</p><small class="notif-date">${new Date(n.criada_em).toLocaleString()}</small></div>`).join("")||"Sem notificações.";
+      notifList.innerHTML=notifs.map(n=>`<div class="notif-item ${n.lida?'':'unread'}" onclick="marcarNotificacaoLida(${n.id})"><div class="notif-type">${n.tipo}</div><p>${n.mensagem}</p><small class="notif-date">${new Date(n.created_at).toLocaleString()}</small></div>`).join("")||"Sem notificacoes.";
     });
   }
 }
 function fecharNotificacoes(){ notifPanel.classList.add("hidden"); }
-function marcarTodasNotificacoes(){ js(API+"/notificacoes/marcar-todas/lidas",{method:"PUT"}); atualizarContadorNotificacoes(); }
+function marcarTodasNotificacoes(){ js(API+"/notificacoes/marcar-todas-lidas",{method:"PUT"}); atualizarContadorNotificacoes(); }
+function marcarNotificacaoLida(notifId){ js(API+`/notificacoes/${notifId}/marcar-lida`,{method:"PUT"}).then(()=>{ abrirNotificacoes(); atualizarContadorNotificacoes(); }).catch(e=>console.error(e)); }
 async function atualizarContadorNotificacoes(){
   try{
     const notifs=await js(API+"/notificacoes");
