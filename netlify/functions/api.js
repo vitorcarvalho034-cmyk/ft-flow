@@ -22,7 +22,9 @@ app.use((req, res, next) => {
 // Middleware de autenticação (exceto login)
 function autenticar(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-  if (!token && req.path !== "/auth/login") {
+  const rotasPublicas = ['/auth/login', /^\/aprovar-cotacao\//];
+  const ehRotaPublica = rotasPublicas.some(r => typeof r === 'string' ? req.path === r : r.test(req.path));
+  if (!token && !ehRotaPublica) {
     return res.status(401).json({ error: "Token não fornecido" });
   }
   if (token) {
