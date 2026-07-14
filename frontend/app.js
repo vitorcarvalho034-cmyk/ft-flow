@@ -940,8 +940,14 @@ async function cotacoesGerais(){
     return;
   }
   
+  // Carregar todas as cotações em paralelo para melhor performance
+  const cotacoesMap = await Promise.all(
+    comCotacao.map(c => js(API+`/compras/${c.id}/cotacoes`).then(cots => ({id: c.id, cotacoes: cots})))
+  );
+  
   for (const compra of comCotacao) {
-    const cotacoes = await js(API+`/compras/${compra.id}/cotacoes`);
+    const cotData = cotacoesMap.find(m => m.id === compra.id);
+    const cotacoes = cotData?.cotacoes || [];
     
     html += `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">

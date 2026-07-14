@@ -89,7 +89,7 @@ async function email(titulo,dados={},destinatario=null){
   await t.sendMail({from:process.env.SMTP_USER,to:toEmail,subject:titulo,html});
 }
 
-async function emailComFornecedores(titulo, compraId, cotacoes, appUrl="https://ft-flow.netlify.app"){
+async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="https://ft-flow.netlify.app"){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
   const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
   
@@ -100,7 +100,8 @@ async function emailComFornecedores(titulo, compraId, cotacoes, appUrl="https://
     botoesHtml += `<div style="margin:10px 0"><a href="${linkAprovacao}" style="display:inline-block;background:#052e16;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">${cot.fornecedor} - R$ ${Number(cot.valor).toFixed(2)}</a></div>`;
   }
   
-  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px"><p>Escolha o melhor fornecedor clicando no botão abaixo:</p>${botoesHtml}<p style="margin-top:20px;color:#666;font-size:12px">Clique no fornecedor escolhido para confirmar automaticamente.</p></div></div></div>`;
+  const infoCompra = `<div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0"><h3 style="margin:0 0 10px 0;color:#052e16">Detalhes da Compra</h3><p style="margin:5px 0"><strong>O que:</strong> ${compra.descricao || compra.item}</p><p style="margin:5px 0"><strong>Quantidade:</strong> ${compra.quantidade} ${compra.unidade}</p><p style="margin:5px 0"><strong>Destino/Uso:</strong> ${compra.destino}</p>${compra.descricao_detalhada ? `<p style="margin:5px 0"><strong>Especificacoes:</strong> ${compra.descricao_detalhada}</p>` : ''}<p style="margin:5px 0"><strong>Solicitante:</strong> ${compra.solicitante}</p></div>`;
+  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px">${infoCompra}<p>Escolha o melhor fornecedor clicando no botao abaixo:</p>${botoesHtml}<p style="margin-top:20px;color:#666;font-size:12px">Clique no fornecedor escolhido para confirmar automaticamente.</p></div></div></div>`;
   
   const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
   await t.sendMail({from:process.env.SMTP_USER,to:approvalEmail,subject:titulo,html});
@@ -330,7 +331,7 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
     
     // Enviar email com botões interativos para a patroa
     const appUrl = process.env.APP_URL || 'https://ft-flow.netlify.app';
-    await emailComFornecedores(titulo, compraId, cotacoes.rows, appUrl).catch(e => console.log('Email patroa err', e.message));
+    await emailComFornecedores(titulo, compraId, cotacoes.rows, compra.rows[0], appUrl).catch(e => console.log('Email patroa err', e.message));
     
     res.json({ ok: true, email: approvalEmail, fornecedores: cotacoes.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
