@@ -105,7 +105,19 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
   }
   
   const infoCompra = `<div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0"><h3 style="margin:0 0 10px 0;color:#052e16">Detalhes da Compra</h3><p style="margin:5px 0"><strong>O que:</strong> ${compra.descricao || compra.item}</p><p style="margin:5px 0"><strong>Quantidade:</strong> ${compra.quantidade} ${compra.unidade}</p><p style="margin:5px 0"><strong>Destino/Uso:</strong> ${compra.destino}</p>${compra.descricao_detalhada ? `<p style="margin:5px 0"><strong>Especificacoes:</strong> ${compra.descricao_detalhada}</p>` : ''}<p style="margin:5px 0"><strong>Solicitante:</strong> ${compra.solicitante}</p></div>`;
-  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px">${infoCompra}<p>Escolha o melhor fornecedor clicando no botao abaixo:</p>${botoesHtml}<p style="margin-top:20px;color:#666;font-size:12px">Clique no fornecedor escolhido para confirmar automaticamente.</p></div></div></div>`;
+  
+  // Verificar se ja foi aprovado
+  const compraAtual = await q('SELECT status, fornecedor_escolhido, valor_escolhido FROM compras WHERE id=$1', [compraId]);
+  const jaAprovado = compraAtual.rows[0]?.status === 'Aprovado';
+  
+  let conteudoEmail = '';
+  if (jaAprovado) {
+    conteudoEmail = `<div style="background:#e8f5e9;padding:15px;border-radius:8px;border-left:4px solid #4caf50;margin:15px 0"><p style="margin:0;color:#2e7d32"><strong>✅ JÁ APROVADO</strong></p></div><div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0"><p style="margin:5px 0"><strong>Fornecedor:</strong> ${compraAtual.rows[0].fornecedor_escolhido}</p><p style="margin:5px 0"><strong>Valor:</strong> R$ ${Number(compraAtual.rows[0].valor_escolhido).toFixed(2)}</p></div>`;
+  } else {
+    conteudoEmail = `<p>Escolha o melhor fornecedor clicando no botao abaixo:</p>${botoesHtml}<p style="margin-top:20px;color:#666;font-size:12px">Clique no fornecedor escolhido para confirmar automaticamente.</p>`;
+  }
+  
+  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px">${infoCompra}${conteudoEmail}</div></div></div>`;
   
   const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
   await t.sendMail({from:process.env.SMTP_USER,to:approvalEmail,subject:titulo,html});
