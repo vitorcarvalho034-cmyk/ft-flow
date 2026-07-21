@@ -85,9 +85,9 @@ async function ensureDb(){
 
 app.use(async (req,res,next)=>{try{await ensureDb(); next();}catch(e){console.error(e); res.status(500).json({error:e.message});}});
 
-async function email(titulo,dados={},destinatario=null){
+async function email(titulo,dados={},destinatario=null,htmlCustomizado=null){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
-  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px">${Object.entries(dados).map(([k,v])=>`<p><strong>${k}:</strong> ${String(v)}</p>`).join('')}</div></div></div>`;
+  const html = htmlCustomizado || `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px">${Object.entries(dados).map(([k,v])=>`<p><strong>${k}:</strong> ${String(v)}</p>`).join('')}</div></div></div>`;">
   const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
   const toEmail = destinatario || String(process.env.ADMIN_ALERT_EMAIL).split(",").map(e=>e.trim());
   await t.sendMail({from:process.env.SMTP_USER,to:toEmail,subject:titulo,html});
