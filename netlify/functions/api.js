@@ -394,8 +394,8 @@ app.get('/dashboard', async (req, res) => {
   try {
     const manutencoesAbertas = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aberto'`);
     const urgentes = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgencia='Alta'`);
-    const aguardandoPeca = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peca'`);
-    const comprasPendentes = await q(`SELECT COUNT(*)::int total FROM compras WHERE status IN ('Em cotacao','Aprovado')`);
+    const aguardandoPeca = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peça'`);
+    const comprasPendentes = await q(`SELECT COUNT(*)::int total FROM compras WHERE status IN ('Em cotação','Aprovado')`);
     const estoqueBaixo = await q(`SELECT COUNT(*)::int total FROM estoque WHERE quantidade < minimo`);
     res.json({
       manutencoesAbertas: manutencoesAbertas.rows[0].total,
@@ -421,14 +421,14 @@ app.post('/manutencoes', async (req, res) => {
     const b = req.body;
     const r = await q(
       `INSERT INTO manutencoes (solicitante, data_ocorrencia, tipo, local_item, defeito, urgencia, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [b.solicitante || 'Nao informado', b.data_ocorrencia || new Date().toISOString().split('T')[0], b.tipo, b.local_item, b.defeito, b.urgencia || 'Normal', 'Aberto']
+      [b.solicitante || 'Não informado', b.data_ocorrencia || new Date().toISOString().split('T')[0], b.tipo, b.local_item, b.defeito, b.urgencia || 'Normal', 'Aberto']
     );
     
     // Se precisa de compra, criar automaticamente
     if (b.precisa_compra === '1' || b.precisa_compra === true) {
       const compra = await q(
         `INSERT INTO compras (item, quantidade, unidade, solicitante, categoria, destino, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [b.item_compra || 'Peca para manutencao', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Nao informado', 'Pecas de manutencao', 'Manutencao', 'Em cotacao']
+        [b.item_compra || 'Peça para manutenção', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Não informado', 'Peças de manutenção', 'Manutenção', 'Em cotação']
       );
       
       // Registrar no audit log
@@ -524,10 +524,10 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
     const decoded = Buffer.from(token, 'base64').toString('utf-8');
     const [compraId, cotacaoId] = decoded.split(':');
     
-    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token invalido' });
+    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token inválido' });
     
     const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
-    if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotacao nao encontrada' });
+    if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotação não encontrada' });
     
     const { fornecedor, valor } = cotacao.rows[0];
     
@@ -536,18 +536,18 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
     
     const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
     
-    const titulo = `Cotacao #${compraId} - Aprovada pela Patroa`;
+    const titulo = `Cotação #${compraId} - Aprovada por Dorian`;
     const dados = {
       'Produto': compra.rows[0].descricao || compra.rows[0].item,
       'Fornecedor Escolhido': fornecedor,
       'Valor': `R$ ${Number(valor).toFixed(2)}`,
-      'Aprovado por': 'Patroa (via email)'
+      'Aprovado por': 'Dorian (via email)'
     };
     
-    await notify(titulo, `Cotacao #${compraId} foi aprovada. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    await notify(titulo, `Cotação #${compraId} foi aprovada por Dorian. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     await email(titulo, dados, process.env.ADMIN_ALERT_EMAIL).catch(e => console.log('Email admin err', e.message));
     
-    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#052e16;font-size:48px;margin-bottom:20px}h1{color:#052e16;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#052e16}</style></head><body><div class="card"><div class="success">✅</div><h1>Aprovacao Confirmada!</h1><p>A cotacao foi aprovada com sucesso.</p><div class="details"><p><strong>Cotacao:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p><p><strong>Valor:</strong> R$ ${Number(valor).toFixed(2)}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta aprovacao.</p></div></body></html>`);
+    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#052e16;font-size:48px;margin-bottom:20px}h1{color:#052e16;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#052e16}</style></head><body><div class="card"><div class="success">✅</div><h1>Aprovação Confirmada!</h1><p>A cotação foi aprovada com sucesso por Dorian.</p><div class="details"><p><strong>Cotação:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p><p><strong>Valor:</strong> R$ ${Number(valor).toFixed(2)}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta aprovação.</p></div></body></html>`);
   } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
