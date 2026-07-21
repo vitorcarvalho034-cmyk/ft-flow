@@ -918,14 +918,39 @@ async function historico(){
     <div class="panel">
       <h3>Histórico</h3>
       <p style="color:#647066">Itens aprovados, comprados, concluídos, rejeitados ou cancelados.</p>
+      
+      <div class="grid" style="margin-bottom: 15px;">
+        <input type="text" id="historicoFiltro" placeholder="Buscar por ID, produto, fornecedor..." style="width: 100%;" onkeyup="filtrarHistorico()">
+      </div>
 
-      ${
-        historicoData.length
-          ? historicoData.map(c => cardPedidoCompra(c)).join("")
-          : `<div class="card"><small>Nenhum item no histórico.</small></div>`
-      }
+      <div id="historicoContainer">
+        ${
+          historicoData.length
+            ? historicoData.map(c => cardPedidoCompra(c)).join("")
+            : `<div class="card"><small>Nenhum item no histórico.</small></div>`
+        }
+      </div>
     </div>
   `;
+  
+  // Armazenar dados para filtro
+  window._historicoData = historicoData;
+}
+
+function filtrarHistorico() {
+  const filtro = document.getElementById('historicoFiltro')?.value?.toLowerCase() || '';
+  const historicoContainer = document.getElementById('historicoContainer');
+  
+  if (!window._historicoData) return;
+  
+  const filtrados = window._historicoData.filter(c => {
+    const texto = `${c.id} ${c.item} ${c.fornecedor_escolhido} ${c.solicitante}`.toLowerCase();
+    return texto.includes(filtro);
+  });
+  
+  historicoContainer.innerHTML = filtrados.length
+    ? filtrados.map(c => cardPedidoCompra(c)).join('')
+    : '<div class="card"><small>Nenhum resultado encontrado.</small></div>';
 }
 
 async function cotacoesGerais(){
