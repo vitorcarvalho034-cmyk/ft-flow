@@ -66,6 +66,10 @@ async function ensureDb(){
   await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, criado_em TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, email TEXT, telefone TEXT, endereco TEXT, observacoes TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS audit_log (id SERIAL PRIMARY KEY, actor_id INTEGER, action TEXT, target_table TEXT, target_id INTEGER, meta JSONB, created_at TIMESTAMP DEFAULT NOW())`);
+  
+  // Adicionar coluna received_at se nao existir
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(e => console.log('received_at column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_by INTEGER`).catch(e => console.log('received_by column already exists'));
 
   // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
