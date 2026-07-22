@@ -955,8 +955,9 @@ function filtrarHistorico() {
     : '<div class="card"><small>Nenhum resultado encontrado.</small></div>';
 }
 
-async function cotacoesGerais(){
-  const data=await js(API+"/compras");
+async function cotaçõesGerais(){
+  // Buscar TODAS as compras sem paginação (limit=1000 para pegar tudo)
+  const data=await js(API+"/compras?limit=1000");
   const compData = data.data || data;
   const comCotacao = compData.filter(c => {
   const status = normalizarStatus(c.status).replace(/_/g, ' ');
