@@ -958,14 +958,10 @@ function filtrarHistorico() {
 async function cotacoesGerais(){
   const data=await js(API+"/compras");
   const compData = data.data || data;
-  console.log('DEBUG: Todos os dados retornados:', compData);
   const comCotacao = compData.filter(c => {
   const status = normalizarStatus(c.status).replace(/_/g, ' ');
-  const match = status.includes("cotação") || status.includes("pendente");
-  if (!match) console.log(`Filtrado: #${c.id} - ${c.item} - Status original: "${c.status}" -> normalizado: "${status}"`);
-  return match;
+  return status.includes("cotação") || status.includes("pendente");
 });
-  console.log('DEBUG: Cotacoes filtradas:', comCotacao);
   
   let html = `<div class="panel"><h3>Cotações em aberto</h3>`;
   
@@ -976,14 +972,11 @@ async function cotacoesGerais(){
   }
   
   // Carregar todas as cotações em paralelo para melhor performance
-  console.log('DEBUG: Carregando cotações para', comCotacao.length, 'compras');
   const cotacoesMap = await Promise.all(
     comCotacao.map(c => js(API+`/compras/${c.id}/cotacoes`).then(cots => ({id: c.id, cotacoes: cots})))
   );
-  console.log('DEBUG: CotacoesMap carregado:', cotacoesMap);
   
   for (const compra of comCotacao) {
-    console.log('DEBUG: Renderizando compra #' + compra.id + ' - ' + compra.item);
     const cotData = cotacoesMap.find(m => m.id === compra.id);
     const cotacoes = cotData?.cotacoes || [];
     
@@ -1008,7 +1001,7 @@ async function cotacoesGerais(){
           <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(cot.fornecedor)}</div>
           <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
           <div style="font-size: 12px; color: #666; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; max-height: 60px; overflow-y: auto;">${cot.observacao || '-'}</div>
-          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, '${htmlEsc(cot.fornecedor)}', ${cot.valor})" style="width: 100%; margin-bottom: 6px;">
+          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(cot.fornecedor)}&quot;, ${cot.valor})" style="width: 100%; margin-bottom: 6px;">
             ${selecionado ? '✓ SELECIONADO' : 'Aprovar'}
           </button>
           <div style="display: flex; gap: 4px; justify-content: center;">
