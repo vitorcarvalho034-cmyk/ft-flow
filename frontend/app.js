@@ -976,11 +976,14 @@ async function cotacoesGerais(){
   }
   
   // Carregar todas as cotações em paralelo para melhor performance
+  console.log('DEBUG: Carregando cotações para', comCotacao.length, 'compras');
   const cotacoesMap = await Promise.all(
     comCotacao.map(c => js(API+`/compras/${c.id}/cotacoes`).then(cots => ({id: c.id, cotacoes: cots})))
   );
+  console.log('DEBUG: CotacoesMap carregado:', cotacoesMap);
   
   for (const compra of comCotacao) {
+    console.log('DEBUG: Renderizando compra #' + compra.id + ' - ' + compra.item);
     const cotData = cotacoesMap.find(m => m.id === compra.id);
     const cotacoes = cotData?.cotacoes || [];
     
