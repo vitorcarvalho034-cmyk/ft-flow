@@ -958,10 +958,14 @@ function filtrarHistorico() {
 async function cotacoesGerais(){
   const data=await js(API+"/compras");
   const compData = data.data || data;
+  console.log('DEBUG: Todos os dados retornados:', compData);
   const comCotacao = compData.filter(c => {
   const status = normalizarStatus(c.status).replace(/_/g, ' ');
-  return status.includes("cotação") || status.includes("pendente");
+  const match = status.includes("cotação") || status.includes("pendente");
+  if (!match) console.log(`Filtrado: #${c.id} - ${c.item} - Status original: "${c.status}" -> normalizado: "${status}"`);
+  return match;
 });
+  console.log('DEBUG: Cotacoes filtradas:', comCotacao);
   
   let html = `<div class="panel"><h3>Cotações em aberto</h3>`;
   
