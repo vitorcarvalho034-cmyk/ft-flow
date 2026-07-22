@@ -54,6 +54,7 @@ const STATUS_ATIVOS_COMPRAS = [
   "pendente",
   "em cotação",
   "pendente_aprovacao",
+  "pendente aprovacao",
   "aguardando aprovação",
   "em andamento",
   "aprovado"
