@@ -55,7 +55,8 @@ const STATUS_ATIVOS_COMPRAS = [
   "em cotação",
   "pendente_aprovacao",
   "aguardando aprovação",
-  "em andamento"
+  "em andamento",
+  "aprovado"
 ];
 
 const STATUS_HISTORICO_COMPRAS = [
