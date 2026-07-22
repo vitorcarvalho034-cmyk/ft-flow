@@ -960,7 +960,7 @@ async function cotacoesGerais(){
   const compData = data.data || data;
   const comCotacao = compData.filter(c => {
   const status = normalizarStatus(c.status).replace(/_/g, ' ');
-  return status.includes("cotação") || status.includes("pendente aprovação") || status.includes("pendente aprovacao");
+  return status.includes("cotação") || status.includes("pendente");
 });
   
   let html = `<div class="panel"><h3>Cotações em aberto</h3>`;
