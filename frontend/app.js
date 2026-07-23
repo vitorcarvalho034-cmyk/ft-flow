@@ -859,55 +859,92 @@ function fecharModalCompra() {
 async function salvarCompraDetalhada(e) {
   e.preventDefault();
   try {
-    const solicitante = compSolicitanteModal.value.trim();
-    const item = compItemModal.value.trim();
-    const quantidade = compQtdModal.value;
-    const unidade = compUnidadeModal.value.trim();
-    const categoria = compCatModal.value;
-    const destino = compDestModal.value.trim();
+    const tipo = document.getElementById("compTipoModal").value;
+    
+    if (tipo === "lista") {
+      const solicitante = document.getElementById("compListaSolicitanteModal").value.trim();
+      if (!solicitante) return mostrarErro("Informe o solicitante");
+      if (listaCompraItens.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
+      
+      for (const item of listaCompraItens) {
+        await js(API + "/compras", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            solicitante,
+            item: item.produto,
+            quantidade: item.quantidade,
+            unidade: item.unidade,
+            categoria: "Lista de Compra",
+            destino: "Lista de Compra",
+            tipo_solicitacao: "lista",
+            link_produto: "",
+            descricao_detalhada: "",
+            foto_url: null
+          })
+        });
+      }
+      
+      mostrarSucesso(`Lista de compra enviada com ${listaCompraItens.length} item(ns)!`);
+      formCompra.reset();
+      listaCompraItens = [];
+      document.getElementById("compTipoModal").value = "compra";
+      alterarTipoCompra();
+      carregar();
+      atualizarContadorNotificacoes();
+      fecharModalCompra();
+    } else {
+      const solicitante = compSolicitanteModal.value.trim();
+      const item = compItemModal.value.trim();
+      const quantidade = compQtdModal.value;
+      const unidade = compUnidadeModal.value.trim();
+      const categoria = compCatModal.value;
+      const destino = compDestModal.value.trim();
 
-    const link = compLinkModal.value.trim();
-    const descricao = compDescricaoModal.value.trim();
-    const foto = compFotoModal.files[0];
-    
-    if(!solicitante) return mostrarErro("Informe o solicitante");
-    if(!item) return mostrarErro("Informe o item");
-    if(!quantidade) return mostrarErro("Informe a quantidade");
-    if(!unidadeMedidaValida(unidade)) return mostrarErro("Selecione a unidade de medida");
-    
-    let fotoUrl = null;
-    if (foto) {
-      fotoUrl = await uploadFotoCloudinary(foto);
-      if (!fotoUrl) return;
+      const link = compLinkModal.value.trim();
+      const descricao = compDescricaoModal.value.trim();
+      const foto = compFotoModal.files[0];
+      
+      if(!solicitante) return mostrarErro("Informe o solicitante");
+      if(!item) return mostrarErro("Informe o item");
+      if(!quantidade) return mostrarErro("Informe a quantidade");
+      if(!unidadeMedidaValida(unidade)) return mostrarErro("Selecione a unidade de medida");
+      
+      let fotoUrl = null;
+      if (foto) {
+        fotoUrl = await uploadFotoCloudinary(foto);
+        if (!fotoUrl) return;
+      }
+      
+      await js(API+"/compras",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({
+          solicitante,
+          item,
+          quantidade,
+          unidade,
+          categoria,
+          destino,
+          link_produto: link,
+          descricao_detalhada: descricao,
+          foto_url: fotoUrl
+        })
+      });
+      
+      mostrarSucesso("Solicitação enviada com sucesso!");
+      formCompra.reset();
+      compUnidadeModal.value = '';
+      compCatModal.value = '';
+      carregar();
+      atualizarContadorNotificacoes();
+      fecharModalCompra();
     }
-    
-    await js(API+"/compras",{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({
-        solicitante,
-        item,
-        quantidade,
-        unidade,
-        categoria,
-        destino,
-
-        link_produto: link,
-        descricao_detalhada: descricao,
-        foto_url: fotoUrl
-      })
-    });
-    
-    mostrarSucesso("Solicitação enviada com sucesso!");
-    formCompra.reset();
-    compUnidadeModal.value = '';
-    compCatModal.value = '';
-    carregar();
-    atualizarContadorNotificacoes();
   } catch(e) {
     mostrarErro(e.message);
   }
 }
+
 
 async function addCompra(){
   if(!compSolicitante.value.trim())return mostrarErro("Informe o nome do solicitante."); 
@@ -1697,6 +1734,115 @@ function initScrollLockObserver() {
     });
   });
   atualizarScrollLock();
+}
+
+// ===== LISTA DE COMPRA (Fase 4) =====
+let listaCompraItens = [];
+
+function alterarTipoCompra() {
+  const tipo = document.getElementById("compTipoModal").value;
+  const compraRegularFields = document.getElementById("compraRegularFields");
+  const listaCompraFields = document.getElementById("listaCompraFields");
+  const listaCompraContainer = document.getElementById("listaCompraContainer");
+  const compCatModal = document.getElementById("compCatModal");
+  const compDestModal = document.getElementById("compDestModal");
+  const compQtdModal = document.getElementById("compQtdModal");
+  const compUnidadeModal = document.getElementById("compUnidadeModal");
+  const compDescricaoModal = document.getElementById("compDescricaoModal");
+  const compFotoModal = document.getElementById("compFotoModal");
+  const compLinkModal = document.getElementById("compLinkModal");
+  
+  if (tipo === "lista") {
+    // Mostrar campos de lista de compra
+    compraRegularFields.classList.add("hidden");
+    listaCompraFields.classList.remove("hidden");
+    listaCompraContainer.classList.remove("hidden");
+    
+    // Desabilitar campos de compra regular
+    compCatModal.removeAttribute("required");
+    compDestModal.removeAttribute("required");
+    compQtdModal.removeAttribute("required");
+    compUnidadeModal.removeAttribute("required");
+    compDescricaoModal.removeAttribute("required");
+    compFotoModal.removeAttribute("required");
+    compLinkModal.removeAttribute("required");
+    
+    // Limpar itens anteriores
+    listaCompraItens = [];
+    renderizarListaCompraItens();
+  } else {
+    // Mostrar campos de compra regular
+    compraRegularFields.classList.remove("hidden");
+    listaCompraFields.classList.add("hidden");
+    listaCompraContainer.classList.add("hidden");
+    
+    // Reabilitar campos de compra regular
+    compCatModal.setAttribute("required", "");
+    compDestModal.setAttribute("required", "");
+    compQtdModal.setAttribute("required", "");
+    compUnidadeModal.setAttribute("required", "");
+    compDescricaoModal.setAttribute("required", "");
+    compFotoModal.setAttribute("required", "");
+  }
+}
+
+function adicionarItemLista() {
+  const produto = document.getElementById("listaCompraItemInput").value.trim();
+  const quantidade = parseFloat(document.getElementById("listaCompraQtdInput").value);
+  const unidade = document.getElementById("listaCompraUnidadeInput").value.trim();
+  
+  if (!produto) return mostrarErro("Informe o nome do produto");
+  if (!quantidade || quantidade <= 0) return mostrarErro("Informe uma quantidade válida");
+  if (!unidade) return mostrarErro("Selecione a unidade de medida");
+  
+  listaCompraItens.push({ produto, quantidade, unidade, id: Date.now() });
+  
+  // Limpar campos
+  document.getElementById("listaCompraItemInput").value = "";
+  document.getElementById("listaCompraQtdInput").value = "";
+  document.getElementById("listaCompraUnidadeInput").value = "";
+  
+  renderizarListaCompraItens();
+  mostrarSucesso("Item adicionado!");
+}
+
+function removerItemLista(id) {
+  listaCompraItens = listaCompraItens.filter(item => item.id !== id);
+  renderizarListaCompraItens();
+}
+
+function renderizarListaCompraItens() {
+  const container = document.getElementById("listaCompraItensContainer");
+  
+  if (listaCompraItens.length === 0) {
+    container.innerHTML = '<p style="color: #999; font-style: italic;">Nenhum item adicionado ainda</p>';
+    return;
+  }
+  
+  container.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <thead>
+        <tr style="background: #e8f5e9; border-bottom: 2px solid #1b5e20;">
+          <th style="padding: 8px; text-align: left; color: #1b5e20;">Produto</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 100px;">Qtd</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Un.</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 60px;">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${listaCompraItens.map(item => `
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
+            <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
+            <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
+            <td style="padding: 8px; text-align: center;">
+              <button type="button" class="danger" onclick="removerItemLista(${item.id})" style="padding: 4px 8px; font-size: 12px;">Remover</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
 }
 
 function initAppUi() {

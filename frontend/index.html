@@ -167,8 +167,14 @@
     <div class="modal-head"><h3>Nova Solicitação de Compra</h3><button onclick="fecharModalCompra()">×</button></div>
     <form id="formCompra" onsubmit="salvarCompraDetalhada(event)">
       <div class="grid">
-        <label>Solicitante<input id="compSolicitanteModal" placeholder="Nome do solicitante" required></label>
-        <label>Produto<input id="compItemModal" placeholder="Nome do produto" required></label>
+        <label>Tipo de Solicitação<select id="compTipoModal" onchange="alterarTipoCompra()" required><option value="compra">Compra</option><option value="lista">Lista de Compra</option></select></label>
+      </div>
+      <div id="compraRegularFields" class="grid">
+        <label>Solicitante<input id="compSolicitanteModal" placeholder="Nome do solicitante"></label>
+        <label>Produto<input id="compItemModal" placeholder="Nome do produto"></label>
+      </div>
+      <div id="listaCompraFields" class="hidden">
+        <label>Solicitante<input id="compListaSolicitanteModal" placeholder="Nome do solicitante" required></label>
       </div>
       <div class="grid">
         <label>Categoria<select id="compCatModal" required><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Outros</option></select></label>
@@ -184,6 +190,23 @@
         <img id="compFotoPreviewImg" alt="Preview da foto">
       </div>
       <label>Foto para Comparativo<input id="compFotoModal" type="file" accept="image/*" onchange="previewFotoCompra(this.files[0])" required></label>
+      
+      <!-- Seção de Lista de Compra -->
+      <div id="listaCompraContainer" class="hidden" style="margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
+        <h4 style="margin-top: 0; color: #1b5e20;">Adicionar Itens à Lista</h4>
+        <div class="grid">
+          <label>Produto<input id="listaCompraItemInput" placeholder="Nome do produto"></label>
+          <label>Quantidade<input id="listaCompraQtdInput" type="number" placeholder="1" step="any"></label>
+        </div>
+        <div class="grid">
+          <label>Unidade<select id="listaCompraUnidadeInput"><option value="">Selecione...</option><option>un</option><option>kg</option><option>L</option><option>m</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>balde</option><option>galão</option><option>lata</option></select></label>
+          <button type="button" class="secondary" onclick="adicionarItemLista()" style="align-self: flex-end;">+ Adicionar Item</button>
+        </div>
+        <div id="listaCompraItensContainer" style="margin-top: 15px;">
+          <!-- Itens serão renderizados aqui -->
+        </div>
+      </div>
+      
       <button class="primary full">Enviar Solicitação</button>
     </form>
   </div>
