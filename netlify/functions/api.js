@@ -97,14 +97,34 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
   const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
   
-  let botoesHtml = '';
+  // Construir cards de fornecedores com descrição completa
+  let fornecedoresHtml = '';
   for (const cot of cotacoes) {
     const token = Buffer.from(`${compraId}:${cot.id}`).toString('base64');
     const linkAprovacao = `${appUrl}/api/aprovar-cotacao/${token}`;
-    botoesHtml += `<div style="margin:10px 0"><a href="${linkAprovacao}" style="display:inline-block;background:#052e16;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;font-weight:bold">${cot.fornecedor} - R$ ${Number(cot.valor).toFixed(2)}</a></div>`;
+    fornecedoresHtml += `
+      <div style="border:1px solid #ddd;border-radius:6px;padding:15px;margin-bottom:15px;background-color:#f9f9f9">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid #eee;padding-bottom:10px">
+          <span style="font-size:16px;font-weight:bold;color:#1b5e20">${cot.fornecedor}</span>
+          <span style="font-size:18px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
+        </div>
+        ${cot.observacao ? `<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px;padding:10px;background-color:#fff;border-left:3px solid #1b5e20"><strong>Descrição:</strong><br>${cot.observacao}</div>` : ''}
+        <div style="text-align:center;margin-top:15px">
+          <a href="${linkAprovacao}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">Selecionar ${cot.fornecedor}</a>
+        </div>
+      </div>
+    `;
   }
   
-  const infoCompra = `<div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0"><h3 style="margin:0 0 10px 0;color:#052e16">Detalhes da Compra</h3><p style="margin:5px 0"><strong>O que:</strong> ${compra.descricao || compra.item}</p><p style="margin:5px 0"><strong>Quantidade:</strong> ${compra.quantidade} ${compra.unidade}</p><p style="margin:5px 0"><strong>Destino/Uso:</strong> ${compra.destino}</p>${compra.descricao_detalhada ? `<p style="margin:5px 0"><strong>Especificacoes:</strong> ${compra.descricao_detalhada}</p>` : ''}<p style="margin:5px 0"><strong>Solicitante:</strong> ${compra.solicitante}</p></div>`;
+  const infoCompra = `
+    <div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0">
+      <h3 style="margin:0 0 10px 0;color:#1b5e20">📋 Detalhes da Compra</h3>
+      <p style="margin:5px 0"><strong>Produto:</strong> ${compra.descricao || compra.item}</p>
+      <p style="margin:5px 0"><strong>Quantidade:</strong> ${compra.quantidade} ${compra.unidade}</p>
+      <p style="margin:5px 0"><strong>Destino/Uso:</strong> ${compra.destino}</p>
+      <p style="margin:5px 0"><strong>Solicitante:</strong> ${compra.solicitante}</p>
+    </div>
+  `;
   
   // Verificar se ja foi aprovado
   const compraAtual = await q('SELECT status, fornecedor_escolhido, valor_escolhido FROM compras WHERE id=$1', [compraId]);
@@ -112,17 +132,43 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
   
   let conteudoEmail = '';
   if (jaAprovado) {
-    conteudoEmail = `<div style="background:#e8f5e9;padding:15px;border-radius:8px;border-left:4px solid #4caf50;margin:15px 0"><p style="margin:0;color:#2e7d32"><strong>✅ JÁ APROVADO</strong></p></div><div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0"><p style="margin:5px 0"><strong>Fornecedor:</strong> ${compraAtual.rows[0].fornecedor_escolhido}</p><p style="margin:5px 0"><strong>Valor:</strong> R$ ${Number(compraAtual.rows[0].valor_escolhido).toFixed(2)}</p></div>`;
+    conteudoEmail = `
+      <div style="background:#e8f5e9;padding:15px;border-radius:8px;border-left:4px solid #4caf50;margin:15px 0">
+        <p style="margin:0;color:#2e7d32"><strong>✅ JÁ APROVADO</strong></p>
+      </div>
+      <div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0">
+        <p style="margin:5px 0"><strong>Fornecedor:</strong> ${compraAtual.rows[0].fornecedor_escolhido}</p>
+        <p style="margin:5px 0"><strong>Valor:</strong> R$ ${Number(compraAtual.rows[0].valor_escolhido).toFixed(2)}</p>
+      </div>
+    `;
   } else {
-    conteudoEmail = `<p>Escolha o melhor fornecedor clicando no botao abaixo:</p>${botoesHtml}<p style="margin-top:20px;color:#666;font-size:12px">Clique no fornecedor escolhido para confirmar automaticamente.</p>`;
+    conteudoEmail = `
+      <div style="margin:15px 0">
+        <h3 style="color:#1b5e20;margin-bottom:15px">🏪 Fornecedores Disponíveis</h3>
+        <p style="font-size:13px;color:#666;margin-bottom:15px">Clique no fornecedor escolhido para confirmar automaticamente:</p>
+        ${fornecedoresHtml}
+      </div>
+    `;
   }
   
-  const html = `<div style="font-family:Arial;background:#f3f7f4;padding:24px"><div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden"><div style="background:#052e16;padding:18px;color:white"><h2>${titulo}</h2></div><div style="padding:18px">${infoCompra}${conteudoEmail}</div></div></div>`;
+  const html = `
+    <div style="font-family:Arial;background:#f3f7f4;padding:24px">
+      <div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden">
+        <div style="background:#1b5e20;padding:30px;color:white;text-align:center">
+          <h1 style="margin:0;font-size:24px">Cotação #${compraId}</h1>
+          <p style="margin:5px 0 0 0;opacity:0.9">Aguardando Aprovação</p>
+        </div>
+        <div style="padding:30px">
+          ${infoCompra}
+          ${conteudoEmail}
+        </div>
+      </div>
+    </div>
+  `;
   
   const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
   await t.sendMail({from:process.env.SMTP_USER,to:approvalEmail,subject:titulo,html});
 }
-
 function normalizarTelefone(num) {
   let n = String(num || "").replace(/\D/g, "");
   if (n.startsWith("0")) n = n.slice(1);
