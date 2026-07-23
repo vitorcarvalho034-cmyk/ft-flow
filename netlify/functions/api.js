@@ -70,6 +70,9 @@ async function ensureDb(){
   // Adicionar coluna received_at se nao existir
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(e => console.log('received_at column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_by INTEGER`).catch(e => console.log('received_by column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS questionamento TEXT`).catch(e => console.log('questionamento column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS resposta_admin TEXT`).catch(e => console.log('resposta_admin column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_questionamento VARCHAR(50)`).catch(e => console.log('status_questionamento column already exists'));
 
   // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
@@ -109,9 +112,10 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
           <span style="font-size:18px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
         </div>
         ${cot.observacao ? `<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px;padding:10px;background-color:#fff;border-left:3px solid #1b5e20"><strong>Descrição:</strong><br>${cot.observacao}</div>` : ''}
-        <div style="text-align:center;margin-top:15px;display:flex;gap:10px;justify-content:center">
+        <div style="text-align:center;margin-top:15px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
           <a href="${linkAprovacao}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Selecionar</a>
           <a href="${appUrl}/api/negar-cotacao/${token}" style="display:inline-block;background:#d32f2f;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❌ Negar</a>
+          <a href="${appUrl}/api/questionar-cotacao/${token}" style="display:inline-block;background:#ff9800;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❓ Questionar</a>
         </div>
       </div>
     `;
@@ -638,6 +642,85 @@ app.get('/negar-cotacao/:token', async (req, res) => {
     await notify(titulo, `Cotação #${compraId} foi negada por Dorian. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
     res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.warning{color:#d32f2f;font-size:48px;margin-bottom:20px}h1{color:#d32f2f;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#d32f2f}</style></head><body><div class="card"><div class="warning">❌</div><h1>Compra Negada!</h1><p>A cotação foi negada por Dorian.</p><div class="details"><p><strong>Cotação:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta negação.</p></div></body></html>`);
+  } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
+});
+
+// Questionar cotação
+app.get('/questionar-cotacao/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [compraId, cotacaoId] = decoded.split(':');
+    
+    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token inválido' });
+    
+    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
+    if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotação não encontrada' });
+    
+    // Mostrar formulário para Dorian digitar a questão
+    const html = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial; background: #f3f7f4; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+            .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 600px; width: 100%; }
+            .icon { color: #ff9800; font-size: 48px; margin-bottom: 20px; }
+            h1 { color: #ff9800; margin: 0 0 10px 0; }
+            p { color: #666; margin: 10px 0; }
+            textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: Arial; font-size: 14px; resize: vertical; min-height: 120px; box-sizing: border-box; }
+            button { background: #ff9800; color: white; padding: 12px 24px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 15px; }
+            button:hover { background: #f57c00; }
+            .info { background: #fff3e0; padding: 15px; border-radius: 4px; margin-bottom: 20px; color: #e65100; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">❓</div>
+            <h1>Questionar Cotação</h1>
+            <p>Descreva sua dúvida ou questão sobre esta cotação:</p>
+            <div class="info">
+              <strong>Fornecedor:</strong> ${cotacao.rows[0].fornecedor}<br>
+              <strong>Valor:</strong> R$ ${Number(cotacao.rows[0].valor).toFixed(2)}
+            </div>
+            <form method="POST" action="/api/enviar-questionamento/${token}">
+              <textarea name="questionamento" placeholder="Ex: Por que essa marca? Temos outras opções mais baratas?" required></textarea>
+              <button type="submit">✅ Enviar Questão</button>
+            </form>
+          </div>
+        </body>
+      </html>
+    `;
+    res.send(html);
+  } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
+});
+
+// Enviar questionamento
+app.post('/enviar-questionamento/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const { questionamento } = req.body;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [compraId, cotacaoId] = decoded.split(':');
+    
+    if (!compraId || !cotacaoId || !questionamento) return res.status(400).json({ error: 'Dados inválidos' });
+    
+    // Salvar questionamento
+    await q(`UPDATE compras SET questionamento=$1, status_questionamento='Pendente' WHERE id=$2`, [questionamento, compraId]);
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1', [cotacaoId]);
+    
+    const titulo = `Cotação #${compraId} - Questionada por Dorian`;
+    const dados = {
+      'Produto': compra.rows[0].descricao || compra.rows[0].item,
+      'Fornecedor': cotacao.rows[0].fornecedor,
+      'Questão': questionamento
+    };
+    
+    await notify(titulo, `Dorian questionou a cotação #${compraId}. Questão: ${questionamento}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#ff9800;font-size:48px;margin-bottom:20px}h1{color:#ff9800;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="success">✅</div><h1>Questão Enviada!</h1><p>Sua questão foi enviada para o admin.</p><p style="color:#999;font-size:12px;margin-top:30px">Você receberá uma resposta em breve.</p></div></body></html>`);
   } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
