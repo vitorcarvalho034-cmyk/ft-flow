@@ -100,6 +100,7 @@
         <label>Data<input name="data_ocorrencia" type="date" required></label>
         <label>Tipo<select name="tipo"><option>Estufas</option><option>Infraestrutura</option><option>Tratores</option><option>Implementos</option><option>Equipamentos</option><option>Máquinas</option><option>Bombas e Motores</option></select></label>
         <label>Local/Item<input name="local_item" required></label>
+        <label>Especificação<input name="especificacao" placeholder="Ex: Estufa 1, Trator amarelo, etc."></label>
       </div>
       <div id="solicitanteOutroBox" class="hidden">
         <label>Nome do solicitante<input id="manSolicitanteOutro" name="solicitante_outro" placeholder="Digite o nome completo"></label>
@@ -109,6 +110,8 @@
         <label>Urgência<select name="urgencia"><option>Baixa (pode esperar)</option><option>Média (prejudica o uso)</option><option>Alta (parou a operação)</option></select></label>
         <label>Responsável<input name="responsavel"></label>
       </div>
+      <label>Motivo da Espera<select name="motivo_espera"><option value="">Selecione...</option><option>Aguardando peça</option><option>Aguardando técnico</option><option>Em cotação</option><option>Pendente</option><option>Aguardando aprovação</option><option>Em andamento</option></select></label>
+      <label>Data da Conclusão<input name="data_conclusao" type="date"></label>
       <label>Solução/Observação<textarea name="solucao"></textarea></label>
       <div class="purchase-box">
         <label class="check"><input type="checkbox" id="precisaCompra" onchange="toggleCompra()"> Necessita compra?</label>

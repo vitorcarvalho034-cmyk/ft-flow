@@ -252,7 +252,10 @@ function st(s){
 function urg(u){ if((u||"").startsWith("Alta"))return `<span class="badge high">${u}</span>`; if((u||"").startsWith("Média"))return `<span class="badge mid">${u}</span>`; return `<span class="badge low">${u||""}</span>`; }
 
 function tabelaMan(data){
-  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Ações</th></tr></thead><tbody>${data.map(m=>`<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`}</td></tr>`).join("")}</tbody></table>`;
+  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Especificação</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Motivo</th><th>Data Conclusão</th><th>Ações</th></tr></thead><tbody>${data.map(m=>{
+    const dataConclusao = m.data_conclusao ? new Date(m.data_conclusao).toLocaleDateString('pt-BR') : '-';
+    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td><small>${m.motivo_espera||"-"}</small></td><td>${dataConclusao}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`}</td></tr>`;
+  }).join("")}</tbody></table>`;
 }
 
 async function dashboard(){
@@ -1429,16 +1432,11 @@ function fecharModalEnviarAprovacao() {
 async function abrirModalAprovacaoCompra(compraId) {
   try {
     const compra = await js(`${API}/compras/${compraId}`);
-    const cotacoes = await js(`${API}/compras/${compraId}/cotacoes`);
-    
-    if (!compra.fornecedor_escolhido) {
-      return mostrarErro("Selecione um fornecedor antes de aprovar");
-    }
     
     const modal = document.getElementById("modalEnviarAprovacao");
     document.getElementById("envioAprovacaoCompra").value = compraId;
-    document.getElementById("envioAprovacaoFornecedor").value = compra.fornecedor_escolhido;
-    document.getElementById("envioAprovacaoValor").value = compra.valor_escolhido.toFixed(2);
+    document.getElementById("envioAprovacaoFornecedor").value = compra.fornecedor_escolhido || "";
+    document.getElementById("envioAprovacaoValor").value = compra.valor_escolhido ? compra.valor_escolhido.toFixed(2) : "";
     document.getElementById("envioAprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
     modal.classList.remove("hidden");
   } catch (e) {
