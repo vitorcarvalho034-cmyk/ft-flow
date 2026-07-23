@@ -129,6 +129,29 @@
   </div>
 </div>
 
+<div id="atualizarStatusModal" class="modal hidden">
+  <div class="modal-card small-modal">
+    <div class="modal-head"><h3>Atualizar Status da Manutenção</h3><button onclick="fecharAtualizarStatus()">×</button></div>
+    <form onsubmit="salvarAtualizarStatus(event)">
+      <input type="hidden" id="atualizarStatusId">
+      <label>Novo Status<select id="atualizarStatusSelect" onchange="toggleAtualizarStatusOutro()" required>
+        <option value="">Selecione...</option>
+        <option value="Aberto">Aberto</option>
+        <option value="Em andamento">Em andamento</option>
+        <option value="Aguardando peça">Aguardando peça</option>
+        <option value="Aguardando técnico">Aguardando técnico</option>
+        <option value="Em cotação">Em cotação</option>
+        <option value="Pendente">Pendente</option>
+        <option value="Outros">Outros (especificar)</option>
+      </select></label>
+      <div id="atualizarStatusOutroBox" class="hidden">
+        <label>Digite o status customizado<input id="atualizarStatusOutro" placeholder="Ex: Aguardando aprovação"></label>
+      </div>
+      <button class="primary full">Atualizar Status</button>
+    </form>
+  </div>
+</div>
+
 <div id="concluirModal" class="modal hidden">
   <div class="modal-card small-modal">
     <div class="modal-head"><h3>Concluir manutenção</h3><button onclick="fecharConcluir()">×</button></div>

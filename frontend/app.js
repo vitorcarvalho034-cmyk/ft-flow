@@ -252,9 +252,11 @@ function st(s){
 function urg(u){ if((u||"").startsWith("Alta"))return `<span class="badge high">${u}</span>`; if((u||"").startsWith("Média"))return `<span class="badge mid">${u}</span>`; return `<span class="badge low">${u||""}</span>`; }
 
 function tabelaMan(data){
+  const isAdmin = usuario && usuario.role === "admin";
   return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Especificação</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Motivo</th><th>Data Conclusão</th><th>Ações</th></tr></thead><tbody>${data.map(m=>{
     const dataConclusao = m.data_conclusao ? new Date(m.data_conclusao).toLocaleDateString('pt-BR') : '-';
-    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td><small>${m.motivo_espera||"-"}</small></td><td>${dataConclusao}</td><td>${m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`}</td></tr>`;
+    const botoesAcao = m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> ${isAdmin ? `<button class="primary" onclick="abrirAtualizarStatus(${m.id})">Atualizar Status</button>` : ''} <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`;
+    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td><small>${m.motivo_espera||"-"}</small></td><td>${dataConclusao}</td><td>${botoesAcao}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -361,7 +363,56 @@ async function excluirManutencao(id){
   }
 }
 
-// ===== ESTOQUE V6 =====
+// Abrir modal para atualizar status
+async function abrirAtualizarStatus(id) {
+  document.getElementById("atualizarStatusId").value = id;
+  document.getElementById("atualizarStatusSelect").value = "";
+  document.getElementById("atualizarStatusOutro").value = "";
+  document.getElementById("atualizarStatusOutroBox").classList.add("hidden");
+  document.getElementById("atualizarStatusModal").classList.remove("hidden");
+}
+
+function fecharAtualizarStatus() {
+  document.getElementById("atualizarStatusModal").classList.add("hidden");
+}
+
+function toggleAtualizarStatusOutro() {
+  const select = document.getElementById("atualizarStatusSelect");
+  const outroBox = document.getElementById("atualizarStatusOutroBox");
+  if (select.value === "Outros") {
+    outroBox.classList.remove("hidden");
+  } else {
+    outroBox.classList.add("hidden");
+  }
+}
+
+async function salvarAtualizarStatus(e) {
+  e.preventDefault();
+  try {
+    const id = document.getElementById("atualizarStatusId").value;
+    const select = document.getElementById("atualizarStatusSelect").value;
+    const outro = document.getElementById("atualizarStatusOutro").value;
+    
+    if (!select) return mostrarErro("Selecione um status");
+    
+    const novoStatus = select === "Outros" ? outro : select;
+    if (!novoStatus.trim()) return mostrarErro("Digite o status customizado");
+    
+    await js(`${API}/manutencoes/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: novoStatus })
+    });
+    
+    mostrarSucesso("Status atualizado com sucesso!");
+    fecharAtualizarStatus();
+    carregar();
+  } catch (e) {
+    mostrarErro(e.message || "Erro ao atualizar status");
+  }
+}
+
+// ===== ESTOQUE V6 ===== 
 const EMOJI_CATEGORIA = {
   "Flor de Corte": "🌹",
   "Adubo": "🧪",
