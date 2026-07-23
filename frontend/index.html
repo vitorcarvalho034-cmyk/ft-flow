@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FT FLOW</title>
+<link rel="icon" href="logo.png">
+<link rel="stylesheet" href="style.css?v=37">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#052e16">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <img src="logo.png" class="logo-img">
+    <h1>FT FLOW</h1>
+    <p>Sistema de Gestão Empresarial</p>
+    <input id="loginUser" placeholder="Usuário" value="admin">
+    <input id="loginPass" type="password" placeholder="Senha" value="123">
+    <button onclick="fazerLogin()">Entrar</button>
+    <small>admin / 123 ou operador / 123</small>
+  </div>
+</div>
+
+<div id="app" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand"><img src="logo.png" class="logo-mini"><b>FT FLOW</b></div>
+    <button class="nav active" onclick="trocarTela('dashboard',this)">Dashboard</button>
+    <button class="nav" onclick="trocarTela('manutencoes',this)">Manutenções</button>
+    <button class="nav" onclick="trocarTela('estoque',this)">Estoque</button>
+    <button class="nav" onclick="trocarTela('compras',this)">Compras</button>
+    <button class="nav admin-only" onclick="trocarTela('cotacoes',this)">Cotações</button>
+
+    <button class="nav admin-only" onclick="trocarTela('relatorios',this)">Relatórios</button>
+    <button class="nav admin-only" onclick="trocarTela('fornecedores',this)">Fornecedores</button>
+    <button class="nav" onclick="trocarTela('historico',this)">Histórico</button>
+    <div class="userbox">
+      <div id="userNameDesktop"></div>
+      <small id="userRoleDesktop"></small>
+      <button class="logout" onclick="location.reload()">Sair</button>
+    </div>
+  </aside>
+
+<!-- Drawer Menu Mobile -->
+<div id="drawer" class="drawer hidden">
+  <div class="drawer-content">
+    <div class="drawer-header">
+      <img src="logo.png" class="logo-mini">
+      <b>FT FLOW</b>
+      <button onclick="toggleMenu()" class="close-drawer">✕</button>
+    </div>
+    <nav class="drawer-nav">
+      <button class="drawer-nav-item active" data-tela="dashboard" onclick="trocarTelaDrawer('dashboard')"><span class="nav-icon">📊</span>Dashboard</button>
+      <button class="drawer-nav-item" data-tela="manutencoes" onclick="trocarTelaDrawer('manutencoes')"><span class="nav-icon">🔧</span>Manutenções</button>
+      <button class="drawer-nav-item" data-tela="estoque" onclick="trocarTelaDrawer('estoque')"><span class="nav-icon">📦</span>Estoque</button>
+      <button class="drawer-nav-item" data-tela="compras" onclick="trocarTelaDrawer('compras')"><span class="nav-icon">🛒</span>Compras</button>
+      <button class="drawer-nav-item admin-only" data-tela="cotacoes" onclick="trocarTelaDrawer('cotacoes')"><span class="nav-icon">📋</span>Cotações</button>
+
+      <button class="drawer-nav-item admin-only" data-tela="relatorios" onclick="trocarTelaDrawer('relatorios')"><span class="nav-icon">📈</span>Relatórios</button>
+      <button class="drawer-nav-item admin-only" data-tela="fornecedores" onclick="trocarTelaDrawer('fornecedores')"><span class="nav-icon">🏭</span>Fornecedores</button>
+      <button class="drawer-nav-item" data-tela="historico" onclick="trocarTelaDrawer('historico')"><span class="nav-icon">🕘</span>Histórico</button>
+    </nav>
+    <div class="drawer-footer">
+      <div id="userNameMobile"></div>
+      <small id="userRoleMobile"></small>
+      <button class="logout" onclick="location.reload()">Sair</button>
+    </div>
+  </div>
+</div>
+
+
+  <main class="main">
+    <header class="topbar">
+      <button id="menuToggle" class="menu-toggle" onclick="toggleMenu()">☰</button>
+      <div><h2 id="pageTitle">Dashboard</h2><p>Sistema interno de gestão operacional</p></div>
+      <div class="top-actions admin-only">
+        <button class="bell-btn" onclick="abrirNotificacoes()">🔔 <span id="notifCount" class="notif-count hidden">0</span></button>
+      </div>
+    </header>
+    <section id="content"></section>
+  </main>
+</div>
+
+<div id="notifPanel" class="notif-panel hidden">
+  <div class="notif-head"><h3>🔔 Notificações</h3><button onclick="fecharNotificacoes()">×</button></div>
+  <button class="secondary" onclick="marcarTodasNotificacoes()">Marcar todas como lidas</button>
+  <div id="notifList"></div>
+</div>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Nova Manutenção</h3><button onclick="fecharModal()">×</button></div>
+    <form id="formManutencao" onsubmit="salvarManutencao(event)">
+      <div class="grid">
+        <label>Solicitante<select id="manSolicitante" name="solicitante" onchange="toggleSolicitanteOutro(this)" required><option value="">Selecione...</option><option>Kleber</option><option>Flávio</option><option>Leomar</option><option>Diana</option><option>Dayana</option><option>Outro</option></select></label>
+        <label>Data<input name="data_ocorrencia" type="date" required></label>
+        <label>Tipo<select name="tipo"><option>Estufas</option><option>Infraestrutura</option><option>Tratores</option><option>Implementos</option><option>Equipamentos</option><option>Máquinas</option><option>Bombas e Motores</option></select></label>
+        <label>Local/Item<input name="local_item" required></label>
+      </div>
+      <div id="solicitanteOutroBox" class="hidden">
+        <label>Nome do solicitante<input id="manSolicitanteOutro" name="solicitante_outro" placeholder="Digite o nome completo"></label>
+      </div>
+      <label>Problema<textarea name="defeito" required></textarea></label>
+      <div class="grid">
+        <label>Urgência<select name="urgencia"><option>Baixa (pode esperar)</option><option>Média (prejudica o uso)</option><option>Alta (parou a operação)</option></select></label>
+        <label>Responsável<input name="responsavel"></label>
+      </div>
+      <label>Solução/Observação<textarea name="solucao"></textarea></label>
+      <div class="purchase-box">
+        <label class="check"><input type="checkbox" id="precisaCompra" onchange="toggleCompra()"> Necessita compra?</label>
+        <div id="camposCompra" class="hidden grid">
+          <label>Item<input name="item_compra"></label>
+          <label>Quantidade<input name="quantidade_compra" type="number" value="1" min="0.01" step="any"></label>
+          <label>Unidade de medida<select id="manUnidadeCompra" name="unidade_compra"></select></label>
+          <label>Categoria<select name="categoria_compra"><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Caixa 48</option><option>Caixa 58</option><option>Outros</option></select></label>
+          <label>Destino<input name="destino_compra" placeholder="Ex: Defensivo Vinhedo"></label>
+        </div>
+      </div>
+      <label>Foto<input name="foto" type="file" accept="image/*"></label>
+      <button class="primary full">Salvar</button>
+    </form>
+  </div>
+</div>
+
+<div id="concluirModal" class="modal hidden">
+  <div class="modal-card small-modal">
+    <div class="modal-head"><h3>Concluir manutenção</h3><button onclick="fecharConcluir()">×</button></div>
+    <input type="hidden" id="concluirId">
+    <label>Responsável pela execução<input id="concluirResponsavel" placeholder="Nome do responsável"></label>
+    <label>Solução aplicada<textarea id="concluirSolucao" placeholder="Descreva o que foi feito"></textarea></label>
+    <button class="primary full" onclick="salvarConclusao()">Concluir manutenção</button>
+  </div>
+</div>
+
+<div id="modalCompra" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Nova Solicitação de Compra</h3><button onclick="fecharModalCompra()">×</button></div>
+    <form id="formCompra" onsubmit="salvarCompraDetalhada(event)">
+      <div class="grid">
+        <label>Solicitante<input id="compSolicitanteModal" placeholder="Nome do solicitante" required></label>
+        <label>Produto<input id="compItemModal" placeholder="Nome do produto" required></label>
+      </div>
+      <div class="grid">
+        <label>Categoria<select id="compCatModal" required><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Outros</option></select></label>
+        <label>Destino / Uso<input id="compDestModal" placeholder="Ex: Defensivo Vinhedo" required></label>
+      </div>
+      <div class="grid">
+        <label>Quantidade<input id="compQtdModal" type="number" placeholder="1" required></label>
+        <label>Unidade de medida<select id="compUnidadeModal" required></select></label>
+      </div>
+      <label>Link do Produto (opcional)<input id="compLinkModal" type="url" placeholder="https://exemplo.com/produto"></label>
+      <label>Descrição Detalhada<textarea id="compDescricaoModal" placeholder="Especificações, marca, modelo, etc."></textarea></label>
+      <div id="compFotoPreview" class="pedido-foto-preview hidden">
+        <img id="compFotoPreviewImg" alt="Preview da foto">
+      </div>
+      <label>Foto para Comparativo (opcional)<input id="compFotoModal" type="file" accept="image/*" onchange="previewFotoCompra(this.files[0])"></label>
+      <button class="primary full">Enviar Solicitação</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Estoque: Incluir/Editar Produto -->
+<div id="modalEstoque" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3 id="tituloModalEstoque">Novo Produto</h3><button type="button" onclick="fecharModalEstoque()">×</button></div>
+    <form id="formEstoque" onsubmit="salvarProdutoEstoque(event)">
+      <input type="hidden" id="estoqueId">
+      <div id="estoqueFotoArea" class="estoque-foto-area">
+        <div id="estoqueFotoPreview" class="estoque-foto-preview hidden">
+          <img id="estoqueFotoPreviewImg" alt="Preview">
+        </div>
+        <div class="estoque-foto-btns">
+          <button type="button" class="secondary" onclick="escolherFotoEstoque('camera')">📷 Tirar foto</button>
+          <button type="button" class="secondary" onclick="escolherFotoEstoque('galeria')">🖼️ Galeria</button>
+        </div>
+        <input id="estoqueFoto" type="file" accept="image/*" class="hidden">
+      </div>
+      <div class="grid">
+        <label>Nome do Produto<input id="estoqueName" placeholder="Ex: Rosa Vermelha" required></label>
+        <label>Categoria<select id="estoqueCat"><option>Flor de Corte</option><option>Adubo</option><option>Defensivo</option><option>Peças</option><option>Embalagens</option><option>Outros</option></select></label>
+      </div>
+      <div class="grid">
+        <label>Unidade<input id="estoqueUnit" placeholder="Ex: maços, kg, L" required></label>
+        <label>Quantidade inicial<input id="estoqueQtd" type="number" placeholder="0" min="0" step="any"></label>
+      </div>
+      <div class="grid">
+        <label>Mínimo para alerta<input id="estoqueMin" type="number" placeholder="0" min="0" step="any" required></label>
+        <label>Fornecedor<input id="estoqueFornecedor" placeholder="Ex: Cooperflora"></label>
+      </div>
+      <div class="grid">
+        <label>Local<input id="estoqueLocal" placeholder="Ex: Câmara Fria"></label>
+      </div>
+      <label>Observações<textarea id="estoqueObs" placeholder="Informações adicionais..."></textarea></label>
+      <button class="primary full">Salvar Produto</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Detalhe do Produto (Estoque V6) -->
+<div id="modalDetalheProduto" class="modal hidden">
+  <div class="modal-card estoque-detalhe-card">
+    <div class="modal-head"><h3>Detalhes do Produto</h3><button type="button" onclick="fecharDetalheProduto()">×</button></div>
+    <div id="detalheProdutoConteudo"></div>
+  </div>
+</div>
+
+<!-- Modal Entrada de Estoque -->
+<div id="modalEntradaEstoque" class="modal hidden">
+  <div class="modal-card small-modal">
+    <div class="modal-head"><h3>➕ Entrada de Estoque</h3><button type="button" onclick="fecharEntradaEstoque()">×</button></div>
+    <form id="formEntradaEstoque" onsubmit="salvarEntradaEstoque(event)">
+      <input type="hidden" id="entradaEstoqueId">
+      <p id="entradaEstoqueNome" class="estoque-modal-sub"></p>
+      <p id="entradaEstoqueSaldo" class="estoque-modal-saldo"></p>
+      <label>Quantidade recebida<input id="entradaQtd" type="number" min="0.01" step="any" placeholder="Ex: 50" required></label>
+      <label>Fornecedor<input id="entradaFornecedor" placeholder="Ex: Cooperflora"></label>
+      <label>Observação<textarea id="entradaObs" placeholder="Ex: Reposição semanal"></textarea></label>
+      <button class="primary full">Confirmar Entrada</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Baixa de Estoque -->
+<div id="modalBaixaEstoque" class="modal hidden">
+  <div class="modal-card small-modal">
+    <div class="modal-head"><h3>➖ Baixa de Estoque</h3><button type="button" onclick="fecharBaixaEstoque()">×</button></div>
+    <form id="formBaixaEstoque" onsubmit="salvarBaixaEstoque(event)">
+      <input type="hidden" id="baixaEstoqueId">
+      <p id="baixaEstoqueNome" class="estoque-modal-sub"></p>
+      <p id="baixaEstoqueSaldo" class="estoque-modal-saldo"></p>
+      <label>Quantidade a descontar<input id="baixaQtd" type="number" min="0.01" step="any" placeholder="Ex: 30" required></label>
+      <label>Destino / uso<input id="baixaDestino" placeholder="Ex: Expedição"></label>
+      <label>Observação<textarea id="baixaObs" placeholder="Opcional"></textarea></label>
+      <button class="danger full">Confirmar Baixa</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Compra Rápida (< R$2000) -->
+<div id="modalCompraRapida" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Compra Rápida (< R$2000)</h3><button onclick="fecharModalCompraRapida()">×</button></div>
+    <form id="formCompraRapida" onsubmit="salvarCompraRapida(event)">
+      <div class="grid">
+        <label>Solicitante<input id="crSolicitante" placeholder="Nome" required></label>
+        <label>Produto<input id="crProduto" placeholder="Nome do produto" required></label>
+      </div>
+      <div class="grid">
+        <label>Categoria<select id="crCategoria" required><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Outros</option></select></label>
+        <label>Destino / Uso<input id="crDestino" placeholder="Ex: Defensivo Vinhedo" required></label>
+      </div>
+      <div class="grid">
+        <label>Quantidade<input id="crQtd" type="number" placeholder="1" required></label>
+        <label>Unidade de medida<select id="crUnidade" required></select></label>
+      </div>
+      <div class="grid">
+        <label>Valor Unitário<input id="crValorUnit" type="number" placeholder="0" step="0.01" required></label>
+        <label>Valor Total<input id="crValor" type="number" placeholder="0" step="0.01" required></label>
+      </div>
+      <label>Link do Produto (opcional)<input id="crLink" type="url" placeholder="https://exemplo.com/produto"></label>
+      <label>Descrição Detalhada<textarea id="crDescricao" placeholder="Especificações, marca, modelo, etc."></textarea></label>
+      <label>Foto para Comparativo (opcional)<input id="crFoto" type="file" accept="image/*"></label>
+      <p style="color:#999; font-size:12px;">⚠️ Compras até R$2000 não requerem autorização e geram relatório semanal</p>
+      <button class="primary full">Registrar Compra Rápida</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Visualização de Cotações (Comparação de Fornecedores) -->
+<div id="modalCotacaoComparacao" class="modal hidden">
+  <div class="modal-card large-modal">
+    <div class="modal-head"><h3>Comparação de Fornecedores - Selecione o melhor preço</h3><button onclick="fecharModalCotacaoComparacao()">×</button></div>
+    <div id="cotacaoComparacaoContainer" style="overflow-x: auto; padding: 20px;">
+      <!-- Tabela será renderizada aqui -->
+    </div>
+    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+      <button id="btnEnviarAprovacao" class="primary hidden" onclick="enviarParaAprovacao()">✉️ Enviar para Aprovação</button>
+      <button class="secondary" onclick="fecharModalCotacaoComparacao()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Edição de Cotação -->
+<div id="modalEditarCotacao" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Editar Cotação</h3><button onclick="fecharModalEditarCotacao()">×</button></div>
+    <div style="padding: 20px;">
+      <input type="hidden" id="editCotacaoId">
+      <div class="grid">
+        <label>Fornecedor<input type="text" id="editFornecedor" placeholder="Nome do fornecedor"></label>
+        <label>Valor<input type="number" id="editValor" placeholder="0.00" step="0.01" min="0"></label>
+      </div>
+      <div class="grid">
+        <label>Observação<textarea id="editObservacao" placeholder="Observação (opcional)" style="min-height: 80px;"></textarea></label>
+      </div>
+    </div>
+    <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap; padding: 0 20px 20px;">
+      <button class="primary" onclick="salvarEdicaoCotacao()" style="flex: 1;">Salvar</button>
+      <button class="secondary" onclick="fecharModalEditarCotacao()" style="flex: 1;">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Aprovação de Cotação -->
+<div id="modalAprovacaoCotacao" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Enviar para Aprovação</h3><button onclick="fecharModalAprovacao()">×</button></div>
+    <form id="formAprovacao" onsubmit="confirmarEnvioAprovacao(event)">
+      <input type="hidden" id="aprovacaoCotacaoId">
+      <label>Email do aprovador<input id="aprovacaoEmail" type="email" placeholder="aprovador@empresa.com" required></label>
+      <label>Observações (opcional)<textarea id="aprovacaoObs" placeholder="Adicione alguma observação importante"></textarea></label>
+      <label class="check"><input type="checkbox" id="aprovacaoUrgente"> Marcar como urgente</label>
+      <p style="color:#999; font-size:12px;">Um email será enviado ao responsável com os detalhes da cotação para aprovação.</p>
+      <button class="primary full">Enviar para Aprovação</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Enviar para Aprovação de Cotação -->
+<div id="modalEnviarAprovacao" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Enviar para Aprovação</h3><button onclick="fecharModalEnviarAprovacao()">×</button></div>
+    <form id="formEnviarAprovacao" onsubmit="confirmarEnvioAprovacaoCotacao(event)">
+      <input type="hidden" id="envioAprovacaoCompra">
+      <div class="grid">
+        <label>Fornecedor selecionado<input id="envioAprovacaoFornecedor" type="text" readonly></label>
+        <label>Valor (R$)<input id="envioAprovacaoValor" type="text" readonly></label>
+      </div>
+      <label>Email da aprovação<input id="envioAprovacaoEmail" type="email" placeholder="patroa@empresa.com" required></label>
+      <label>Observações (opcional)<textarea id="envioAprovacaoObs" placeholder="Adicione alguma observação importante"></textarea></label>
+      <label class="check"><input type="checkbox" id="envioAprovacaoUrgente"> Marcar como urgente</label>
+      <p style="color:#999; font-size:12px;">Um email será enviado ao aprovador com os detalhes da cotação para aprovação.</p>
+      <button class="primary full">Enviar para Aprovação</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal Adicionar Fornecedor -->
+<div id="modalAdicionarFornecedor" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-head"><h3>Adicionar Fornecedor e Preço</h3><button onclick="fecharModalAdicionarFornecedor()">×</button></div>
+    <form id="formAdicionarFornecedor" onsubmit="salvarNovoFornecedor(event)">
+      <input type="hidden" id="novoFornecedorCotacaoId">
+      <label>Fornecedor<input id="novoFornecedorNome" type="text" placeholder="Ex: Mercado Livre, Amazon..." required></label>
+      <label>Preço (R$)<input id="novoFornecedorValor" type="number" step="0.01" placeholder="0.00" required></label>
+      <label>Observação (opcional)<textarea id="novoFornecedorObs" placeholder="Ex: Frete grátis, prazo 5 dias..."></textarea></label>
+      <button class="primary full">Adicionar Fornecedor</button>
+    </form>
+  </div>
+</div>
+
+<script src="app.js?v=37"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {
+    if (navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage({ type: "SKIP_WAITING" });
+  })).catch(() => {});
+}
+</script>
+</body>
+</html>
