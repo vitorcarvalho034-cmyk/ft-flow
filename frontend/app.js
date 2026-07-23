@@ -253,10 +253,10 @@ function urg(u){ if((u||"").startsWith("Alta"))return `<span class="badge high">
 
 function tabelaMan(data){
   const isAdmin = usuario && usuario.role === "admin";
-  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Especificação</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Motivo</th><th>Data Conclusão</th><th>Ações</th></tr></thead><tbody>${data.map(m=>{
+  return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Especificação</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Data Conclusão</th><th>Ações</th></tr></thead><tbody>${data.map(m=>{
     const dataConclusao = m.data_conclusao ? new Date(m.data_conclusao).toLocaleDateString('pt-BR') : '-';
     const botoesAcao = m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> ${isAdmin ? `<button class="primary" onclick="abrirAtualizarStatus(${m.id})">Atualizar Status</button>` : ''} <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`;
-    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td><small>${m.motivo_espera||"-"}</small></td><td>${dataConclusao}</td><td>${botoesAcao}</td></tr>`;
+    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${dataConclusao}</td><td>${botoesAcao}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
