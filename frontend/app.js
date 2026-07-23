@@ -56,8 +56,7 @@ const STATUS_ATIVOS_COMPRAS = [
   "pendente_aprovacao",
   "pendente aprovacao",
   "aguardando aprovação",
-  "em andamento",
-  "aprovado"
+  "em andamento"
 ];
 
 const STATUS_HISTORICO_COMPRAS = [
@@ -967,10 +966,7 @@ async function cotacoesGerais(){
   // Buscar TODAS as compras sem paginação (limit=1000 para pegar tudo)
   const data=await js(API+"/compras?limit=1000");
   const compData = data.data || data;
-  const comCotacao = compData.filter(c => {
-  const status = normalizarStatus(c.status).replace(/_/g, ' ');
-  return status.includes("cotação") || status.includes("pendente");
-});
+  const comCotacao = compData.filter(c => statusEhAtivo(c.status));
   
   // Armazenar dados para filtro
   window._cotacoesData = comCotacao;
