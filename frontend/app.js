@@ -972,7 +972,7 @@ async function cotacoesGerais(){
   window._cotacoesData = comCotacao;
   window._cotacoesDataFull = null; // Será preenchido com as cotações
   
-  content.innerHTML = `<div class="panel"><h3>Cotações em aberto</h3><div class="grid" style="margin-bottom: 15px; gap: 10px;"><button class="secondary" onclick="filtrarCotacoesPor('todas')" id="filtro-todas" style="background-color: #052e16; color: white;">Todas</button><button class="secondary" onclick="filtrarCotacoesPor('pendentes')" id="filtro-pendentes">Pendentes</button><button class="secondary" onclick="filtrarCotacoesPor('aprovadas')" id="filtro-aprovadas">Aprovadas</button></div></div>`;
+  content.innerHTML = `<div class="panel"><h3>Cotações em aberto</h3><div class="grid" style="margin-bottom: 15px; gap: 10px;"><button class="secondary" onclick="filtrarCotacoesPor('todas')" id="filtro-todas" style="background-color: #052e16; color: white;">Todas</button><button class="secondary" onclick="filtrarCotacoesPor('pendente-cotacao')" id="filtro-pendente-cotacao">Pendente Cotação</button><button class="secondary" onclick="filtrarCotacoesPor('pendente-aprovacao')" id="filtro-pendente-aprovacao">Pendente Aprovação</button></div></div>`;
   
   if (comCotacao.length === 0) {
     content.innerHTML += `<div class="panel"><p>Nenhuma cotação em aberto.</p></div>`;
@@ -1006,8 +1006,8 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
     const cotacoes = item.cotacoes;
     
     // Aplicar filtro
-    if (filtro === 'pendentes' && compra.fornecedor_escolhido) continue;
-    if (filtro === 'aprovadas' && !compra.fornecedor_escolhido) continue;
+    if (filtro === 'pendente-cotacao' && compra.fornecedor_escolhido) continue;
+    if (filtro === 'pendente-aprovacao' && !compra.fornecedor_escolhido) continue;
     
     let cardHtml = `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">
@@ -1055,10 +1055,10 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
   // Atualizar botões de filtro
   document.getElementById('filtro-todas').style.backgroundColor = filtro === 'todas' ? '#052e16' : '#e5e7eb';
   document.getElementById('filtro-todas').style.color = filtro === 'todas' ? 'white' : 'black';
-  document.getElementById('filtro-pendentes').style.backgroundColor = filtro === 'pendentes' ? '#052e16' : '#e5e7eb';
-  document.getElementById('filtro-pendentes').style.color = filtro === 'pendentes' ? 'white' : 'black';
-  document.getElementById('filtro-aprovadas').style.backgroundColor = filtro === 'aprovadas' ? '#052e16' : '#e5e7eb';
-  document.getElementById('filtro-aprovadas').style.color = filtro === 'aprovadas' ? 'white' : 'black';
+  document.getElementById('filtro-pendente-cotacao').style.backgroundColor = filtro === 'pendente-cotacao' ? '#052e16' : '#e5e7eb';
+  document.getElementById('filtro-pendente-cotacao').style.color = filtro === 'pendente-cotacao' ? 'white' : 'black';
+  document.getElementById('filtro-pendente-aprovacao').style.backgroundColor = filtro === 'pendente-aprovacao' ? '#052e16' : '#e5e7eb';
+  document.getElementById('filtro-pendente-aprovacao').style.color = filtro === 'pendente-aprovacao' ? 'white' : 'black';
 }
 
 function filtrarCotacoesPor(filtro) {
