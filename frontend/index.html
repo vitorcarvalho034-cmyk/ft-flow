@@ -176,14 +176,14 @@
       </div>
       <div class="grid">
         <label>Quantidade<input id="compQtdModal" type="number" placeholder="1" required></label>
-        <label>Unidade de medida<select id="compUnidadeModal" required></select></label>
+        <label>Unidade de medida<select id="compUnidadeModal" required><option value="">Selecione...</option><option>un</option><option>kg</option><option>L</option><option>m</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>balde</option><option>galão</option><option>lata</option></select></label>
       </div>
       <label>Link do Produto (opcional)<input id="compLinkModal" type="url" placeholder="https://exemplo.com/produto"></label>
-      <label>Descrição Detalhada<textarea id="compDescricaoModal" placeholder="Especificações, marca, modelo, etc."></textarea></label>
+      <label>Descrição Detalhada<textarea id="compDescricaoModal" placeholder="Especificações, marca, modelo, etc." required></textarea></label>
       <div id="compFotoPreview" class="pedido-foto-preview hidden">
         <img id="compFotoPreviewImg" alt="Preview da foto">
       </div>
-      <label>Foto para Comparativo (opcional)<input id="compFotoModal" type="file" accept="image/*" onchange="previewFotoCompra(this.files[0])"></label>
+      <label>Foto para Comparativo<input id="compFotoModal" type="file" accept="image/*" onchange="previewFotoCompra(this.files[0])" required></label>
       <button class="primary full">Enviar Solicitação</button>
     </form>
   </div>
