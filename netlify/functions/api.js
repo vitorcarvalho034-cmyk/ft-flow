@@ -109,8 +109,9 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
           <span style="font-size:18px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
         </div>
         ${cot.observacao ? `<div style="font-size:13px;color:#555;line-height:1.5;margin-bottom:10px;padding:10px;background-color:#fff;border-left:3px solid #1b5e20"><strong>Descrição:</strong><br>${cot.observacao}</div>` : ''}
-        <div style="text-align:center;margin-top:15px">
-          <a href="${linkAprovacao}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">Selecionar ${cot.fornecedor}</a>
+        <div style="text-align:center;margin-top:15px;display:flex;gap:10px;justify-content:center">
+          <a href="${linkAprovacao}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Selecionar</a>
+          <a href="${appUrl}/api/negar-cotacao/${token}" style="display:inline-block;background:#d32f2f;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❌ Negar</a>
         </div>
       </div>
     `;
@@ -605,6 +606,38 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
     await notify(titulo, `Cotação #${compraId} foi aprovada por Dorian. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
     res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#052e16;font-size:48px;margin-bottom:20px}h1{color:#052e16;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#052e16}</style></head><body><div class="card"><div class="success">✅</div><h1>Aprovação Confirmada!</h1><p>A cotação foi aprovada com sucesso por Dorian.</p><div class="details"><p><strong>Cotação:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p><p><strong>Valor:</strong> R$ ${Number(valor).toFixed(2)}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta aprovação.</p></div></body></html>`);
+  } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
+});
+
+// Negar cotação
+app.get('/negar-cotacao/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [compraId, cotacaoId] = decoded.split(':');
+    
+    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token inválido' });
+    
+    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
+    if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotação não encontrada' });
+    
+    const { fornecedor } = cotacao.rows[0];
+    
+    // Marcar compra como negada
+    await q(`UPDATE compras SET status='Negada' WHERE id=$1`, [compraId]);
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    
+    const titulo = `Cotação #${compraId} - Negada por Dorian`;
+    const dados = {
+      'Produto': compra.rows[0].descricao || compra.rows[0].item,
+      'Fornecedor': fornecedor,
+      'Negado por': 'Dorian (via email)'
+    };
+    
+    await notify(titulo, `Cotação #${compraId} foi negada por Dorian. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.warning{color:#d32f2f;font-size:48px;margin-bottom:20px}h1{color:#d32f2f;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#d32f2f}</style></head><body><div class="card"><div class="warning">❌</div><h1>Compra Negada!</h1><p>A cotação foi negada por Dorian.</p><div class="details"><p><strong>Cotação:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta negação.</p></div></body></html>`);
   } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
