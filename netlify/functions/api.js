@@ -718,9 +718,215 @@ app.post('/enviar-questionamento/:token', async (req, res) => {
       'Questão': questionamento
     };
     
+    // Notificar no app
     await notify(titulo, `Dorian questionou a cotação #${compraId}. Questão: ${questionamento}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
+    // Enviar email para admin
+    const linkResposta = `${appUrl}/api/responder-questionamento/${token}`;
+    const emailAdmin = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial; background: #f3f7f4; margin: 0; padding: 20px; }
+            .card { background: white; max-width: 600px; margin: 0 auto; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+            .header { background: #ff9800; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; }
+            .section { margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 4px solid #ff9800; border-radius: 4px; }
+            .label { color: #666; font-size: 12px; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+            .value { color: #333; font-size: 14px; margin-bottom: 10px; }
+            .button { display: inline-block; background: #ff9800; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; margin-top: 15px; }
+            .footer { background: #f3f7f4; padding: 15px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #ddd; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="header">
+              <h2 style="margin: 0;">❓ Dorian Questionou uma Cotação</h2>
+            </div>
+            <div class="content">
+              <div class="section">
+                <div class="label">Produto</div>
+                <div class="value">${compra.rows[0].descricao || compra.rows[0].item}</div>
+              </div>
+              <div class="section">
+                <div class="label">Fornecedor</div>
+                <div class="value">${cotacao.rows[0].fornecedor}</div>
+              </div>
+              <div class="section">
+                <div class="label">Valor</div>
+                <div class="value">R$ ${Number(cotacao.rows[0].valor).toFixed(2)}</div>
+              </div>
+              <div class="section">
+                <div class="label">Questão de Dorian</div>
+                <div class="value" style="font-style: italic; color: #ff9800;">${questionamento}</div>
+              </div>
+              <div style="text-align: center;">
+                <a href="${linkResposta}" class="button">✍️ Responder</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p>Clique no botão acima para responder a questão de Dorian.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || 'noreply@ftflow.com',
+        to: process.env.ADMIN_EMAIL || 'admin@ftflow.com',
+        subject: `❓ Dorian Questionou Cotação #${compraId}`,
+        html: emailAdmin
+      });
+    } catch (e) {
+      console.log('Erro ao enviar email para admin:', e.message);
+    }
+    
     res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#ff9800;font-size:48px;margin-bottom:20px}h1{color:#ff9800;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="success">✅</div><h1>Questão Enviada!</h1><p>Sua questão foi enviada para o admin.</p><p style="color:#999;font-size:12px;margin-top:30px">Você receberá uma resposta em breve.</p></div></body></html>`);
+  } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
+});
+
+// Responder questionamento
+app.get('/responder-questionamento/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [compraId, cotacaoId] = decoded.split(':');
+    
+    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token inválido' });
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1', [cotacaoId]);
+    
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    
+    const html = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial; background: #f3f7f4; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+            .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-width: 700px; width: 100%; }
+            .icon { color: #2e7d32; font-size: 48px; margin-bottom: 20px; }
+            h1 { color: #2e7d32; margin: 0 0 10px 0; }
+            p { color: #666; margin: 10px 0; }
+            .question-box { background: #fff3e0; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #ff9800; }
+            .question-label { color: #e65100; font-weight: bold; font-size: 12px; text-transform: uppercase; margin-bottom: 5px; }
+            .question-text { color: #333; font-size: 14px; font-style: italic; }
+            textarea { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 4px; font-family: Arial; font-size: 14px; resize: vertical; min-height: 120px; box-sizing: border-box; }
+            button { background: #2e7d32; color: white; padding: 12px 24px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; width: 100%; margin-top: 15px; }
+            button:hover { background: #1b5e20; }
+            .info { background: #e8f5e9; padding: 15px; border-radius: 4px; margin-bottom: 20px; color: #1b5e20; font-size: 13px; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="icon">✍️</div>
+            <h1>Responder Questão de Dorian</h1>
+            <div class="info">
+              <strong>Produto:</strong> ${compra.rows[0].descricao || compra.rows[0].item}<br>
+              <strong>Fornecedor:</strong> ${cotacao.rows[0].fornecedor}<br>
+              <strong>Valor:</strong> R$ ${Number(cotacao.rows[0].valor).toFixed(2)}
+            </div>
+            <div class="question-box">
+              <div class="question-label">Questão de Dorian:</div>
+              <div class="question-text">${compra.rows[0].questionamento || 'Sem questão registrada'}</div>
+            </div>
+            <form method="POST" action="/api/enviar-resposta-questionamento/${token}">
+              <label style="display: block; margin-bottom: 10px; color: #333; font-weight: bold;">Sua Resposta:</label>
+              <textarea name="resposta" placeholder="Escreva sua resposta para Dorian..." required></textarea>
+              <button type="submit">✅ Enviar Resposta</button>
+            </form>
+          </div>
+        </body>
+      </html>
+    `;
+    res.send(html);
+  } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
+});
+
+// Enviar resposta do questionamento
+app.post('/enviar-resposta-questionamento/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const { resposta } = req.body;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const [compraId, cotacaoId] = decoded.split(':');
+    
+    if (!compraId || !cotacaoId || !resposta) return res.status(400).json({ error: 'Dados inválidos' });
+    
+    // Salvar resposta
+    await q(`UPDATE compras SET resposta_admin=$1, status_questionamento='Respondido' WHERE id=$2`, [resposta, compraId]);
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1', [cotacaoId]);
+    
+    // Enviar email para Dorian com a resposta
+    const emailDorian = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial; background: #f3f7f4; margin: 0; padding: 20px; }
+            .card { background: white; max-width: 600px; margin: 0 auto; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+            .header { background: #2e7d32; color: white; padding: 20px; text-align: center; }
+            .content { padding: 20px; }
+            .section { margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 4px solid #2e7d32; border-radius: 4px; }
+            .label { color: #666; font-size: 12px; font-weight: bold; text-transform: uppercase; margin-bottom: 5px; }
+            .value { color: #333; font-size: 14px; margin-bottom: 10px; }
+            .resposta-box { background: #e8f5e9; padding: 15px; border-radius: 4px; margin: 20px 0; border-left: 4px solid #2e7d32; }
+            .footer { background: #f3f7f4; padding: 15px; text-align: center; font-size: 12px; color: #999; border-top: 1px solid #ddd; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <div class="header">
+              <h2 style="margin: 0;">✅ Sua Questão Foi Respondida!</h2>
+            </div>
+            <div class="content">
+              <div class="section">
+                <div class="label">Produto</div>
+                <div class="value">${compra.rows[0].descricao || compra.rows[0].item}</div>
+              </div>
+              <div class="section">
+                <div class="label">Fornecedor</div>
+                <div class="value">${cotacao.rows[0].fornecedor}</div>
+              </div>
+              <div class="section">
+                <div class="label">Valor</div>
+                <div class="value">R$ ${Number(cotacao.rows[0].valor).toFixed(2)}</div>
+              </div>
+              <div class="section">
+                <div class="label">Sua Questão</div>
+                <div class="value" style="font-style: italic; color: #ff9800;">${compra.rows[0].questionamento}</div>
+              </div>
+              <div class="resposta-box">
+                <div class="label" style="color: #1b5e20;">Resposta do Admin</div>
+                <div class="value" style="color: #1b5e20;">${resposta}</div>
+              </div>
+            </div>
+            <div class="footer">
+              <p>Obrigado por usar o FT FLOW!</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    
+    try {
+      await transporter.sendMail({
+        from: process.env.SMTP_FROM || 'noreply@ftflow.com',
+        to: 'dorian@floresdaterra.com.br',
+        subject: `✅ Resposta: Cotação #${compraId}`,
+        html: emailDorian
+      });
+    } catch (e) {
+      console.log('Erro ao enviar email para Dorian:', e.message);
+    }
+    
+    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#2e7d32;font-size:48px;margin-bottom:20px}h1{color:#2e7d32;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="success">✅</div><h1>Resposta Enviada!</h1><p>Dorian receberá a resposta por email.</p><p style="color:#999;font-size:12px;margin-top:30px">Obrigado!</p></div></body></html>`);
   } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
