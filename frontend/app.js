@@ -2256,15 +2256,14 @@ function renderizarListaCompraItensModal() {
       <tbody>
         ${listaCompraItensModal.map(item => {
           const fornecedores = item.fornecedores || [];
-          const fornecedorTexto = fornecedores.map(f => f.fornecedor).join(", ") || "";
-          const precoTotal = fornecedores.length > 0 ? fornecedores[0].preco : 0;
+          const precoTexto = fornecedores.map(f => `${htmlEsc(f.fornecedor)} (R$ ${Number(f.preco).toFixed(2)})`).join(", ") || "";
           return `
             <tr style="border-bottom: 1px solid #ddd;">
               <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
               <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
               <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
-              <td style="padding: 8px;">${htmlEsc(fornecedorTexto)}</td>
-              <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(precoTotal).toFixed(2)}</td>
+              <td style="padding: 8px;">${precoTexto}</td>
+              <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">-</td>
               <td style="padding: 8px; text-align: center; display: flex; gap: 6px; justify-content: center;">
                 <button type="button" class="secondary" onclick="editarItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #e3f2fd; color: #1976d2; border-radius: 4px; cursor: pointer;">✏️</button>
                 <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #ffebee; color: #d32f2f; border-radius: 4px; cursor: pointer;">🗑️</button>
