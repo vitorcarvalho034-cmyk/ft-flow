@@ -1398,9 +1398,20 @@ function abrirModalCotacaoComparacao(compraId) {
     Promise.all([
       js(`${API}/compras/${compraId}`),
       js(`${API}/compras/${compraId}/cotacoes`)
-    ]).then(([compra, cotacoes]) => {
+    ]).then(async ([compra, cotacoes]) => {
       const modal = document.getElementById("modalCotacaoComparacao");
       const container = document.getElementById("cotacaoComparacaoContainer");
+      
+      // Se for lista de compra, buscar itens
+      let itens = [];
+      if (compra.tipo_solicitacao === 'lista') {
+        try {
+          const res = await fetch(`${API}/compras/${compraId}/itens`);
+          itens = await res.json();
+        } catch (e) {
+          console.log('Erro ao buscar itens:', e);
+        }
+      }
       
       if (!cotacoes || cotacoes.length === 0) {
         container.innerHTML = `<div class="card"><p>Nenhuma cotação adicionada ainda.</p><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-top: 10px;">+ Adicionar Fornecedor</button></div>`;
@@ -1408,28 +1419,74 @@ function abrirModalCotacaoComparacao(compraId) {
         return;
       }
       
-      const fornecedoresUnicos = [...new Set(cotacoes.map(c => c.fornecedor))];
-      
-      let html = `<div style="overflow-x: auto; width: 100%;"><table style="width: 100%; border-collapse: collapse; font-size: 14px;"><thead><tr style="background-color: #052e16; color: white;"><th style="padding: 12px; text-align: left; border: 1px solid #ddd;"><strong>Fornecedor</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Valor</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Observação</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Ações</strong></th></tr></thead><tbody>`;
-      
-      fornecedoresUnicos.forEach((fornecedor) => {
-        const cot = cotacoes.find(c => c.fornecedor === fornecedor);
-        const selecionado = fornecedorSelecionado?.nome === fornecedor && fornecedorSelecionado?.compraId === compraId;
-        const bgColor = selecionado ? '#e8f5e9' : 'white';
-        const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+      // Se for lista de compra, agrupar por item
+      if (compra.tipo_solicitacao === 'lista' && itens.length > 0) {
+        let html = '<div style="overflow-x: auto; width: 100%;">';
         
-        html += `<tr style="background-color: ${bgColor};"><td style="padding: 12px; border: ${borderStyle};"><strong>${htmlEsc(fornecedor)}</strong></td><td style="padding: 12px; text-align: center; border: ${borderStyle}; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td><td style="padding: 12px; border: ${borderStyle};"><small>${cot.observacao || '-'}</small></td><td style="padding: 12px; text-align: center; border: ${borderStyle};"><button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right: 4px;">${selecionado ? '✓ SELECIONADO' : 'Selecionar'}</button><button class="small danger" onclick="deletarFornecedor(${compraId}, '${htmlEsc(fornecedor)}')">Deletar</button></td></tr>`;
-      });
+        for (const item of itens) {
+          const cotacoesItem = cotacoes.filter(c => c.item_id === item.id);
+          html += `<div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
+            <h4 style="margin: 0 0 10px 0; color: #1b5e20;">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</h4>`;
+          
+          if (cotacoesItem.length === 0) {
+            html += `<p style="color: #999; font-size: 13px;">Nenhuma cotação para este item</p>`;
+          } else {
+            html += `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+              <thead>
+                <tr style="background-color: #e8f5e9; border-bottom: 1px solid #ddd;">
+                  <th style="padding: 8px; text-align: left;">Fornecedor</th>
+                  <th style="padding: 8px; text-align: center; width: 100px;">Valor</th>
+                  <th style="padding: 8px; text-align: center; width: 120px;">Ações</th>
+                </tr>
+              </thead>
+              <tbody>`;
+            
+            cotacoesItem.forEach((cot) => {
+              html += `<tr style="border-bottom: 1px solid #ddd;">
+                <td style="padding: 8px;">${htmlEsc(cot.fornecedor)}</td>
+                <td style="padding: 8px; text-align: center; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td>
+                <td style="padding: 8px; text-align: center;">
+                  <button class="small secondary" onclick="editarCotacao(${cot.id})" style="margin-right: 4px;">Editar</button>
+                  <button class="small danger" onclick="deletarCotacao(${compraId}, ${cot.id})">Deletar</button>
+                </td>
+              </tr>`;
+            });
+            
+            html += `</tbody></table>`;
+          }
+          
+          html += `</div>`;
+        }
+        
+        html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div></div>`;
+        container.innerHTML = html;
+      } else {
+        // Compra regular
+        const fornecedoresUnicos = [...new Set(cotacoes.map(c => c.fornecedor))];
+        
+        let html = `<div style="overflow-x: auto; width: 100%;"><table style="width: 100%; border-collapse: collapse; font-size: 14px;"><thead><tr style="background-color: #052e16; color: white;"><th style="padding: 12px; text-align: left; border: 1px solid #ddd;"><strong>Fornecedor</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Valor</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Observação</strong></th><th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>Ações</strong></th></tr></thead><tbody>`;
+        
+        fornecedoresUnicos.forEach((fornecedor) => {
+          const cot = cotacoes.find(c => c.fornecedor === fornecedor);
+          const selecionado = fornecedorSelecionado?.nome === fornecedor && fornecedorSelecionado?.compraId === compraId;
+          const bgColor = selecionado ? '#e8f5e9' : 'white';
+          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+          
+          html += `<tr style="background-color: ${bgColor};"><td style="padding: 12px; border: ${borderStyle};"><strong>${htmlEsc(fornecedor)}</strong></td><td style="padding: 12px; text-align: center; border: ${borderStyle}; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td><td style="padding: 12px; border: ${borderStyle};"><small>${cot.observacao || '-'}</small></td><td style="padding: 12px; text-align: center; border: ${borderStyle};"><button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right: 4px;">${selecionado ? '✓ SELECIONADO' : 'Selecionar'}</button><button class="small danger" onclick="deletarFornecedor(${compraId}, '${htmlEsc(fornecedor)}')">Deletar</button></td></tr>`;
+        });
+        
+        html += `</tbody></table></div><div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-right: 10px;">+ Adicionar Fornecedor</button>${fornecedorSelecionado && fornecedorSelecionado.compraId === compraId ? `<button class="primary" onclick="enviarParaAprovacao(${compraId})">Enviar para Aprovação</button>` : ''}</div>`;
+        
+        container.innerHTML = html;
+      }
       
-      html += `</tbody></table></div><div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-right: 10px;">+ Adicionar Fornecedor</button>${fornecedorSelecionado && fornecedorSelecionado.compraId === compraId ? `<button class="primary" onclick="enviarParaAprovacao(${compraId})">Enviar para Aprovação</button>` : ''}</div>`;
-      
-      container.innerHTML = html;
       modal.classList.remove("hidden");
     });
   } catch (e) {
     mostrarErro(e.message);
   }
 }
+
 
 function selecionarFornecedor(cotacaoId, indice, nome, valor) {
   fornecedorSelecionado = { id: indice, nome, valor, cotacaoId };

@@ -61,6 +61,7 @@ async function ensureDb(){
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
   await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, unidade TEXT, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, descricao TEXT, link_produto TEXT, foto_url TEXT, fornecedor_escolhido TEXT, valor_escolhido REAL, created_at TIMESTAMP DEFAULT NOW(), received_at TIMESTAMP, received_by INTEGER)`);
   await q(`CREATE TABLE IF NOT EXISTS cotacoes (id SERIAL PRIMARY KEY, compra_id INTEGER, fornecedor TEXT, valor REAL, observacao TEXT)`);
+  await q(`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS item_id INTEGER`).catch(e => console.log('item_id column already exists'));
   await q(`CREATE TABLE IF NOT EXISTS notificacoes (id SERIAL PRIMARY KEY, titulo TEXT, mensagem TEXT, tipo TEXT, destino_role TEXT DEFAULT 'admin', lida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, criado_em TIMESTAMP DEFAULT NOW())`);
@@ -335,6 +336,13 @@ app.get("/compras/:id",async(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
+app.get("/compras/:id/itens",async(req,res)=>{
+  try{
+    const r = await q(`SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC`,[req.params.id]);
+    res.json(r.rows);
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
+});
+
 app.get("/compras/:id/cotacoes",async(req,res)=>{
   try{
     const r = await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id]);
@@ -352,7 +360,7 @@ app.get("/cotacoes/:id",async(req,res)=>{
 app.post("/compras/:id/cotacoes",async(req,res)=>{
   try{
     const b=req.body;
-    const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,$2,$3,$4) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao]);
+    const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao,item_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao,b.item_id||null]);
     res.json({id:r.rows[0].id});
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
