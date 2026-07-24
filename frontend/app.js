@@ -2023,6 +2023,8 @@ async function editarListaCompra(compraId) {
     // Preencher modal com dados
     document.getElementById("listaCompraModalNome").value = compra.item || "";
     document.getElementById("listaCompraModalSolicitante").value = compra.solicitante || "";
+    document.getElementById("listaCompraModalCategoria").value = compra.categoria || "";
+    document.getElementById("listaCompraModalDestino").value = compra.destino || "";
     
     // Carregar itens
     listaCompraItensModal = itens.map(item => ({
@@ -2211,6 +2213,8 @@ async function salvarListaRascunhoModal(e) {
   try {
     const nome = document.getElementById("listaCompraModalNome").value.trim();
     const solicitante = document.getElementById("listaCompraModalSolicitante").value.trim();
+    const categoria = document.getElementById("listaCompraModalCategoria").value.trim();
+    const destino = document.getElementById("listaCompraModalDestino").value.trim();
     if (!nome) return mostrarErro("Informe o nome da lista");
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
@@ -2222,6 +2226,8 @@ async function salvarListaRascunhoModal(e) {
       body: JSON.stringify({
         item: nome,
         solicitante,
+        categoria: categoria || "Lista de Compra",
+        destino: destino || "Lista de Compra",
         tipo_solicitacao: "lista",
         status_lista: "rascunho",
         itens: listaCompraItensModal
@@ -2242,6 +2248,8 @@ async function salvarListaProntaModal(e) {
   try {
     const nome = document.getElementById("listaCompraModalNome").value.trim();
     const solicitante = document.getElementById("listaCompraModalSolicitante").value.trim();
+    const categoria = document.getElementById("listaCompraModalCategoria").value.trim();
+    const destino = document.getElementById("listaCompraModalDestino").value.trim();
     if (!nome) return mostrarErro("Informe o nome da lista");
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
@@ -2263,6 +2271,8 @@ async function salvarListaProntaModal(e) {
       body: JSON.stringify({
         item: nome,
         solicitante,
+        categoria: categoria || "Lista de Compra",
+        destino: destino || "Lista de Compra",
         tipo_solicitacao: "lista",
         status_lista: "pronta",
         itens: listaCompraItensModal
