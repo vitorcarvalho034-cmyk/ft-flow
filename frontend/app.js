@@ -1727,16 +1727,8 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
       
       itemsHtml += '</select></div>';
       
-      const modal = document.getElementById("modalAdicionarFornecedor");
-      const form = modal.querySelector('form');
-      let existingSelect = form.querySelector('#novoFornecedorItem');
-      
-      if (existingSelect) {
-        existingSelect.parentElement.remove();
-      }
-      
-      const firstLabel = form.querySelector('label');
-      firstLabel.insertAdjacentHTML('beforebegin', itemsHtml);
+      const container = document.getElementById("fornecedoresItemContainer");
+      container.innerHTML = itemsHtml;
     } else {
       const modal = document.getElementById("modalAdicionarFornecedor");
       const form = modal.querySelector('form');
