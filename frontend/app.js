@@ -135,7 +135,7 @@ function cardPedidoCompra(c, options = {}) {
   if (modo === "cotacao") {
     acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   } else if (modo === "full" && isAdmin) {
-    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   }
 
   // Se for lista de compra, mostrar itens
