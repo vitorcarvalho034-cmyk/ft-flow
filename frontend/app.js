@@ -2113,6 +2113,7 @@ async function salvarListaPronta(e) {
 // Variável global para itens da lista de compra no novo modal
 let listaCompraItensModal = [];
 let listaCompraIdEditando = null; // ID da lista sendo editada
+let fornecedoresTemporarios = []; // Fornecedores do item sendo adicionado
 
 function abrirModalListaCompra() {
   document.getElementById("modalListaCompra").classList.remove("hidden");
@@ -2126,26 +2127,82 @@ function fecharModalListaCompra() {
   renderizarListaCompraItensModal();
 }
 
+function adicionarFornecedorTemporario() {
+  const fornecedor = document.getElementById("listaCompraModalFornecedor").value.trim();
+  const preco = parseFloat(document.getElementById("listaCompraModalPreco").value) || 0;
+  
+  if (!fornecedor) return mostrarErro("Informe o fornecedor");
+  if (preco <= 0) return mostrarErro("Informe um preço válido");
+  
+  fornecedoresTemporarios.push({ fornecedor, preco, id: Date.now() });
+  
+  document.getElementById("listaCompraModalFornecedor").value = "";
+  document.getElementById("listaCompraModalPreco").value = "";
+  
+  renderizarFornecedoresTemporarios();
+  mostrarSucesso("Fornecedor adicionado!");
+}
+
+function removerFornecedorTemporario(id) {
+  fornecedoresTemporarios = fornecedoresTemporarios.filter(f => f.id !== id);
+  renderizarFornecedoresTemporarios();
+}
+
+function renderizarFornecedoresTemporarios() {
+  const container = document.getElementById("fornecedoresTemporariosContainer");
+  
+  if (fornecedoresTemporarios.length === 0) {
+    container.innerHTML = 'Nenhum fornecedor adicionado';
+    return;
+  }
+  
+  container.innerHTML = `
+    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
+      <thead>
+        <tr style="background: #e8f5e9; border-bottom: 1px solid #ddd;">
+          <th style="padding: 6px; text-align: left; color: #1b5e20;">Fornecedor</th>
+          <th style="padding: 6px; text-align: center; color: #1b5e20; width: 100px;">Preço</th>
+          <th style="padding: 6px; text-align: center; color: #1b5e20; width: 50px;">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${fornecedoresTemporarios.map(f => `
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 6px;">${htmlEsc(f.fornecedor)}</td>
+            <td style="padding: 6px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(f.preco).toFixed(2)}</td>
+            <td style="padding: 6px; text-align: center;">
+              <button type="button" onclick="removerFornecedorTemporario(${f.id})" style="padding: 2px 6px; font-size: 12px; background: #ffebee; color: #d32f2f; border: none; border-radius: 3px; cursor: pointer;">🗑️</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
 function adicionarItemListaModal() {
   const produto = document.getElementById("listaCompraModalProduto").value.trim();
   const quantidade = parseFloat(document.getElementById("listaCompraModalQtd").value);
   const unidade = document.getElementById("listaCompraModalUnidade").value.trim();
-  const fornecedor = document.getElementById("listaCompraModalFornecedor").value.trim();
-  const preco = parseFloat(document.getElementById("listaCompraModalPreco").value) || 0;
   
   if (!produto) return mostrarErro("Informe o nome do produto");
   if (!quantidade || quantidade <= 0) return mostrarErro("Informe uma quantidade válida");
   if (!unidade) return mostrarErro("Selecione a unidade de medida");
-  // Fornecedor e preço são opcionais aqui, só obrigatórios na Lista Pronta
+  if (fornecedoresTemporarios.length === 0) return mostrarErro("Adicione pelo menos um fornecedor");
   
-  listaCompraItensModal.push({ produto, quantidade, unidade, fornecedor, preco, id: Date.now() });
+  listaCompraItensModal.push({ 
+    produto, 
+    quantidade, 
+    unidade, 
+    fornecedores: [...fornecedoresTemporarios],
+    id: Date.now() 
+  });
   
-  // Limpar campos
   document.getElementById("listaCompraModalProduto").value = "";
   document.getElementById("listaCompraModalQtd").value = "";
   document.getElementById("listaCompraModalUnidade").value = "";
-  document.getElementById("listaCompraModalFornecedor").value = "";
-  document.getElementById("listaCompraModalPreco").value = "";
+  fornecedoresTemporarios = [];
+  renderizarFornecedoresTemporarios();
   
   renderizarListaCompraItensModal();
   mostrarSucesso("Item adicionado!");

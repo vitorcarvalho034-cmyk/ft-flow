@@ -211,12 +211,15 @@
       </div>
       <div class="grid">
         <label>Unidade<select id="listaCompraModalUnidade"><option value="">Selecione...</option><option>un</option><option>kg</option><option>L</option><option>m</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>balde</option><option>galão</option><option>lata</option></select></label>
-        <label>Fornecedor<input id="listaCompraModalFornecedor" placeholder="Nome do fornecedor"></label>
       </div>
+      <h4 style="margin-top: 15px; color: #1b5e20;">Fornecedores</h4>
       <div class="grid">
+        <label>Fornecedor<input id="listaCompraModalFornecedor" placeholder="Nome do fornecedor"></label>
         <label>Preço (R$)<input id="listaCompraModalPreco" type="number" placeholder="0.00" step="0.01" min="0"></label>
-        <button type="button" class="secondary" onclick="adicionarItemListaModal()" style="align-self: flex-end;">+ Adicionar Item</button>
       </div>
+      <button type="button" class="secondary" onclick="adicionarFornecedorTemporario()" style="width: 100%; margin-bottom: 10px;">+ Adicionar Fornecedor</button>
+      <div id="fornecedoresTemporariosContainer" style="margin-bottom: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px; min-height: 40px;">Nenhum fornecedor adicionado</div>
+      <button type="button" class="primary" onclick="adicionarItemListaModal()" style="width: 100%;">Confirmar Item</button>
       <div id="listaCompraModalItensContainer" style="margin-top: 15px;">
         <!-- Itens serão renderizados aqui -->
       </div>
