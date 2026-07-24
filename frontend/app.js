@@ -2216,14 +2216,16 @@ function editarItemListaModal(id) {
   document.getElementById("listaCompraModalProduto").value = item.produto;
   document.getElementById("listaCompraModalQtd").value = item.quantidade;
   document.getElementById("listaCompraModalUnidade").value = item.unidade;
-  document.getElementById("listaCompraModalFornecedor").value = item.fornecedor;
-  document.getElementById("listaCompraModalPreco").value = item.preco;
+  
+  // Carregar fornecedores do item
+  fornecedoresTemporarios = item.fornecedores ? [...item.fornecedores] : [];
+  renderizarFornecedoresTemporarios();
   
   // Remover item antigo
   listaCompraItensModal = listaCompraItensModal.filter(i => i.id !== id);
   renderizarListaCompraItensModal();
   
-  mostrarSucesso("Item carregado para edição. Clique em 'Adicionar Item' para salvar as mudanças.");
+  mostrarSucesso("Item carregado para edição. Clique em 'Confirmar Item' para salvar as mudanças.");
 }
 
 function removerItemListaModal(id) {
@@ -2246,25 +2248,30 @@ function renderizarListaCompraItensModal() {
           <th style="padding: 8px; text-align: left; color: #1b5e20;">Produto</th>
           <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Qtd</th>
           <th style="padding: 8px; text-align: center; color: #1b5e20; width: 70px;">Un.</th>
-          <th style="padding: 8px; text-align: left; color: #1b5e20; width: 120px;">Fornecedor</th>
+          <th style="padding: 8px; text-align: left; color: #1b5e20; width: 120px;">Fornecedor(es)</th>
           <th style="padding: 8px; text-align: center; color: #1b5e20; width: 100px;">Preço</th>
           <th style="padding: 8px; text-align: center; color: #1b5e20; width: 60px;">Ação</th>
         </tr>
       </thead>
       <tbody>
-        ${listaCompraItensModal.map(item => `
-          <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
-            <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
-            <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
-            <td style="padding: 8px;">${htmlEsc(item.fornecedor)}</td>
-            <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(item.preco).toFixed(2)}</td>
-            <td style="padding: 8px; text-align: center; display: flex; gap: 6px; justify-content: center;">
-              <button type="button" class="secondary" onclick="editarItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #e3f2fd; color: #1976d2; border-radius: 4px; cursor: pointer;">✏️</button>
-              <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #ffebee; color: #d32f2f; border-radius: 4px; cursor: pointer;">🗑️</button>
-            </td>
-          </tr>
-        `).join('')}
+        ${listaCompraItensModal.map(item => {
+          const fornecedores = item.fornecedores || [];
+          const fornecedorTexto = fornecedores.map(f => f.fornecedor).join(", ") || "";
+          const precoTotal = fornecedores.length > 0 ? fornecedores[0].preco : 0;
+          return `
+            <tr style="border-bottom: 1px solid #ddd;">
+              <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
+              <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
+              <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
+              <td style="padding: 8px;">${htmlEsc(fornecedorTexto)}</td>
+              <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(precoTotal).toFixed(2)}</td>
+              <td style="padding: 8px; text-align: center; display: flex; gap: 6px; justify-content: center;">
+                <button type="button" class="secondary" onclick="editarItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #e3f2fd; color: #1976d2; border-radius: 4px; cursor: pointer;">✏️</button>
+                <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #ffebee; color: #d32f2f; border-radius: 4px; cursor: pointer;">🗑️</button>
+              </td>
+            </tr>
+          `;
+        }).join('')}
       </tbody>
     </table>
   `;
