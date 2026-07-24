@@ -1716,11 +1716,11 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
   
   try {
     console.log('Buscando dados da compra...');
-    const compra = await fetch(`${API}/compras/${cotacaoId}`).then(r => r.json());
+    const compra = await js(`${API}/compras/${cotacaoId}`);
     console.log('Compra recebida:', compra);
     
     if (compra.tipo_solicitacao === 'lista') {
-      const itens = await fetch(`${API}/compras/${cotacaoId}/itens`).then(r => r.json());
+      const itens = await js(`${API}/compras/${cotacaoId}/itens`);
       
       let itemsHtml = '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
       
@@ -1757,7 +1757,7 @@ async function mostrarFornecedoresItem(itemId) {
   
   try {
     const compraId = document.getElementById("novoFornecedorCotacaoId").value;
-    const cotacoes = await fetch(`${API}/compras/${compraId}/cotacoes`).then(r => r.json());
+    const cotacoes = await js(`${API}/compras/${compraId}/cotacoes`);
     
     // Filtrar cotações para este item
     const cotacoesItem = cotacoes.filter(c => c.item_id == itemId);
