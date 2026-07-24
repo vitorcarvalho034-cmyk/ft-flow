@@ -1731,7 +1731,12 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
       itemsHtml += '</select></div>';
       
       const container = document.getElementById("fornecedoresItemContainer");
-      container.innerHTML = itemsHtml;
+      const itemSelecionado = itens.find(i => i.id == itemId);
+      let titulo = '';
+      if (itemSelecionado) {
+        titulo = `<h4 style="margin: 0 0 10px 0; color: #1b5e20;">${itemSelecionado.produto} (${itemSelecionado.quantidade} ${itemSelecionado.unidade})</h4>`;
+      }
+      container.innerHTML = titulo + itemsHtml;
     } else {
       const modal = document.getElementById("modalAdicionarFornecedor");
       const form = modal.querySelector('form');
@@ -1794,6 +1799,7 @@ async function salvarNovoFornecedor(event) {
   event.preventDefault();
   
   const cotacaoId = document.getElementById("novoFornecedorCotacaoId").value;
+  const itemId = document.getElementById("novoFornecedorItem")?.value;
   const fornecedor = document.getElementById("novoFornecedorNome").value;
   const valor = parseFloat(document.getElementById("novoFornecedorValor").value);
   const observacao = document.getElementById("novoFornecedorObs").value;
@@ -1802,16 +1808,20 @@ async function salvarNovoFornecedor(event) {
     const resultado = await js(`${API}/compras/${cotacaoId}/cotacoes`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fornecedor, valor, observacao })
+      body: JSON.stringify({ fornecedor, valor, observacao, item_id: itemId })
     });
     
     mostrarSucesso("Fornecedor adicionado com sucesso!");
-    fecharModalAdicionarFornecedor();
     
-    // Aguardar um pouco e depois recarregar a tabela
-    setTimeout(() => {
-      abrirModalCotacaoComparacao(parseInt(cotacaoId));
-    }, 500);
+    // Limpar campos para adicionar outro fornecedor
+    document.getElementById("novoFornecedorNome").value = "";
+    document.getElementById("novoFornecedorValor").value = "";
+    document.getElementById("novoFornecedorObs").value = "";
+    
+    // Atualizar a lista de fornecedores já cotados se tiver item selecionado
+    if (itemId) {
+      await mostrarFornecedoresItem(itemId);
+    }
   } catch (e) {
     mostrarErro(e.message);
   }
