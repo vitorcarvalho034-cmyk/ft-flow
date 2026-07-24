@@ -896,8 +896,13 @@ function abrirModalCompra() {
   formCompra.reset();
   limparPreviewFotoCompra();
   delete formCompra.dataset.tipoCompra;
-  document.querySelector("#modalCompra .modal-head h3").innerText = "Nova Solicitação de Compra";
-  document.querySelector("#formCompra button[type='submit']").innerText = "Enviar Solicitação";
+  
+  // Tentar atualizar título e botão (se existirem)
+  const titulo = document.querySelector("#modalCompra .modal-head h3");
+  if (titulo) titulo.innerText = "Nova Solicitação de Compra";
+  
+  const botao = document.querySelector("#formCompra button[type='submit']");
+  if (botao) botao.innerText = "Enviar Solicitação";
 }
 
 function fecharModalCompra() {
@@ -2043,11 +2048,10 @@ async function editarListaCompra(compraId) {
     }
     
     // Preencher modal com dados
-    document.getElementById("compTipoModal").value = "lista";
-    document.getElementById("compListaSolicitanteModal").value = compra.solicitante || "";
+    document.getElementById("listaCompraModalSolicitante").value = compra.solicitante || "";
     
     // Carregar itens
-    listaCompraItens = itens.map(item => ({
+    listaCompraItensModal = itens.map(item => ({
       produto: item.produto,
       quantidade: item.quantidade,
       unidade: item.unidade,
@@ -2056,9 +2060,8 @@ async function editarListaCompra(compraId) {
       id: item.id
     }));
     
-    alterarTipoCompra();
-    renderizarListaCompraItens();
-    abrirModalCompra();
+    renderizarListaCompraItensModal();
+    abrirModalListaCompra();
   } catch(e) {
     mostrarErro(e.message);
   }
@@ -2123,6 +2126,145 @@ async function salvarListaPronta(e) {
     carregar();
     atualizarContadorNotificacoes();
     fecharModalCompra();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+// Variável global para itens da lista de compra no novo modal
+let listaCompraItensModal = [];
+
+function abrirModalListaCompra() {
+  document.getElementById("modalListaCompra").classList.remove("hidden");
+}
+
+function fecharModalListaCompra() {
+  document.getElementById("modalListaCompra").classList.add("hidden");
+  document.getElementById("formListaCompra").reset();
+  listaCompraItensModal = [];
+  renderizarListaCompraItensModal();
+}
+
+function adicionarItemListaModal() {
+  const produto = document.getElementById("listaCompraModalProduto").value.trim();
+  const quantidade = parseFloat(document.getElementById("listaCompraModalQtd").value);
+  const unidade = document.getElementById("listaCompraModalUnidade").value.trim();
+  const fornecedor = document.getElementById("listaCompraModalFornecedor").value.trim();
+  const preco = parseFloat(document.getElementById("listaCompraModalPreco").value) || 0;
+  
+  if (!produto) return mostrarErro("Informe o nome do produto");
+  if (!quantidade || quantidade <= 0) return mostrarErro("Informe uma quantidade válida");
+  if (!unidade) return mostrarErro("Selecione a unidade de medida");
+  if (!fornecedor) return mostrarErro("Informe o fornecedor");
+  if (preco <= 0) return mostrarErro("Informe um preço válido");
+  
+  listaCompraItensModal.push({ produto, quantidade, unidade, fornecedor, preco, id: Date.now() });
+  
+  // Limpar campos
+  document.getElementById("listaCompraModalProduto").value = "";
+  document.getElementById("listaCompraModalQtd").value = "";
+  document.getElementById("listaCompraModalUnidade").value = "";
+  document.getElementById("listaCompraModalFornecedor").value = "";
+  document.getElementById("listaCompraModalPreco").value = "";
+  
+  renderizarListaCompraItensModal();
+  mostrarSucesso("Item adicionado!");
+}
+
+function removerItemListaModal(id) {
+  listaCompraItensModal = listaCompraItensModal.filter(item => item.id !== id);
+  renderizarListaCompraItensModal();
+}
+
+function renderizarListaCompraItensModal() {
+  const container = document.getElementById("listaCompraModalItensContainer");
+  
+  if (listaCompraItensModal.length === 0) {
+    container.innerHTML = '<p style="color: #999; font-style: italic;">Nenhum item adicionado ainda</p>';
+    return;
+  }
+  
+  container.innerHTML = `
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <thead>
+        <tr style="background: #e8f5e9; border-bottom: 2px solid #1b5e20;">
+          <th style="padding: 8px; text-align: left; color: #1b5e20;">Produto</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Qtd</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 70px;">Un.</th>
+          <th style="padding: 8px; text-align: left; color: #1b5e20; width: 120px;">Fornecedor</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 100px;">Preço</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 60px;">Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${listaCompraItensModal.map(item => `
+          <tr style="border-bottom: 1px solid #ddd;">
+            <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
+            <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
+            <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
+            <td style="padding: 8px;">${htmlEsc(item.fornecedor)}</td>
+            <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(item.preco).toFixed(2)}</td>
+            <td style="padding: 8px; text-align: center;">
+              <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 12px;">Remover</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function salvarListaRascunhoModal(e) {
+  e.preventDefault();
+  try {
+    const solicitante = document.getElementById("listaCompraModalSolicitante").value.trim();
+    if (!solicitante) return mostrarErro("Informe o solicitante");
+    if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
+    
+    // Enviar como rascunho
+    await js(API + "/compras", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        solicitante,
+        tipo_solicitacao: "lista",
+        status_lista: "rascunho",
+        itens: listaCompraItensModal
+      })
+    });
+    
+    mostrarSucesso(`Lista de compra salva como RASCUNHO com ${listaCompraItensModal.length} item(ns)!`);
+    fecharModalListaCompra();
+    carregar();
+    atualizarContadorNotificacoes();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function salvarListaProntaModal(e) {
+  e.preventDefault();
+  try {
+    const solicitante = document.getElementById("listaCompraModalSolicitante").value.trim();
+    if (!solicitante) return mostrarErro("Informe o solicitante");
+    if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
+    
+    // Enviar como pronta
+    await js(API + "/compras", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        solicitante,
+        tipo_solicitacao: "lista",
+        status_lista: "pronta",
+        itens: listaCompraItensModal
+      })
+    });
+    
+    mostrarSucesso(`Lista de compra PRONTA com ${listaCompraItensModal.length} item(ns)! Pronta para cotação.`);
+    fecharModalListaCompra();
+    carregar();
+    atualizarContadorNotificacoes();
   } catch(e) {
     mostrarErro(e.message);
   }
