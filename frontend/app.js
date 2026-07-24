@@ -132,10 +132,26 @@ function cardPedidoCompra(c, options = {}) {
   const linhaData = `<div class="pedido-linha"><span>Solicitado em</span><b>${dataSolicitacao}</b></div>`;
 
   let acoes = "";
+  let statusBadge = "";
+  
+  // Para lista de compra, mostrar status
+  if (c.tipo_solicitacao === 'lista') {
+    const statusLista = c.status_lista || 'rascunho';
+    const corStatus = statusLista === 'pronta' ? '#2e7d32' : '#ff9800';
+    const textoStatus = statusLista === 'pronta' ? '✓ Pronta' : '📄 Rascunho';
+    statusBadge = `<span style="background: ${corStatus}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold;">${textoStatus}</span>`;
+  }
+  
   if (modo === "cotacao") {
     acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   } else if (modo === "full" && isAdmin) {
-    acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+    // Para lista de compra
+    if (c.tipo_solicitacao === 'lista') {
+      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="secondary" onclick="editarListaCompra(${c.id})">Editar</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+    } else {
+      // Para compra regular
+      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+    }
   }
 
   // Se for lista de compra, mostrar itens
@@ -169,7 +185,10 @@ function cardPedidoCompra(c, options = {}) {
   return `<div class="card pedido-card">
     <div class="pedido-top">
       <b class="pedido-titulo">#${c.id} — ${htmlEsc(c.item)}</b>
-      <span class="pedido-status-wrap">${st(c.status)}</span>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <span class="pedido-status-wrap">${st(c.status)}</span>
+        ${statusBadge}
+      </div>
     </div>
     ${foto}
     <div class="pedido-detalhes">
@@ -1451,7 +1470,13 @@ function abrirModalCotacaoComparacao(compraId) {
         });
         
         html += '</tbody></table></div>';
-        html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div>`;
+        // Para lista pronta, mostrar apenas botão de enviar para aprovação
+        if (compra.status_lista === 'pronta') {
+          html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="enviarParaAprovacao(${compraId})">✓ Enviar para Aprovação</button></div>`;
+        } else {
+          // Para rascunho, mostrar botão de adicionar fornecedor
+          html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div>`;
+        }
         container.innerHTML = html;
       } else {
         // Compra regular
@@ -1905,6 +1930,8 @@ function alterarTipoCompra() {
     compraRegularFields.classList.add("hidden");
     listaCompraFields.classList.remove("hidden");
     listaCompraContainer.classList.remove("hidden");
+    document.getElementById("listaCompraButtons").classList.remove("hidden");
+    document.getElementById("botaoCompraRegular").classList.add("hidden");
     
     // Desabilitar campos de compra regular
     compCatModal.removeAttribute("required");
@@ -1923,6 +1950,8 @@ function alterarTipoCompra() {
     compraRegularFields.classList.remove("hidden");
     listaCompraFields.classList.add("hidden");
     listaCompraContainer.classList.add("hidden");
+    document.getElementById("listaCompraButtons").classList.add("hidden");
+    document.getElementById("botaoCompraRegular").classList.remove("hidden");
     
     // Reabilitar campos de compra regular
     compCatModal.setAttribute("required", "");
@@ -1938,17 +1967,23 @@ function adicionarItemLista() {
   const produto = document.getElementById("listaCompraItemInput").value.trim();
   const quantidade = parseFloat(document.getElementById("listaCompraQtdInput").value);
   const unidade = document.getElementById("listaCompraUnidadeInput").value.trim();
+  const fornecedor = document.getElementById("listaCompraFornecedorInput").value.trim();
+  const preco = parseFloat(document.getElementById("listaCompraPrecoInput").value) || 0;
   
   if (!produto) return mostrarErro("Informe o nome do produto");
   if (!quantidade || quantidade <= 0) return mostrarErro("Informe uma quantidade válida");
   if (!unidade) return mostrarErro("Selecione a unidade de medida");
+  if (!fornecedor) return mostrarErro("Informe o fornecedor");
+  if (preco <= 0) return mostrarErro("Informe um preço válido");
   
-  listaCompraItens.push({ produto, quantidade, unidade, id: Date.now() });
+  listaCompraItens.push({ produto, quantidade, unidade, fornecedor, preco, id: Date.now() });
   
   // Limpar campos
   document.getElementById("listaCompraItemInput").value = "";
   document.getElementById("listaCompraQtdInput").value = "";
   document.getElementById("listaCompraUnidadeInput").value = "";
+  document.getElementById("listaCompraFornecedorInput").value = "";
+  document.getElementById("listaCompraPrecoInput").value = "";
   
   renderizarListaCompraItens();
   mostrarSucesso("Item adicionado!");
@@ -1972,8 +2007,10 @@ function renderizarListaCompraItens() {
       <thead>
         <tr style="background: #e8f5e9; border-bottom: 2px solid #1b5e20;">
           <th style="padding: 8px; text-align: left; color: #1b5e20;">Produto</th>
-          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 100px;">Qtd</th>
-          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Un.</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Qtd</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 70px;">Un.</th>
+          <th style="padding: 8px; text-align: left; color: #1b5e20; width: 120px;">Fornecedor</th>
+          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 100px;">Preço</th>
           <th style="padding: 8px; text-align: center; color: #1b5e20; width: 60px;">Ação</th>
         </tr>
       </thead>
@@ -1983,6 +2020,8 @@ function renderizarListaCompraItens() {
             <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
             <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
             <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
+            <td style="padding: 8px;">${htmlEsc(item.fornecedor)}</td>
+            <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(item.preco).toFixed(2)}</td>
             <td style="padding: 8px; text-align: center;">
               <button type="button" class="danger" onclick="removerItemLista(${item.id})" style="padding: 4px 8px; font-size: 12px;">Remover</button>
             </td>
@@ -1991,6 +2030,102 @@ function renderizarListaCompraItens() {
       </tbody>
     </table>
   `;
+}
+
+async function editarListaCompra(compraId) {
+  try {
+    // Buscar dados da lista
+    const compra = await js(`${API}/compras/${compraId}`);
+    const itens = await js(`${API}/compras/${compraId}/itens`);
+    
+    if (!compra || compra.tipo_solicitacao !== 'lista') {
+      return mostrarErro("Esta não é uma lista de compra");
+    }
+    
+    // Preencher modal com dados
+    document.getElementById("compTipoModal").value = "lista";
+    document.getElementById("compListaSolicitanteModal").value = compra.solicitante || "";
+    
+    // Carregar itens
+    listaCompraItens = itens.map(item => ({
+      produto: item.produto,
+      quantidade: item.quantidade,
+      unidade: item.unidade,
+      fornecedor: item.fornecedor || "",
+      preco: item.preco || 0,
+      id: item.id
+    }));
+    
+    alterarTipoCompra();
+    renderizarListaCompraItens();
+    abrirModalCompra();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function salvarListaRascunho(e) {
+  e.preventDefault();
+  try {
+    const solicitante = document.getElementById("compListaSolicitanteModal").value.trim();
+    if (!solicitante) return mostrarErro("Informe o solicitante");
+    if (listaCompraItens.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
+    
+    // Enviar como rascunho
+    await js(API + "/compras", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        solicitante,
+        tipo_solicitacao: "lista",
+        status_lista: "rascunho",
+        itens: listaCompraItens
+      })
+    });
+    
+    mostrarSucesso(`Lista de compra salva como RASCUNHO com ${listaCompraItens.length} item(ns)!`);
+    formCompra.reset();
+    listaCompraItens = [];
+    document.getElementById("compTipoModal").value = "compra";
+    alterarTipoCompra();
+    carregar();
+    atualizarContadorNotificacoes();
+    fecharModalCompra();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function salvarListaPronta(e) {
+  e.preventDefault();
+  try {
+    const solicitante = document.getElementById("compListaSolicitanteModal").value.trim();
+    if (!solicitante) return mostrarErro("Informe o solicitante");
+    if (listaCompraItens.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
+    
+    // Enviar como pronta
+    await js(API + "/compras", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        solicitante,
+        tipo_solicitacao: "lista",
+        status_lista: "pronta",
+        itens: listaCompraItens
+      })
+    });
+    
+    mostrarSucesso(`Lista de compra PRONTA com ${listaCompraItens.length} item(ns)! Pronta para cotação.`);
+    formCompra.reset();
+    listaCompraItens = [];
+    document.getElementById("compTipoModal").value = "compra";
+    alterarTipoCompra();
+    carregar();
+    atualizarContadorNotificacoes();
+    fecharModalCompra();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
 }
 
 function initAppUi() {

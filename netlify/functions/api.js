@@ -74,8 +74,11 @@ async function ensureDb(){
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS questionamento TEXT`).catch(e => console.log('questionamento column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS resposta_admin TEXT`).catch(e => console.log('resposta_admin column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_questionamento VARCHAR(50)`).catch(e => console.log('status_questionamento column already exists'));
-  await q(`CREATE TABLE IF NOT EXISTS lista_compras_itens (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, produto TEXT, quantidade REAL, unidade TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`CREATE TABLE IF NOT EXISTS lista_compras_itens (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, produto TEXT, quantidade REAL, unidade TEXT, fornecedor TEXT, preco REAL DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_solicitacao VARCHAR(50) DEFAULT 'compra'`).catch(e => console.log('tipo_solicitacao column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_lista VARCHAR(50) DEFAULT 'rascunho'`).catch(e => console.log('status_lista column already exists'));
+  await q(`ALTER TABLE lista_compras_itens ADD COLUMN IF NOT EXISTS fornecedor TEXT`).catch(e => console.log('fornecedor column already exists'));
+  await q(`ALTER TABLE lista_compras_itens ADD COLUMN IF NOT EXISTS preco REAL DEFAULT 0`).catch(e => console.log('preco column already exists'));
   await q(`CREATE TABLE IF NOT EXISTS lista_compras_aprovacoes (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, item_id INTEGER REFERENCES lista_compras_itens(id) ON DELETE CASCADE, cotacao_id INTEGER REFERENCES cotacoes(id), fornecedor TEXT, valor REAL, created_at TIMESTAMP DEFAULT NOW())`);
 
   // seed users if none
@@ -349,17 +352,31 @@ app.post("/compras",async(req,res)=>{
     if (b.tipo_solicitacao === 'lista' && b.itens && Array.isArray(b.itens)) {
       // Salvar pedido principal sem item específico
       const r = await q(
-        `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,tipo_solicitacao,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-        ['Lista de Compra', 0, '', 'Lista de Compra', 'Lista de Compra', b.solicitante || 'Não informado', 'Em cotação', 'lista', 'Lista de compra', null, null]
+        `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,tipo_solicitacao,descricao,link_produto,foto_url,status_lista) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+        ['Lista de Compra', 0, '', 'Lista de Compra', 'Lista de Compra', b.solicitante || 'Não informado', b.status_lista === 'pronta' ? 'Em cotação' : 'Rascunho', 'lista', 'Lista de compra', null, null, b.status_lista || 'rascunho']
       );
       const compraId = r.rows[0].id;
       
-      // Salvar cada item da lista
+      // Salvar cada item da lista com fornecedor e preço
       for (const item of b.itens) {
         await q(
-          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade) VALUES ($1, $2, $3, $4)`,
-          [compraId, item.produto, item.quantidade, item.unidade]
+          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [compraId, item.produto, item.quantidade, item.unidade, item.fornecedor || '', Number(item.preco) || 0]
         );
+      }
+      
+      // Se for lista pronta, criar cotações automaticamente
+      if (b.status_lista === 'pronta') {
+        const itens = await q(`SELECT id FROM lista_compras_itens WHERE compra_id=$1`, [compraId]);
+        for (let idx = 0; idx < itens.rows.length; idx++) {
+          const itemData = b.itens[idx];
+          if (itemData && itemData.fornecedor && itemData.preco) {
+            await q(
+              `INSERT INTO cotacoes (compra_id, item_id, fornecedor, valor) VALUES ($1, $2, $3, $4)`,
+              [compraId, itens.rows[idx].id, itemData.fornecedor, Number(itemData.preco)]
+            );
+          }
+        }
       }
       
       // Notificar
@@ -368,6 +385,7 @@ app.post("/compras",async(req,res)=>{
         ID: `#${compraId}`,
         Solicitante: b.solicitante,
         'Quantidade de itens': b.itens.length,
+        Status: b.status_lista === 'pronta' ? 'Pronta para Cotação' : 'Rascunho',
         Itens: itensTexto.slice(0, 200)
       });
       
