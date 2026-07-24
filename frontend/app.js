@@ -731,12 +731,12 @@ function fileParaBase64(file) {
   });
 }
 
-async function redimensionarImagem(file, maxPx = 1200, qualidade = 0.82) {
+async function redimensionarImagem(file, maxPx = 800, qualidade = 0.65) {
   if (!file?.type?.startsWith("image/")) return file;
   try {
     const bmp = await createImageBitmap(file);
     const maior = Math.max(bmp.width, bmp.height);
-    if (maior <= maxPx && file.size <= 900000) {
+    if (maior <= maxPx && file.size <= 500000) {
       bmp.close();
       return file;
     }
