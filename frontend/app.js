@@ -1728,7 +1728,11 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
     console.log('Compra recebida:', compra);
     
     if (compra.tipo_solicitacao === 'lista') {
+      console.log('É lista de compra! Buscando itens...');
       const itens = await js(`${API}/compras/${cotacaoId}/itens`);
+      console.log('Itens recebidos:', itens);
+      const cotacoes = await js(`${API}/compras/${cotacaoId}/cotacoes`);
+      console.log('Cotações recebidas:', cotacoes);
       
       let itemsHtml = '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
       
@@ -1739,20 +1743,11 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
       itemsHtml += '</select></div>';
       
       const container = document.getElementById("fornecedoresItemContainer");
-      const itemSelecionado = itens.find(i => i.id == itemId);
-      let titulo = '';
-      if (itemSelecionado) {
-        titulo = `<h4 style="margin: 0 0 10px 0; color: #1b5e20;">${itemSelecionado.produto} (${itemSelecionado.quantidade} ${itemSelecionado.unidade})</h4>`;
-      }
-      container.innerHTML = titulo + itemsHtml;
+      console.log('Container encontrado:', container);
+      console.log('HTML a ser inserido:', itemsHtml);
+      container.innerHTML = itemsHtml;
     } else {
-      const modal = document.getElementById("modalAdicionarFornecedor");
-      const form = modal.querySelector('form');
-      let existingSelect = form.querySelector('#novoFornecedorItem');
-      
-      if (existingSelect) {
-        existingSelect.parentElement.remove();
-      }
+      console.log('Não é lista de compra');
     }
   } catch (e) {
     console.log('Erro ao buscar compra:', e);
