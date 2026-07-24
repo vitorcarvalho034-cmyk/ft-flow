@@ -2143,6 +2143,24 @@ function adicionarItemListaModal() {
   mostrarSucesso("Item adicionado!");
 }
 
+function editarItemListaModal(id) {
+  const item = listaCompraItensModal.find(i => i.id === id);
+  if (!item) return mostrarErro("Item não encontrado");
+  
+  // Preencher campos com dados do item
+  document.getElementById("listaCompraModalProduto").value = item.produto;
+  document.getElementById("listaCompraModalQtd").value = item.quantidade;
+  document.getElementById("listaCompraModalUnidade").value = item.unidade;
+  document.getElementById("listaCompraModalFornecedor").value = item.fornecedor;
+  document.getElementById("listaCompraModalPreco").value = item.preco;
+  
+  // Remover item antigo
+  listaCompraItensModal = listaCompraItensModal.filter(i => i.id !== id);
+  renderizarListaCompraItensModal();
+  
+  mostrarSucesso("Item carregado para edição. Clique em 'Adicionar Item' para salvar as mudanças.");
+}
+
 function removerItemListaModal(id) {
   listaCompraItensModal = listaCompraItensModal.filter(item => item.id !== id);
   renderizarListaCompraItensModal();
@@ -2176,8 +2194,9 @@ function renderizarListaCompraItensModal() {
             <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
             <td style="padding: 8px;">${htmlEsc(item.fornecedor)}</td>
             <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(item.preco).toFixed(2)}</td>
-            <td style="padding: 8px; text-align: center;">
-              <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 12px;">Remover</button>
+            <td style="padding: 8px; text-align: center; display: flex; gap: 6px; justify-content: center;">
+              <button type="button" class="secondary" onclick="editarItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #e3f2fd; color: #1976d2; border-radius: 4px; cursor: pointer;">✏️</button>
+              <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #ffebee; color: #d32f2f; border-radius: 4px; cursor: pointer;">🗑️</button>
             </td>
           </tr>
         `).join('')}
