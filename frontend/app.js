@@ -1707,6 +1707,7 @@ async function rejeitarCotacao(cotacaoId, motivo = "") {
 let cotacaoIdAtual = null;
 
 async function abrirModalAdicionarFornecedor(cotacaoId) {
+  console.log('Abrindo modal para compra:', cotacaoId);
   cotacaoIdAtual = cotacaoId;
   document.getElementById("novoFornecedorCotacaoId").value = cotacaoId;
   document.getElementById("novoFornecedorNome").value = "";
@@ -1714,7 +1715,9 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
   document.getElementById("novoFornecedorObs").value = "";
   
   try {
+    console.log('Buscando dados da compra...');
     const compra = await fetch(`${API}/compras/${cotacaoId}`).then(r => r.json());
+    console.log('Compra recebida:', compra);
     
     if (compra.tipo_solicitacao === 'lista') {
       const itens = await fetch(`${API}/compras/${cotacaoId}/itens`).then(r => r.json());
