@@ -99,6 +99,71 @@ async function email(titulo,dados={},destinatario=null,htmlCustomizado=null){
   await t.sendMail({from:process.env.SMTP_USER,to:toEmail,subject:titulo,html});
 }
 
+async function emailComFornecedoresLista(titulo, compraId, itens, cotacoes, appUrl="https://ft-flow.netlify.app"){
+  if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
+  const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+  
+  // Agrupar cotações por item
+  let itensHtml = '';
+  for (const item of itens) {
+    const cotacoesItem = cotacoes.filter(c => c.item_id === item.id);
+    
+    itensHtml += `
+      <div style="background:#f0f8f5;padding:15px;border-radius:8px;margin-bottom:15px;border-left:4px solid #1b5e20">
+        <h4 style="margin:0 0 10px 0;color:#1b5e20">${item.produto}</h4>
+        <p style="margin:5px 0;font-size:13px;color:#555"><strong>Quantidade:</strong> ${item.quantidade} ${item.unidade}</p>
+        
+        <div style="margin-top:10px">
+          <p style="margin:5px 0;font-size:12px;color:#666;font-weight:bold">Fornecedores:</p>
+    `;
+    
+    if (cotacoesItem.length === 0) {
+      itensHtml += `<p style="margin:5px 0;font-size:12px;color:#999">Nenhuma cotação disponível</p>`;
+    } else {
+      for (const cot of cotacoesItem) {
+        itensHtml += `
+          <div style="background:white;padding:10px;margin:8px 0;border-radius:4px;border:1px solid #ddd;display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:13px">${cot.fornecedor}</span>
+            <span style="font-size:14px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
+          </div>
+        `;
+      }
+    }
+    
+    itensHtml += `
+        </div>
+      </div>
+    `;
+  }
+  
+  const html = `
+    <div style="font-family:Arial;background:#f3f7f4;padding:24px">
+      <div style="max-width:700px;margin:auto;background:white;border-radius:18px;overflow:hidden">
+        <div style="background:#1b5e20;padding:30px;color:white;text-align:center">
+          <h1 style="margin:0;font-size:24px">Lista de Compra #${compraId}</h1>
+          <p style="margin:5px 0 0 0;opacity:0.9">Aguardando Aprovação</p>
+        </div>
+        <div style="padding:30px">
+          <div style="background:#f9f9f9;padding:15px;border-radius:8px;margin:15px 0">
+            <h3 style="margin:0 0 15px 0;color:#1b5e20">📋 Itens da Lista</h3>
+            ${itensHtml}
+          </div>
+          
+          <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <a href="${appUrl}/api/negar-cotacao/lista:${compraId}" style="display:inline-block;background:#d32f2f;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❌ Negar</a>
+            <a href="${appUrl}/api/questionar-cotacao/lista:${compraId}" style="display:inline-block;background:#ff9800;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❓ Questionar</a>
+            <a href="${appUrl}/api/aprovar-lista/${compraId}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Aprovar</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+  await t.sendMail({from:process.env.SMTP_USER,to:approvalEmail,subject:titulo,html});
+}
+
+
 async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="https://ft-flow.netlify.app"){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
   const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
@@ -424,22 +489,33 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
         email: approvalEmail
       })]);
     
-    // Enviar notificação com todos os fornecedores
-    const titulo = `Cotação #${compraId} - ${compra.rows[0].descricao} - Aguardando Aprovação`;
-    const dados = {
-      'Produto': compra.rows[0].descricao,
-      'Quantidade': compra.rows[0].quantidade,
-      'Unidade': compra.rows[0].unidade,
-      'Solicitante': compra.rows[0].solicitante,
-      'Total de Fornecedores': cotacoes.rows.length,
-      'Melhor Preço': `R$ ${Number(cotacoes.rows[0].valor).toFixed(2)} (${cotacoes.rows[0].fornecedor})`
-    };
-    
-    await notify(titulo, `Cotação #${compraId} pronta para aprovação. ${cotacoes.rows.length} fornecedor(es) disponível(is).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
-    
-    // Enviar email com botões interativos para a patroa
     const appUrl = process.env.APP_URL || 'https://ft-flow.netlify.app';
-    await emailComFornecedores(titulo, compraId, cotacoes.rows, compra.rows[0], appUrl).catch(e => console.log('Email patroa err', e.message));
+    
+    // Se for lista de compra, enviar email diferente
+    if (compra.rows[0].tipo_solicitacao === 'lista') {
+      const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC', [compraId]);
+      const titulo = `Lista de Compra #${compraId} - Aguardando Aprovação`;
+      await notify(titulo, `Lista de compra #${compraId} pronta para aprovação. ${itens.rows.length} item(ns) com ${cotacoes.rows.length} cotação(ões).`, 'compra', {
+        'ID': `#${compraId}`,
+        'Itens': itens.rows.length,
+        'Cotações': cotacoes.rows.length
+      }).catch(e => console.log('Notify err', e.message));
+      await emailComFornecedoresLista(titulo, compraId, itens.rows, cotacoes.rows, appUrl).catch(e => console.log('Email patroa err', e.message));
+    } else {
+      // Compra regular
+      const titulo = `Cotação #${compraId} - ${compra.rows[0].descricao} - Aguardando Aprovação`;
+      const dados = {
+        'Produto': compra.rows[0].descricao,
+        'Quantidade': compra.rows[0].quantidade,
+        'Unidade': compra.rows[0].unidade,
+        'Solicitante': compra.rows[0].solicitante,
+        'Total de Fornecedores': cotacoes.rows.length,
+        'Melhor Preço': `R$ ${Number(cotacoes.rows[0].valor).toFixed(2)} (${cotacoes.rows[0].fornecedor})`
+      };
+      
+      await notify(titulo, `Cotação #${compraId} pronta para aprovação. ${cotacoes.rows.length} fornecedor(es) disponível(is).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+      await emailComFornecedores(titulo, compraId, cotacoes.rows, compra.rows[0], appUrl).catch(e => console.log('Email patroa err', e.message));
+    }
     
     res.json({ ok: true, email: approvalEmail, fornecedores: cotacoes.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
