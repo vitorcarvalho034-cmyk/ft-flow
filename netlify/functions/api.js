@@ -73,6 +73,8 @@ async function ensureDb(){
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS questionamento TEXT`).catch(e => console.log('questionamento column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS resposta_admin TEXT`).catch(e => console.log('resposta_admin column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_questionamento VARCHAR(50)`).catch(e => console.log('status_questionamento column already exists'));
+  await q(`CREATE TABLE IF NOT EXISTS lista_compras_itens (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, produto TEXT, quantidade REAL, unidade TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_solicitacao VARCHAR(50) DEFAULT 'compra'`).catch(e => console.log('tipo_solicitacao column already exists'));
 
   // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
@@ -275,10 +277,41 @@ app.get("/compras",async(req,res)=>{
 app.post("/compras",async(req,res)=>{
   try{
     const b=req.body;
+    
+    // Se for lista de compra, salvar como um único pedido
+    if (b.tipo_solicitacao === 'lista' && b.itens && Array.isArray(b.itens)) {
+      // Salvar pedido principal sem item específico
+      const r = await q(
+        `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,tipo_solicitacao,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+        ['Lista de Compra', 0, '', 'Lista de Compra', 'Lista de Compra', b.solicitante || 'Não informado', 'Em cotação', 'lista', 'Lista de compra', null, null]
+      );
+      const compraId = r.rows[0].id;
+      
+      // Salvar cada item da lista
+      for (const item of b.itens) {
+        await q(
+          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade) VALUES ($1, $2, $3, $4)`,
+          [compraId, item.produto, item.quantidade, item.unidade]
+        );
+      }
+      
+      // Notificar
+      const itensTexto = b.itens.map(i => `${i.produto} (${i.quantidade} ${i.unidade})`).join(', ');
+      await notify('Nova Lista de Compra', `Itens: ${itensTexto}`, 'compra', {
+        ID: `#${compraId}`,
+        Solicitante: b.solicitante,
+        'Quantidade de itens': b.itens.length,
+        Itens: itensTexto.slice(0, 200)
+      });
+      
+      return res.json({id: compraId});
+    }
+    
+    // Compra regular
     if(!unidadeMedidaValida(b.unidade)) return res.status(400).json({error:"Selecione uma unidade de medida válida"});
     const r=await q(
-      `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-      [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null]
+      `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url,tipo_solicitacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+      [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null,'compra']
     );
     const unidadeTxt=b.unidade?` ${b.unidade}`:"";
     await notify("Nova solicitação de compra", `Item: ${b.item}`, "compra", {

@@ -138,6 +138,34 @@ function cardPedidoCompra(c, options = {}) {
     acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Aprovar</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   }
 
+  // Se for lista de compra, mostrar itens
+  let itemsHtml = "";
+  if (c.tipo_solicitacao === 'lista' && c.itens && Array.isArray(c.itens) && c.itens.length > 0) {
+    itemsHtml = `
+      <div class="pedido-lista-items" style="margin-top: 15px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
+        <span class="pedido-label" style="display: block; margin-bottom: 10px;">Itens da Lista:</span>
+        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #e8f5e9; border-bottom: 1px solid #ddd;">
+              <th style="padding: 8px; text-align: left; color: #1b5e20;">Produto</th>
+              <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Qtd</th>
+              <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Un.</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${c.itens.map(item => `
+              <tr style="border-bottom: 1px solid #ddd;">
+                <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
+                <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
+                <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
   return `<div class="card pedido-card">
     <div class="pedido-top">
       <b class="pedido-titulo">#${c.id} — ${htmlEsc(c.item)}</b>
@@ -146,21 +174,23 @@ function cardPedidoCompra(c, options = {}) {
     ${foto}
     <div class="pedido-detalhes">
       <div class="pedido-linha"><span>Solicitante</span><b>${htmlEsc(c.solicitante || "-")}</b></div>
-      <div class="pedido-linha"><span>Quantidade</span><b>${c.quantidade ?? "-"}</b></div>
-      <div class="pedido-linha"><span>Unidade</span><b>${unidadeTxt}</b></div>
+      ${c.tipo_solicitacao !== 'lista' ? `<div class="pedido-linha"><span>Quantidade</span><b>${c.quantidade ?? "-"}</b></div>` : ''}
+      ${c.tipo_solicitacao !== 'lista' ? `<div class="pedido-linha"><span>Unidade</span><b>${unidadeTxt}</b></div>` : ''}
       <div class="pedido-linha"><span>Categoria</span><b>${htmlEsc(c.categoria || "-")}</b></div>
       <div class="pedido-linha"><span>Destino</span><b>${htmlEsc(c.destino || "Não informado")}</b></div>
       ${linhaData}
       ${valor}${fornecedor}
     </div>
-    <div class="pedido-descricao-box">
+    ${itemsHtml}
+    ${c.tipo_solicitacao !== 'lista' ? `<div class="pedido-descricao-box">
       <span class="pedido-label">Descrição do produto</span>
       <p class="pedido-descricao-texto">${descricaoTxt}</p>
-    </div>
-    ${link}
+    </div>` : ''}
+    ${c.tipo_solicitacao !== 'lista' ? link : ''}
     ${acoes}
   </div>`;
 }
+
 
 async function apiJson(url, options={}){
   const headers = options.headers || {};
@@ -866,24 +896,16 @@ async function salvarCompraDetalhada(e) {
       if (!solicitante) return mostrarErro("Informe o solicitante");
       if (listaCompraItens.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
       
-      for (const item of listaCompraItens) {
-        await js(API + "/compras", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            solicitante,
-            item: item.produto,
-            quantidade: item.quantidade,
-            unidade: item.unidade,
-            categoria: "Lista de Compra",
-            destino: "Lista de Compra",
-            tipo_solicitacao: "lista",
-            link_produto: "",
-            descricao_detalhada: "",
-            foto_url: null
-          })
-        });
-      }
+      // Enviar como um único pedido com múltiplos itens
+      await js(API + "/compras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          solicitante,
+          tipo_solicitacao: "lista",
+          itens: listaCompraItens
+        })
+      });
       
       mostrarSucesso(`Lista de compra enviada com ${listaCompraItens.length} item(ns)!`);
       formCompra.reset();
@@ -944,6 +966,7 @@ async function salvarCompraDetalhada(e) {
     mostrarErro(e.message);
   }
 }
+
 
 
 async function addCompra(){
