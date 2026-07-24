@@ -1706,14 +1706,89 @@ async function rejeitarCotacao(cotacaoId, motivo = "") {
 // ===== ADICIONAR FORNECEDOR E PREÇO =====
 let cotacaoIdAtual = null;
 
-function abrirModalAdicionarFornecedor(cotacaoId) {
+async function abrirModalAdicionarFornecedor(cotacaoId) {
   cotacaoIdAtual = cotacaoId;
   document.getElementById("novoFornecedorCotacaoId").value = cotacaoId;
   document.getElementById("novoFornecedorNome").value = "";
   document.getElementById("novoFornecedorValor").value = "";
   document.getElementById("novoFornecedorObs").value = "";
+  
+  try {
+    const compra = await fetch(`${API}/compras/${cotacaoId}`).then(r => r.json());
+    
+    if (compra.tipo_solicitacao === 'lista') {
+      const itens = await fetch(`${API}/compras/${cotacaoId}/itens`).then(r => r.json());
+      
+      let itemsHtml = '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
+      
+      for (const item of itens) {
+        itemsHtml += `<option value="${item.id}">${item.produto} (${item.quantidade} ${item.unidade})</option>`;
+      }
+      
+      itemsHtml += '</select></div>';
+      
+      const modal = document.getElementById("modalAdicionarFornecedor");
+      const form = modal.querySelector('form');
+      let existingSelect = form.querySelector('#novoFornecedorItem');
+      
+      if (existingSelect) {
+        existingSelect.parentElement.remove();
+      }
+      
+      const firstLabel = form.querySelector('label');
+      firstLabel.insertAdjacentHTML('beforebegin', itemsHtml);
+    } else {
+      const modal = document.getElementById("modalAdicionarFornecedor");
+      const form = modal.querySelector('form');
+      let existingSelect = form.querySelector('#novoFornecedorItem');
+      
+      if (existingSelect) {
+        existingSelect.parentElement.remove();
+      }
+    }
+  } catch (e) {
+    console.log('Erro ao buscar compra:', e);
+  }
+  
   document.getElementById("modalAdicionarFornecedor").classList.remove("hidden");
 }
+
+
+async function mostrarFornecedoresItem(itemId) {
+  if (!itemId) {
+    document.getElementById("fornecedoresItemContainer").innerHTML = '';
+    return;
+  }
+  
+  try {
+    const compraId = document.getElementById("novoFornecedorCotacaoId").value;
+    const cotacoes = await fetch(`${API}/compras/${compraId}/cotacoes`).then(r => r.json());
+    
+    // Filtrar cotações para este item
+    const cotacoesItem = cotacoes.filter(c => c.item_id == itemId);
+    
+    let html = '<div style="margin-bottom: 15px; padding: 10px; background: #f0f8f5; border-radius: 4px;">';
+    html += '<p style="margin: 0 0 10px 0; font-weight: bold; color: #1b5e20;">Fornecedores já cotados:</p>';
+    
+    if (cotacoesItem.length === 0) {
+      html += '<p style="margin: 5px 0; color: #999; font-size: 13px;">Nenhuma cotação ainda para este produto</p>';
+    } else {
+      for (const cot of cotacoesItem) {
+        html += `<div style="padding: 8px; margin: 5px 0; background: white; border-radius: 4px; border-left: 3px solid #1b5e20;">
+          <strong>${cot.fornecedor}</strong> - <span style="color: #2e7d32; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</span>
+          <small style="color: #999;">${cot.observacao ? '(' + cot.observacao + ')' : ''}</small>
+        </div>`;
+      }
+    }
+    
+    html += '</div>';
+    document.getElementById("fornecedoresItemContainer").innerHTML = html;
+  } catch (e) {
+    console.log('Erro ao buscar fornecedores:', e);
+    document.getElementById("fornecedoresItemContainer").innerHTML = '';
+  }
+}
+
 
 function fecharModalAdicionarFornecedor() {
   document.getElementById("modalAdicionarFornecedor").classList.add("hidden");

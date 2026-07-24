@@ -394,6 +394,7 @@
     <div class="modal-head"><h3>Adicionar Fornecedor e Preço</h3><button onclick="fecharModalAdicionarFornecedor()">×</button></div>
     <form id="formAdicionarFornecedor" onsubmit="salvarNovoFornecedor(event)">
       <input type="hidden" id="novoFornecedorCotacaoId">
+      <div id="fornecedoresItemContainer"></div>
       <label>Fornecedor<input id="novoFornecedorNome" type="text" placeholder="Ex: Mercado Livre, Amazon..." required></label>
       <label>Preço (R$)<input id="novoFornecedorValor" type="number" step="0.01" placeholder="0.00" required></label>
       <label>Observação (opcional)<textarea id="novoFornecedorObs" placeholder="Ex: Frete grátis, prazo 5 dias..."></textarea></label>
