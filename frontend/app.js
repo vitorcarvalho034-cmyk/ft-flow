@@ -2227,6 +2227,16 @@ async function salvarListaProntaModal(e) {
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
     
+    // Validar que todos os itens têm fornecedor e preço para Lista Pronta
+    for (const item of listaCompraItensModal) {
+      if (!item.fornecedor || !item.fornecedor.trim()) {
+        return mostrarErro(`Informe o fornecedor para o item: ${item.produto}`);
+      }
+      if (!item.preco || item.preco <= 0) {
+        return mostrarErro(`Informe o preço para o item: ${item.produto}`);
+      }
+    }
+    
     // Enviar como pronta
     await js(API + "/compras", {
       method: "POST",
