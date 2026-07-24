@@ -1331,6 +1331,30 @@ app.post('/enviar-resposta-questionamento/:token', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
+// Upload de foto
+app.post('/upload/foto', async (req, res) => {
+  try {
+    const { base64, filename } = req.body;
+    if (!base64 || !filename) {
+      return res.status(400).json({ error: 'base64 e filename sao obrigatorios' });
+    }
+    
+    // Converter base64 para buffer
+    const buffer = Buffer.from(base64.split(',')[1] || base64, 'base64');
+    
+    // Gerar nome unico
+    const timestamp = Date.now();
+    const nomeUnico = `${timestamp}-${filename}`;
+    
+    // Retornar URL de dados (data URL)
+    const dataUrl = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+    
+    res.json({ url: dataUrl, filename: nomeUnico });
+  } catch (e) {
+    res.status(500).json({ error: 'Erro ao fazer upload: ' + e.message });
+  }
+});
+
 // Basic fornecedores/notificacoes endpoints
 app.get('/fornecedores', async (req, res) => { try{ const r = await q('SELECT * FROM fornecedores ORDER BY nome'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
 app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message})}});
