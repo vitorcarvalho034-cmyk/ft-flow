@@ -2128,8 +2128,7 @@ function adicionarItemListaModal() {
   if (!produto) return mostrarErro("Informe o nome do produto");
   if (!quantidade || quantidade <= 0) return mostrarErro("Informe uma quantidade válida");
   if (!unidade) return mostrarErro("Selecione a unidade de medida");
-  if (!fornecedor) return mostrarErro("Informe o fornecedor");
-  if (preco <= 0) return mostrarErro("Informe um preço válido");
+  // Fornecedor e preço são opcionais aqui, só obrigatórios na Lista Pronta
   
   listaCompraItensModal.push({ produto, quantidade, unidade, fornecedor, preco, id: Date.now() });
   
