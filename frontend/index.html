@@ -195,7 +195,10 @@
   <div class="modal-card">
     <div class="modal-head"><h3>📋 Nova Lista de Compra</h3><button onclick="fecharModalListaCompra()">×</button></div>
     <form id="formListaCompra" onsubmit="salvarListaCompraModal(event)">
-      <label>Solicitante<input id="listaCompraModalSolicitante" placeholder="Nome do solicitante" required></label>
+      <div class="grid">
+        <label>Nome da Lista<input id="listaCompraModalNome" placeholder="Ex: Defensivos Agosto" required></label>
+        <label>Solicitante<input id="listaCompraModalSolicitante" placeholder="Nome do solicitante" required></label>
+      </div>
       
       <h4 style="margin-top: 20px; color: #1b5e20;">Adicionar Itens à Lista</h4>
       <div class="grid">

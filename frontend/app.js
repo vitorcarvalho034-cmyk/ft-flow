@@ -2048,6 +2048,7 @@ async function editarListaCompra(compraId) {
     }
     
     // Preencher modal com dados
+    document.getElementById("listaCompraModalNome").value = compra.item || "";
     document.getElementById("listaCompraModalSolicitante").value = compra.solicitante || "";
     
     // Carregar itens
@@ -2217,7 +2218,9 @@ function renderizarListaCompraItensModal() {
 async function salvarListaRascunhoModal(e) {
   e.preventDefault();
   try {
+    const nome = document.getElementById("listaCompraModalNome").value.trim();
     const solicitante = document.getElementById("listaCompraModalSolicitante").value.trim();
+    if (!nome) return mostrarErro("Informe o nome da lista");
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
     
@@ -2226,6 +2229,7 @@ async function salvarListaRascunhoModal(e) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        item: nome,
         solicitante,
         tipo_solicitacao: "lista",
         status_lista: "rascunho",
@@ -2245,7 +2249,9 @@ async function salvarListaRascunhoModal(e) {
 async function salvarListaProntaModal(e) {
   e.preventDefault();
   try {
+    const nome = document.getElementById("listaCompraModalNome").value.trim();
     const solicitante = document.getElementById("listaCompraModalSolicitante").value.trim();
+    if (!nome) return mostrarErro("Informe o nome da lista");
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
     
@@ -2254,6 +2260,7 @@ async function salvarListaProntaModal(e) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        item: nome,
         solicitante,
         tipo_solicitacao: "lista",
         status_lista: "pronta",
