@@ -76,6 +76,7 @@ async function ensureDb(){
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_questionamento VARCHAR(50)`).catch(e => console.log('status_questionamento column already exists'));
   await q(`CREATE TABLE IF NOT EXISTS lista_compras_itens (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, produto TEXT, quantidade REAL, unidade TEXT, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS tipo_solicitacao VARCHAR(50) DEFAULT 'compra'`).catch(e => console.log('tipo_solicitacao column already exists'));
+  await q(`CREATE TABLE IF NOT EXISTS lista_compras_aprovacoes (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, item_id INTEGER REFERENCES lista_compras_itens(id) ON DELETE CASCADE, cotacao_id INTEGER REFERENCES cotacoes(id), fornecedor TEXT, valor REAL, created_at TIMESTAMP DEFAULT NOW())`);
 
   // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
@@ -150,9 +151,9 @@ async function emailComFornecedoresLista(titulo, compraId, itens, cotacoes, appU
           </div>
           
           <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+            <a href="${appUrl}/api/selecionar-fornecedores-lista/lista:${compraId}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Selecionar Fornecedores</a>
             <a href="${appUrl}/api/negar-cotacao/lista:${compraId}" style="display:inline-block;background:#d32f2f;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❌ Negar</a>
             <a href="${appUrl}/api/questionar-cotacao/lista:${compraId}" style="display:inline-block;background:#ff9800;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❓ Questionar</a>
-            <a href="${appUrl}/api/aprovar-lista/${compraId}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Aprovar</a>
           </div>
         </div>
       </div>
@@ -698,6 +699,214 @@ app.put('/estoque/:id', async (req, res) => {
 });
 
 // Rota para processar aprovacao via email (sem autenticacao)
+// Página para Dorian selecionar fornecedores por item
+app.get('/selecionar-fornecedores-lista/:token', async (req, res) => {
+  try {
+    const token = req.params.token;
+    const decoded = Buffer.from(token, 'base64').toString('utf-8');
+    const compraId = decoded.replace('lista:', '');
+    
+    if (!compraId) return res.status(400).json({ error: 'Token inválido' });
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    
+    const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC', [compraId]);
+    const cotacoes = await q('SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY item_id ASC, valor ASC', [compraId]);
+    
+    // Construir HTML com checkboxes
+    let itensHtml = '';
+    for (const item of itens.rows) {
+      const cotacoesItem = cotacoes.rows.filter(c => c.item_id === item.id);
+      
+      itensHtml += `
+        <div style="background:#f0f8f5;padding:20px;border-radius:8px;margin-bottom:20px;border-left:4px solid #1b5e20">
+          <h4 style="margin:0 0 15px 0;color:#1b5e20">${item.produto}</h4>
+          <p style="margin:5px 0;font-size:13px;color:#555"><strong>Quantidade:</strong> ${item.quantidade} ${item.unidade}</p>
+          
+          <div style="margin-top:15px">
+            <p style="margin:10px 0 10px 0;font-size:12px;color:#666;font-weight:bold">Selecione um fornecedor:</p>
+      `;
+      
+      if (cotacoesItem.length === 0) {
+        itensHtml += `<p style="margin:5px 0;font-size:12px;color:#999">Nenhuma cotação disponível</p>`;
+      } else {
+        for (const cot of cotacoesItem) {
+          itensHtml += `
+            <label style="display:flex;align-items:center;padding:10px;margin:8px 0;background:white;border:2px solid #ddd;border-radius:4px;cursor:pointer;transition:all 0.2s">
+              <input type="radio" name="item_${item.id}" value="${cot.id}" style="margin-right:10px;cursor:pointer" />
+              <span style="flex:1;font-size:13px">${cot.fornecedor}</span>
+              <span style="font-size:14px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
+            </label>
+          `;
+        }
+      }
+      
+      itensHtml += `
+          </div>
+        </div>
+      `;
+    }
+    
+    const html = `
+      <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: Arial, sans-serif;
+              background: #f3f7f4;
+              padding: 20px;
+              margin: 0;
+            }
+            .container {
+              max-width: 700px;
+              margin: auto;
+              background: white;
+              border-radius: 12px;
+              overflow: hidden;
+              box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            }
+            .header {
+              background: #1b5e20;
+              padding: 30px;
+              color: white;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 24px;
+            }
+            .header p {
+              margin: 5px 0 0 0;
+              opacity: 0.9;
+            }
+            .content {
+              padding: 30px;
+            }
+            .total {
+              background: #e8f5e9;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+              border-left: 4px solid #1b5e20;
+            }
+            .total p {
+              margin: 5px 0;
+              color: #1b5e20;
+            }
+            .actions {
+              display: flex;
+              gap: 10px;
+              margin-top: 30px;
+              justify-content: center;
+              flex-wrap: wrap;
+            }
+            button {
+              padding: 12px 24px;
+              border: none;
+              border-radius: 4px;
+              font-weight: bold;
+              cursor: pointer;
+              font-size: 14px;
+              transition: all 0.2s;
+            }
+            .btn-aprovar {
+              background: #2e7d32;
+              color: white;
+            }
+            .btn-aprovar:hover {
+              background: #1b5e20;
+            }
+            .btn-cancelar {
+              background: #ddd;
+              color: #333;
+            }
+            .btn-cancelar:hover {
+              background: #ccc;
+            }
+            .error {
+              color: #d32f2f;
+              padding: 10px;
+              background: #ffebee;
+              border-radius: 4px;
+              margin-bottom: 15px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Lista de Compra #${compraId}</h1>
+              <p>Selecione os fornecedores desejados</p>
+            </div>
+            <div class="content">
+              <div class="total">
+                <p><strong>Total de itens:</strong> ${itens.rows.length}</p>
+              </div>
+              
+              <form id="formSelecao">
+                ${itensHtml}
+                
+                <div class="actions">
+                  <button type="submit" class="btn-aprovar">✅ Aprovar Selecionados</button>
+                  <button type="button" class="btn-cancelar" onclick="window.close()">Cancelar</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          
+          <script>
+            document.getElementById('formSelecao').addEventListener('submit', async (e) => {
+              e.preventDefault();
+              
+              const formData = new FormData(e.target);
+              const selecoes = [];
+              
+              for (const [key, value] of formData.entries()) {
+                if (key.startsWith('item_')) {
+                  const itemId = key.replace('item_', '');
+                  selecoes.push({ item_id: itemId, cotacao_id: value });
+                }
+              }
+              
+              if (selecoes.length === 0) {
+                alert('Selecione pelo menos um fornecedor!');
+                return;
+              }
+              
+              try {
+                const response = await fetch('${process.env.APP_URL || 'https://ft-flow.netlify.app'}/api/aprovar-lista-fornecedores/${compraId}', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ selecoes })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                  document.body.innerHTML = '<div style="font-family:Arial;text-align:center;padding:40px"><div style="background:white;padding:40px;border-radius:12px;max-width:500px;margin:auto;box-shadow:0 2px 8px rgba(0,0,0,0.1)"><div style="font-size:48px;color:#2e7d32;margin-bottom:20px">✅</div><h1 style="color:#052e16;margin:0 0 10px 0">Aprovação Confirmada!</h1><p style="color:#666">Sua seleção foi salva com sucesso.</p><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre as escolhas.</p></div></div>';
+                } else {
+                  alert('Erro: ' + (data.error || 'Falha ao aprovar'));
+                }
+              } catch (err) {
+                alert('Erro ao enviar: ' + err.message);
+              }
+            });
+          </script>
+        </body>
+      </html>
+    `;
+    
+    res.send(html);
+  } catch (e) {
+    console.error(e);
+    res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`);
+  }
+});
+
+
 app.get('/aprovar-cotacao/:token', async (req, res) => {
   try {
     const token = req.params.token;
@@ -731,6 +940,63 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
 });
 
 // Negar cotação
+// Aprovar seleções de fornecedores por item
+app.post('/aprovar-lista-fornecedores/:compraId', async (req, res) => {
+  try {
+    const compraId = req.params.compraId;
+    const { selecoes } = req.body;
+    
+    if (!selecoes || selecoes.length === 0) {
+      return res.status(400).json({ error: 'Nenhuma seleção fornecida' });
+    }
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    
+    // Salvar cada seleção
+    for (const sel of selecoes) {
+      const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1', [sel.cotacao_id]);
+      if (cotacao.rows[0]) {
+        await q(
+          'INSERT INTO lista_compras_aprovacoes (compra_id, item_id, cotacao_id, fornecedor, valor) VALUES ($1, $2, $3, $4, $5)',
+          [compraId, sel.item_id, sel.cotacao_id, cotacao.rows[0].fornecedor, cotacao.rows[0].valor]
+        );
+      }
+    }
+    
+    // Atualizar status para Aprovado
+    await q('UPDATE compras SET status=$1 WHERE id=$2', ['Aprovado', compraId]);
+    
+    // Buscar itens para notificação
+    const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1', [compraId]);
+    const aprovacoes = await q('SELECT * FROM lista_compras_aprovacoes WHERE compra_id=$1', [compraId]);
+    
+    // Calcular total
+    let totalValor = 0;
+    for (const apr of aprovacoes.rows) {
+      totalValor += apr.valor;
+    }
+    
+    // Notificar admin
+    const titulo = `Lista de Compra #${compraId} - Aprovada por Dorian`;
+    const dados = {
+      'ID': `#${compraId}`,
+      'Itens': itens.rows.length,
+      'Fornecedores Selecionados': aprovacoes.rows.length,
+      'Valor Total': `R$ ${totalValor.toFixed(2)}`,
+      'Aprovado por': 'Dorian (via email)'
+    };
+    
+    await notify(titulo, `Lista de compra #${compraId} foi aprovada por Dorian com ${aprovacoes.rows.length} fornecedor(es) selecionado(s).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.json({ ok: true, aprovacoes: aprovacoes.rows.length, total: totalValor });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 app.get('/negar-cotacao/:token', async (req, res) => {
   try {
     const token = req.params.token;
