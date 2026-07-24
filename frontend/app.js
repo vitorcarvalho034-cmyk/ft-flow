@@ -1406,8 +1406,7 @@ function abrirModalCotacaoComparacao(compraId) {
       let itens = [];
       if (compra.tipo_solicitacao === 'lista') {
         try {
-          const res = await fetch(`${API}/compras/${compraId}/itens`);
-          itens = await res.json();
+          itens = await js(`${API}/compras/${compraId}/itens`);
         } catch (e) {
           console.log('Erro ao buscar itens:', e);
         }
@@ -1419,17 +1418,26 @@ function abrirModalCotacaoComparacao(compraId) {
         return;
       }
       
-      // Se for lista de compra, agrupar por item
+      // Se for lista de compra, agrupar por item com gavetas
       if (compra.tipo_solicitacao === 'lista' && itens.length > 0) {
         let html = '<div style="overflow-x: auto; width: 100%;">';
+        html += '<div style="margin-bottom: 15px; padding: 12px; background: #e8f5e9; border-radius: 8px; border-left: 4px solid #1b5e20; cursor: pointer;" onclick="const content = this.nextElementSibling; content.style.display = content.style.display === \'none\' ? \'block\' : \'none\'; this.querySelector(\'span\').textContent = content.style.display === \'none\' ? \'▶\' : \'▼\';">';
+        html += '<strong style="color: #1b5e20; display: flex; align-items: center; gap: 8px;"><span>▼</span>Cotações</strong>';
+        html += '</div>';
+        html += '<div style="display: block;">';
         
         for (const item of itens) {
           const cotacoesItem = cotacoes.filter(c => c.item_id === item.id);
-          html += `<div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px;">
-            <h4 style="margin: 0 0 10px 0; color: #1b5e20;">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</h4>`;
+          const itemId = `item_${item.id}`;
+          html += `<div style="margin-bottom: 15px; padding: 12px; background: #f9f9f9; border-radius: 8px; border-left: 3px solid #1b5e20;">`;
+          html += `<div style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;" onclick="const c = document.getElementById(\'${itemId}\'); c.style.display = c.style.display === \'none\' ? \'block\' : \'none\'; this.querySelector(\'span\').textContent = c.style.display === \'none\' ? \'▶\' : \'▼\';">`;
+          html += `<h4 style="margin: 0; color: #1b5e20; display: flex; align-items: center; gap: 8px;"><span>▼</span>${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</h4>`;
+          html += `<span style="font-size: 12px; color: #999;">${cotacoesItem.length} fornecedor(es)</span>`;
+          html += `</div>`;
+          html += `<div id="${itemId}" style="display: block;">`;
           
           if (cotacoesItem.length === 0) {
-            html += `<p style="color: #999; font-size: 13px;">Nenhuma cotação para este item</p>`;
+            html += `<p style="color: #999; font-size: 13px; margin: 0;">Nenhuma cotação para este item</p>`;
           } else {
             html += `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
               <thead>
@@ -1455,10 +1463,10 @@ function abrirModalCotacaoComparacao(compraId) {
             html += `</tbody></table>`;
           }
           
-          html += `</div>`;
+          html += `</div></div>`;
         }
         
-        html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div></div>`;
+        html += `</div><div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div></div>`;
         container.innerHTML = html;
       } else {
         // Compra regular
