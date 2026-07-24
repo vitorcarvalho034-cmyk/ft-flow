@@ -1418,46 +1418,40 @@ function abrirModalCotacaoComparacao(compraId) {
         return;
       }
       
-      // Se for lista de compra, mostrar por item (sem gavetas)
+      // Se for lista de compra, mostrar tabela de cotação (Opção 2)
       if (compra.tipo_solicitacao === 'lista' && itens.length > 0) {
+        // Pegar fornecedores únicos
+        const fornecedoresUnicos = [...new Set(cotacoes.map(c => c.fornecedor))];
+        
         let html = '<div style="overflow-x: auto; width: 100%;">';
+        html += '<table style="width: 100%; border-collapse: collapse; font-size: 13px;">';
+        html += '<thead><tr style="background-color: #052e16; color: white;">';
+        html += '<th style="padding: 12px; text-align: left; border: 1px solid #ddd;"><strong>Produto</strong></th>';
         
-        for (const item of itens) {
-          const cotacoesItem = cotacoes.filter(c => c.item_id === item.id);
-          html += `<div style="margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 8px; border-left: 4px solid #1b5e20;">`;
-          html += `<h4 style="margin: 0 0 12px 0; color: #1b5e20; font-size: 15px;">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</h4>`;
-          
-          if (cotacoesItem.length === 0) {
-            html += `<p style="color: #999; font-size: 13px; margin: 0; padding: 10px; background: #fff; border-radius: 4px;">Nenhuma cotação para este item</p>`;
-          } else {
-            html += `<table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-              <thead>
-                <tr style="background-color: #e8f5e9; border-bottom: 1px solid #ddd;">
-                  <th style="padding: 8px; text-align: left;">Fornecedor</th>
-                  <th style="padding: 8px; text-align: center; width: 100px;">Valor</th>
-                  <th style="padding: 8px; text-align: center; width: 120px;">Ações</th>
-                </tr>
-              </thead>
-              <tbody>`;
-            
-            cotacoesItem.forEach((cot) => {
-              html += `<tr style="border-bottom: 1px solid #ddd;">
-                <td style="padding: 8px;">${htmlEsc(cot.fornecedor)}</td>
-                <td style="padding: 8px; text-align: center; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td>
-                <td style="padding: 8px; text-align: center;">
-                  <button class="small secondary" onclick="editarCotacao(${cot.id})" style="margin-right: 4px;">Editar</button>
-                  <button class="small danger" onclick="deletarCotacao(${compraId}, ${cot.id})">Deletar</button>
-                </td>
-              </tr>`;
-            });
-            
-            html += `</tbody></table>`;
-          }
-          
-          html += `</div>`;
-        }
+        // Cabeçalho com fornecedores
+        fornecedoresUnicos.forEach((fornecedor) => {
+          html += `<th style="padding: 12px; text-align: center; border: 1px solid #ddd;"><strong>${htmlEsc(fornecedor)}</strong></th>`;
+        });
         
-        html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div></div>`;
+        html += '</tr></thead><tbody>';
+        
+        // Linhas com produtos
+        itens.forEach((item) => {
+          html += `<tr style="border-bottom: 1px solid #ddd;">`;
+          html += `<td style="padding: 12px; border: 1px solid #ddd; font-weight: bold; color: #1b5e20;">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</td>`;
+          
+          fornecedoresUnicos.forEach((fornecedor) => {
+            const cot = cotacoes.find(c => c.item_id === item.id && c.fornecedor === fornecedor);
+            const valor = cot ? `R$ ${Number(cot.valor).toFixed(2)}` : '-';
+            const cor = cot ? 'green' : '#999';
+            html += `<td style="padding: 12px; text-align: center; border: 1px solid #ddd; color: ${cor}; font-weight: bold;">${valor}</td>`;
+          });
+          
+          html += '</tr>';
+        });
+        
+        html += '</tbody></table></div>';
+        html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div>`;
         container.innerHTML = html;
       } else {
         // Compra regular
