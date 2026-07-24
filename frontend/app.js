@@ -913,33 +913,6 @@ function fecharModalCompra() {
 async function salvarCompraDetalhada(e) {
   e.preventDefault();
   try {
-    const tipo = document.getElementById("compTipoModal").value;
-    
-    if (tipo === "lista") {
-      const solicitante = document.getElementById("compListaSolicitanteModal").value.trim();
-      if (!solicitante) return mostrarErro("Informe o solicitante");
-      if (listaCompraItens.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
-      
-      // Enviar como um único pedido com múltiplos itens
-      await js(API + "/compras", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          solicitante,
-          tipo_solicitacao: "lista",
-          itens: listaCompraItens
-        })
-      });
-      
-      mostrarSucesso(`Lista de compra enviada com ${listaCompraItens.length} item(ns)!`);
-      formCompra.reset();
-      listaCompraItens = [];
-      document.getElementById("compTipoModal").value = "compra";
-      alterarTipoCompra();
-      carregar();
-      atualizarContadorNotificacoes();
-      fecharModalCompra();
-    } else {
       const solicitante = compSolicitanteModal.value.trim();
       const item = compItemModal.value.trim();
       const quantidade = compQtdModal.value;
@@ -985,7 +958,6 @@ async function salvarCompraDetalhada(e) {
       carregar();
       atualizarContadorNotificacoes();
       fecharModalCompra();
-    }
   } catch(e) {
     mostrarErro(e.message);
   }
