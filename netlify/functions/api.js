@@ -1361,5 +1361,55 @@ app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * 
 app.put('/notificacoes/:id/marcar-lida', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1 WHERE id=$1', [req.params.id]); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
 app.put('/notificacoes/marcar-todas-lidas', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1'); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
 
+// Atualizar lista de compra
+app.put('/compras/:id', async (req, res) => {
+  try {
+    const b = req.body;
+    const compraId = req.params.id;
+    
+    // Atualizar dados da compra
+    await q(
+      `UPDATE compras SET item=$1, solicitante=$2, categoria=$3, destino=$4, status_lista=$5 WHERE id=$6`,
+      [b.item, b.solicitante, b.categoria, b.destino, b.status_lista, compraId]
+    );
+    
+    // Remover itens antigos
+    await q(`DELETE FROM lista_compras_itens WHERE compra_id=$1`, [compraId]);
+    
+    // Adicionar novos itens
+    if (b.itens && Array.isArray(b.itens)) {
+      for (const item of b.itens) {
+        await q(
+          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [compraId, item.produto, item.quantidade, item.unidade, item.fornecedor || '', Number(item.preco) || 0]
+        );
+      }
+    }
+    
+    // Se for lista pronta, atualizar cotações
+    if (b.status_lista === 'pronta') {
+      // Remover cotações antigas
+      await q(`DELETE FROM cotacoes WHERE compra_id=$1`, [compraId]);
+      
+      // Criar novas cotações
+      const itens = await q(`SELECT id FROM lista_compras_itens WHERE compra_id=$1`, [compraId]);
+      for (let idx = 0; idx < itens.rows.length; idx++) {
+        const itemData = b.itens[idx];
+        if (itemData && itemData.fornecedor && itemData.preco) {
+          await q(
+            `INSERT INTO cotacoes (compra_id, item_id, fornecedor, valor) VALUES ($1, $2, $3, $4)`,
+            [compraId, itens.rows[idx].id, itemData.fornecedor, Number(itemData.preco)]
+          );
+        }
+      }
+    }
+    
+    res.json({ok: true});
+  } catch(e) {
+    console.error(e);
+    res.status(500).json({error: e.message});
+  }
+});
+
 // Handler
 module.exports.handler = serverless(app);

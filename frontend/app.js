@@ -2026,6 +2026,9 @@ async function editarListaCompra(compraId) {
     document.getElementById("listaCompraModalCategoria").value = compra.categoria || "";
     document.getElementById("listaCompraModalDestino").value = compra.destino || "";
     
+    // Guardar ID da lista sendo editada
+    listaCompraIdEditando = compraId;
+    
     // Carregar itens
     listaCompraItensModal = itens.map(item => ({
       produto: item.produto,
@@ -2109,6 +2112,7 @@ async function salvarListaPronta(e) {
 
 // Variável global para itens da lista de compra no novo modal
 let listaCompraItensModal = [];
+let listaCompraIdEditando = null; // ID da lista sendo editada
 
 function abrirModalListaCompra() {
   document.getElementById("modalListaCompra").classList.remove("hidden");
@@ -2118,6 +2122,7 @@ function fecharModalListaCompra() {
   document.getElementById("modalListaCompra").classList.add("hidden");
   document.getElementById("formListaCompra").reset();
   listaCompraItensModal = [];
+  listaCompraIdEditando = null;
   renderizarListaCompraItensModal();
 }
 
@@ -2219,20 +2224,37 @@ async function salvarListaRascunhoModal(e) {
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
     
-    // Enviar como rascunho
-    await js(API + "/compras", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        item: nome,
-        solicitante,
-        categoria: categoria || "Lista de Compra",
-        destino: destino || "Lista de Compra",
-        tipo_solicitacao: "lista",
-        status_lista: "rascunho",
-        itens: listaCompraItensModal
-      })
-    });
+    // Se tá editando, fazer UPDATE. Senão, fazer POST
+    if (listaCompraIdEditando) {
+      // UPDATE
+      await js(API + `/compras/${listaCompraIdEditando}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: nome,
+          solicitante,
+          categoria: categoria || "Lista de Compra",
+          destino: destino || "Lista de Compra",
+          status_lista: "rascunho",
+          itens: listaCompraItensModal
+        })
+      });
+    } else {
+      // POST (nova lista)
+      await js(API + "/compras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: nome,
+          solicitante,
+          categoria: categoria || "Lista de Compra",
+          destino: destino || "Lista de Compra",
+          tipo_solicitacao: "lista",
+          status_lista: "rascunho",
+          itens: listaCompraItensModal
+        })
+      });
+    }
     
     mostrarSucesso(`Lista de compra salva como RASCUNHO com ${listaCompraItensModal.length} item(ns)!`);
     fecharModalListaCompra();
@@ -2264,20 +2286,37 @@ async function salvarListaProntaModal(e) {
       }
     }
     
-    // Enviar como pronta
-    await js(API + "/compras", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        item: nome,
-        solicitante,
-        categoria: categoria || "Lista de Compra",
-        destino: destino || "Lista de Compra",
-        tipo_solicitacao: "lista",
-        status_lista: "pronta",
-        itens: listaCompraItensModal
-      })
-    });
+    // Se tá editando, fazer UPDATE. Senão, fazer POST
+    if (listaCompraIdEditando) {
+      // UPDATE
+      await js(API + `/compras/${listaCompraIdEditando}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: nome,
+          solicitante,
+          categoria: categoria || "Lista de Compra",
+          destino: destino || "Lista de Compra",
+          status_lista: "pronta",
+          itens: listaCompraItensModal
+        })
+      });
+    } else {
+      // POST (nova lista)
+      await js(API + "/compras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item: nome,
+          solicitante,
+          categoria: categoria || "Lista de Compra",
+          destino: destino || "Lista de Compra",
+          tipo_solicitacao: "lista",
+          status_lista: "pronta",
+          itens: listaCompraItensModal
+        })
+      });
+    }
     
     mostrarSucesso(`Lista de compra PRONTA com ${listaCompraItensModal.length} item(ns)! Pronta para cotação.`);
     fecharModalListaCompra();
