@@ -1161,8 +1161,8 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
     const cotacoes = item.cotacoes;
     
     // Aplicar filtro
-    if (filtro === 'pendente-cotacao' && compra.fornecedor_escolhido) continue;
-    if (filtro === 'pendente-aprovacao' && !compra.fornecedor_escolhido) continue;
+    if (filtro === 'pendente-cotacao' && (compra.status === 'Pendente_aprovacao' || compra.status === 'aprovado' || compra.fornecedor_escolhido)) continue;
+    if (filtro === 'pendente-aprovacao' && compra.status !== 'Pendente_aprovacao') continue;
     
     let cardHtml = `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">
