@@ -103,9 +103,9 @@ async function email(titulo,dados={},destinatario=null,htmlCustomizado=null){
   await t.sendMail({from:process.env.SMTP_USER,to:toEmail,subject:titulo,html});
 }
 
-async function emailComFornecedoresLista(titulo, compraId, itens, cotacoes, appUrl="https://ft-flow.netlify.app"){
+async function emailComFornecedoresLista(titulo, compraId, itens, cotacoes, appUrl="https://ft-flow.netlify.app", emailDest=null){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
-  const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+  const approvalEmail = emailDest || process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
   
   // Agrupar cotações por item
   let itensHtml = '';
@@ -168,9 +168,9 @@ async function emailComFornecedoresLista(titulo, compraId, itens, cotacoes, appU
 }
 
 
-async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="https://ft-flow.netlify.app"){
+async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="https://ft-flow.netlify.app", emailDest=null){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
-  const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+  const approvalEmail = emailDest || process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
   
   // Construir cards de fornecedores com descrição completa
   let fornecedoresHtml = '';
@@ -395,9 +395,12 @@ app.post("/compras",async(req,res)=>{
     
     // Compra regular
     if(!unidadeMedidaValida(b.unidade)) return res.status(400).json({error:"Selecione uma unidade de medida válida"});
+    // Garantir colunas uso e destinatario existem
+    await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS uso TEXT`).catch(()=>{});
+    await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS destinatario TEXT`).catch(()=>{});
     const r=await q(
-      `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url,tipo_solicitacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
-      [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null,'compra']
+      `INSERT INTO compras (item,quantidade,unidade,categoria,destino,uso,destinatario,solicitante,status,valor_unitario,valor_total,descricao,link_produto,foto_url,tipo_solicitacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
+      [b.item,b.quantidade,b.unidade||null,b.categoria,b.destino,b.uso||null,b.destinatario||null,b.solicitante||"Não informado","Em cotação",Number(b.valor_unitario||0),Number(b.valor_total||0),b.descricao_detalhada||b.descricao||null,b.link_produto||null,b.foto_url||null,'compra']
     );
     const unidadeTxt=b.unidade?` ${b.unidade}`:"";
     await notify("Nova solicitação de compra", `Item: ${b.item}`, "compra", {
@@ -497,8 +500,9 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
   try {
     const compraId = req.params.id;
     
-    // Obter email de aprovação
-    const approvalEmail = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+    // Obter email de aprovação com base no destinatário da compra
+    const DORIAN_EMAIL = process.env.APPROVAL_EMAIL || 'dorian@floresdaterra.com.br';
+    const FELIPE_EMAIL = 'felipe@floresdaterra.com.br';
     
     // Buscar a compra e todos os fornecedores
     const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
@@ -508,6 +512,14 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
     
     if (!cotacoes.rows.length) return res.status(400).json({ error: 'Nenhuma cotação adicionada' });
     
+    // Determinar destinatário(s) do email
+    const destinatario = compra.rows[0].destinatario || 'dorian';
+    let emailsDestinatarios = [];
+    if (destinatario === 'dorian') emailsDestinatarios = [DORIAN_EMAIL];
+    else if (destinatario === 'felipe') emailsDestinatarios = [FELIPE_EMAIL];
+    else if (destinatario === 'ambos') emailsDestinatarios = [DORIAN_EMAIL, FELIPE_EMAIL];
+    else emailsDestinatarios = [DORIAN_EMAIL];
+    
     // Atualizar status para "Pendente_aprovacao"
     await q(`UPDATE compras SET status='Pendente_aprovacao' WHERE id=$1`, [compraId]);
     
@@ -515,7 +527,7 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
     await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)',
       [req.user?.id || 0, 'enviar_aprovacao', 'compras', compraId, JSON.stringify({
         total_fornecedores: cotacoes.rows.length,
-        email: approvalEmail
+        emails: emailsDestinatarios
       })]);
     
     const appUrl = process.env.APP_URL || 'https://ft-flow.netlify.app';
@@ -529,24 +541,30 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
         'Itens': itens.rows.length,
         'Cotações': cotacoes.rows.length
       }).catch(e => console.log('Notify err', e.message));
-      await emailComFornecedoresLista(titulo, compraId, itens.rows, cotacoes.rows, appUrl).catch(e => console.log('Email patroa err', e.message));
+      // Enviar para cada destinatário
+      for (const emailDest of emailsDestinatarios) {
+        await emailComFornecedoresLista(titulo, compraId, itens.rows, cotacoes.rows, appUrl, emailDest).catch(e => console.log('Email err', e.message));
+      }
     } else {
       // Compra regular
-      const titulo = `Cotação #${compraId} - ${compra.rows[0].descricao} - Aguardando Aprovação`;
+      const titulo = `Cotação #${compraId} - ${compra.rows[0].item} - Aguardando Aprovação`;
       const dados = {
-        'Produto': compra.rows[0].descricao,
-        'Quantidade': compra.rows[0].quantidade,
-        'Unidade': compra.rows[0].unidade,
+        'Produto': compra.rows[0].item,
+        'Quantidade': `${compra.rows[0].quantidade} ${compra.rows[0].unidade||''}`,
         'Solicitante': compra.rows[0].solicitante,
+        'Destino': compra.rows[0].destino,
+        'Uso': compra.rows[0].uso || '-',
         'Total de Fornecedores': cotacoes.rows.length,
         'Melhor Preço': `R$ ${Number(cotacoes.rows[0].valor).toFixed(2)} (${cotacoes.rows[0].fornecedor})`
       };
-      
       await notify(titulo, `Cotação #${compraId} pronta para aprovação. ${cotacoes.rows.length} fornecedor(es) disponível(is).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
-      await emailComFornecedores(titulo, compraId, cotacoes.rows, compra.rows[0], appUrl).catch(e => console.log('Email patroa err', e.message));
+      // Enviar para cada destinatário
+      for (const emailDest of emailsDestinatarios) {
+        await emailComFornecedores(titulo, compraId, cotacoes.rows, compra.rows[0], appUrl, emailDest).catch(e => console.log('Email err', e.message));
+      }
     }
     
-    res.json({ ok: true, email: approvalEmail, fornecedores: cotacoes.rows.length });
+    res.json({ ok: true, emails: emailsDestinatarios, fornecedores: cotacoes.rows.length });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 

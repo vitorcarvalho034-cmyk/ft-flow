@@ -959,6 +959,8 @@ async function salvarCompraDetalhada(e) {
       const unidade = compUnidadeModal.value.trim();
       const categoria = compCatModal.value;
       const destino = compDestModal.value.trim();
+      const uso = document.getElementById("compUsoModal").value.trim();
+      const destinatario = document.getElementById("compDestinatarioModal").value.trim();
 
       const link = compLinkModal.value.trim();
       const descricao = compDescricaoModal.value.trim();
@@ -968,6 +970,7 @@ async function salvarCompraDetalhada(e) {
       if(!item) return mostrarErro("Informe o item");
       if(!quantidade) return mostrarErro("Informe a quantidade");
       if(!unidadeMedidaValida(unidade)) return mostrarErro("Selecione a unidade de medida");
+      if(!destinatario) return mostrarErro("Selecione para quem enviar a solicitação");
       
       let fotoUrl = null;
       if (foto) {
@@ -985,6 +988,8 @@ async function salvarCompraDetalhada(e) {
           unidade,
           categoria,
           destino,
+          uso,
+          destinatario,
           link_produto: link,
           descricao_detalhada: descricao,
           foto_url: fotoUrl

@@ -172,7 +172,16 @@
       </div>
       <div class="grid">
         <label>Categoria<select id="compCatModal" required><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Outros</option></select></label>
-        <label>Destino / Uso<input id="compDestModal" placeholder="Ex: Defensivo Vinhedo" required></label>
+        <label>Destino<input id="compDestModal" placeholder="Ex: Vinhedo, Estufa 1, Área 5..." required></label>
+      </div>
+      <div class="grid">
+        <label>Uso<input id="compUsoModal" placeholder="Ex: Defensivo, Manutenção, Irrigação..." required></label>
+        <label>Enviar para<select id="compDestinatarioModal" required>
+          <option value="">Selecione...</option>
+          <option value="dorian">Dorian</option>
+          <option value="felipe">Felipe</option>
+          <option value="ambos">Dorian e Felipe</option>
+        </select></label>
       </div>
       <div class="grid">
         <label>Quantidade<input id="compQtdModal" type="number" placeholder="1" required></label>
