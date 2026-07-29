@@ -2422,3 +2422,75 @@ if (document.readyState === "loading") {
 } else {
   initAppUi();
 }
+
+// ── Pull-to-Refresh para iOS/Safari ──
+(function() {
+  let startY = 0;
+  let pulling = false;
+  let indicator = null;
+
+  function criarIndicador() {
+    if (indicator) return;
+    indicator = document.createElement('div');
+    indicator.id = 'ptr-indicator';
+    indicator.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 0;
+      overflow: hidden;
+      background: rgba(6,19,12,.95);
+      color: #4ade80;
+      font-size: 14px;
+      font-weight: 600;
+      transition: height 0.2s ease;
+      padding-top: env(safe-area-inset-top, 0px);
+    `;
+    indicator.innerHTML = '↓ Puxe para atualizar';
+    document.body.prepend(indicator);
+  }
+
+  document.addEventListener('touchstart', function(e) {
+    // Só ativa se estiver no topo da página
+    if (window.scrollY === 0) {
+      startY = e.touches[0].clientY;
+      pulling = true;
+      criarIndicador();
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!pulling || !indicator) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 0 && window.scrollY === 0) {
+      const h = Math.min(dy * 0.4, 70);
+      indicator.style.height = h + 'px';
+      indicator.innerHTML = h > 50 ? '↑ Solte para atualizar' : '↓ Puxe para atualizar';
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', function(e) {
+    if (!pulling || !indicator) return;
+    const dy = e.changedTouches[0].clientY - startY;
+    if (dy > 120 && window.scrollY === 0) {
+      indicator.innerHTML = '⟳ Atualizando...';
+      indicator.style.height = '60px';
+      setTimeout(() => {
+        if (typeof carregar === 'function') carregar();
+        if (typeof atualizarContadorNotificacoes === 'function') atualizarContadorNotificacoes();
+        setTimeout(() => {
+          if (indicator) indicator.style.height = '0';
+        }, 800);
+      }, 300);
+    } else {
+      if (indicator) indicator.style.height = '0';
+    }
+    pulling = false;
+    startY = 0;
+  }, { passive: true });
+})();
