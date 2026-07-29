@@ -385,6 +385,8 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   align-items: center;
   gap: 10px;
   padding: 18px 16px;
+  padding-top: calc(18px + env(safe-area-inset-top, 0px));
+  padding-left: calc(16px + env(safe-area-inset-left, 0px));
   border-bottom: 1px solid rgba(74,222,128,.2);
   color: white;
   font-weight: bold;
@@ -497,21 +499,22 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   /* ── Topbar ── */
   .topbar {
     position: sticky;
-    top: max(0, env(safe-area-inset-top));
+    top: 0;
     z-index: 40;
     display: flex;
     align-items: center;
     gap: 12px;
     margin: -14px -14px 14px;
-    margin-top: calc(-14px - env(safe-area-inset-top));
-    margin-left: calc(-14px - env(safe-area-inset-left));
-    margin-right: calc(-14px - env(safe-area-inset-right));
+    margin-top: calc(-14px - env(safe-area-inset-top, 0px));
+    margin-left: calc(-14px - env(safe-area-inset-left, 0px));
+    margin-right: calc(-14px - env(safe-area-inset-right, 0px));
     padding: 12px 14px;
-    padding-top: calc(12px + env(safe-area-inset-top));
-    padding-left: calc(14px + env(safe-area-inset-left));
-    padding-right: calc(14px + env(safe-area-inset-right));
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    padding-right: calc(14px + env(safe-area-inset-right, 0px));
     background: rgba(6,19,12,.93);
     backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid rgba(74,222,128,.14);
   }
   .topbar > div { flex: 1; }
