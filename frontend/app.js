@@ -1127,7 +1127,19 @@ async function cotacoesGerais(){
   window._cotacoesData = comCotacao;
   window._cotacoesDataFull = null; // Será preenchido com as cotações
   
-  content.innerHTML = `<div class="panel"><h3>Cotações em aberto</h3><div class="grid" style="margin-bottom: 15px; gap: 10px;"><button class="secondary" onclick="filtrarCotacoesPor('todas')" id="filtro-todas" style="background-color: #052e16; color: white;">Todas</button><button class="secondary" onclick="filtrarCotacoesPor('pendente-cotacao')" id="filtro-pendente-cotacao">Pendente Cotação</button><button class="secondary" onclick="filtrarCotacoesPor('pendente-aprovacao')" id="filtro-pendente-aprovacao">Pendente Aprovação</button></div></div>`;
+  content.innerHTML = `
+    <div class="panel">
+      <h3>Cotações em aberto</h3>
+      <div style="margin-bottom: 12px;">
+        <input type="text" id="cotacoesBusca" placeholder="🔍 Buscar por produto, solicitante ou destino..." oninput="filtrarCotacoesPor(window._cotacoesFiltroAtivo||'todas')" style="width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;">
+      </div>
+      <div class="grid" style="margin-bottom: 5px; gap: 8px; grid-template-columns: repeat(3, 1fr);">
+        <button class="secondary" onclick="filtrarCotacoesPor('todas')" id="filtro-todas" style="background-color: #052e16; color: white; font-size: 13px;">Todas</button>
+        <button class="secondary" onclick="filtrarCotacoesPor('pendente-cotacao')" id="filtro-pendente-cotacao" style="font-size: 13px;">Pendente Cotação</button>
+        <button class="secondary" onclick="filtrarCotacoesPor('pendente-aprovacao')" id="filtro-pendente-aprovacao" style="font-size: 13px;">Pendente Aprovação</button>
+      </div>
+    </div>
+    <div id="cotacoesContainer"></div>`;
   
   if (comCotacao.length === 0) {
     content.innerHTML += `<div class="panel"><p>Nenhuma cotação em aberto.</p></div>`;
@@ -1149,10 +1161,14 @@ async function cotacoesGerais(){
 }
 
 function renderizarCotacoes(cotacoesData, filtro = 'todas') {
-  const container = document.getElementById('cotacoesContainer');
+  let container = document.getElementById('cotacoesContainer');
   if (!container) {
     content.innerHTML += `<div id="cotacoesContainer"></div>`;
+    container = document.getElementById('cotacoesContainer');
   }
+  
+  // Obter texto de busca
+  const busca = (document.getElementById('cotacoesBusca')?.value || '').toLowerCase().trim();
   
   let html = '';
   
@@ -1160,9 +1176,21 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
     const compra = item.compra;
     const cotacoes = item.cotacoes;
     
-    // Aplicar filtro
+    // Aplicar filtro de status
     if (filtro === 'pendente-cotacao' && (compra.status === 'Pendente_aprovacao' || compra.status === 'aprovado' || compra.fornecedor_escolhido)) continue;
     if (filtro === 'pendente-aprovacao' && compra.status !== 'Pendente_aprovacao') continue;
+    
+    // Aplicar filtro de busca por texto
+    if (busca) {
+      const textoCompra = [
+        compra.item || '',
+        compra.solicitante || '',
+        compra.destino || '',
+        compra.categoria || '',
+        String(compra.id)
+      ].join(' ').toLowerCase();
+      if (!textoCompra.includes(busca)) continue;
+    }
     
     let cardHtml = `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">
@@ -1217,6 +1245,7 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
 }
 
 function filtrarCotacoesPor(filtro) {
+  window._cotacoesFiltroAtivo = filtro;
   if (window._cotacoesDataFull) {
     renderizarCotacoes(window._cotacoesDataFull, filtro);
   }

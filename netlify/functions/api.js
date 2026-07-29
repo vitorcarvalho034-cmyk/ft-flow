@@ -22,7 +22,17 @@ app.use((req, res, next) => {
 // Middleware de autenticação (exceto login)
 function autenticar(req, res, next) {
   const token = req.headers.authorization?.split(" ")[1];
-  const rotasPublicas = ['/auth/login', /^\/aprovar-cotacao\//];
+  const rotasPublicas = [
+    '/auth/login',
+    /^\/aprovar-cotacao\//,
+    /^\/selecionar-fornecedores-lista\//,
+    /^\/aprovar-lista-fornecedores\//,
+    /^\/negar-cotacao\//,
+    /^\/questionar-cotacao\//,
+    /^\/enviar-questionamento\//,
+    /^\/responder-questionamento\//,
+    /^\/enviar-resposta-questionamento\//
+  ];
   const ehRotaPublica = rotasPublicas.some(r => typeof r === 'string' ? req.path === r : r.test(req.path));
   if (!token && !ehRotaPublica) {
     return res.status(401).json({ error: "Token não fornecido" });
@@ -154,9 +164,8 @@ async function emailComFornecedoresLista(titulo, compraId, itens, cotacoes, appU
           </div>
           
           <div style="text-align:center;margin-top:20px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
-            <a href="${appUrl}/api/selecionar-fornecedores-lista/lista:${compraId}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Selecionar Fornecedores</a>
-            <a href="${appUrl}/api/negar-cotacao/lista:${compraId}" style="display:inline-block;background:#d32f2f;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❌ Negar</a>
-            <a href="${appUrl}/api/questionar-cotacao/lista:${compraId}" style="display:inline-block;background:#ff9800;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❓ Questionar</a>
+            <a href="${appUrl}/api/selecionar-fornecedores-lista/${Buffer.from('lista:'+compraId).toString('base64')}" style="display:inline-block;background:#2e7d32;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">✅ Selecionar Fornecedores</a>
+            <a href="${appUrl}/api/negar-cotacao/${Buffer.from(compraId+':0').toString('base64')}" style="display:inline-block;background:#d32f2f;color:white;padding:12px 24px;text-decoration:none;border-radius:4px;font-weight:bold">❌ Negar</a>
           </div>
         </div>
       </div>
@@ -512,8 +521,13 @@ app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
     
     if (!cotacoes.rows.length) return res.status(400).json({ error: 'Nenhuma cotação adicionada' });
     
-    // Determinar destinatário(s) do email
-    const destinatario = compra.rows[0].destinatario || 'dorian';
+    // Determinar destinatário(s) do email - prioriza o body, depois o banco
+    const destinatario = req.body?.destinatario || compra.rows[0].destinatario || 'dorian';
+    
+    // Atualizar destinatario no banco se veio no body
+    if (req.body?.destinatario) {
+      await q('UPDATE compras SET destinatario=$1 WHERE id=$2', [req.body.destinatario, compraId]);
+    }
     let emailsDestinatarios = [];
     if (destinatario === 'dorian') emailsDestinatarios = [DORIAN_EMAIL];
     else if (destinatario === 'felipe') emailsDestinatarios = [FELIPE_EMAIL];
@@ -1024,16 +1038,17 @@ app.post('/aprovar-lista-fornecedores/:compraId', async (req, res) => {
     }
     
     // Notificar admin
-    const titulo = `Lista de Compra #${compraId} - Aprovada por Dorian`;
+    const aprovadorNome = compra.rows[0].destinatario === 'felipe' ? 'Felipe' : (compra.rows[0].destinatario === 'ambos' ? 'Dorian/Felipe' : 'Dorian');
+    const titulo = `Lista de Compra #${compraId} - Aprovada por ${aprovadorNome}`;
     const dados = {
       'ID': `#${compraId}`,
       'Itens': itens.rows.length,
       'Fornecedores Selecionados': aprovacoes.rows.length,
       'Valor Total': `R$ ${totalValor.toFixed(2)}`,
-      'Aprovado por': 'Dorian (via email)'
+      'Aprovado por': `${aprovadorNome} (via email)`
     };
     
-    await notify(titulo, `Lista de compra #${compraId} foi aprovada por Dorian com ${aprovacoes.rows.length} fornecedor(es) selecionado(s).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    await notify(titulo, `Lista de compra #${compraId} foi aprovada por ${aprovadorNome} com ${aprovacoes.rows.length} fornecedor(es) selecionado(s).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
     res.json({ ok: true, aprovacoes: aprovacoes.rows.length, total: totalValor });
   } catch (e) {
@@ -1049,28 +1064,33 @@ app.get('/negar-cotacao/:token', async (req, res) => {
     const decoded = Buffer.from(token, 'base64').toString('utf-8');
     const [compraId, cotacaoId] = decoded.split(':');
     
-    if (!compraId || !cotacaoId) return res.status(400).json({ error: 'Token inválido' });
+    if (!compraId) return res.status(400).json({ error: 'Token inválido' });
     
-    const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
-    if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotação não encontrada' });
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
     
-    const { fornecedor } = cotacao.rows[0];
+    const aprovadorNome = compra.rows[0].destinatario === 'felipe' ? 'Felipe' : 'Dorian';
     
     // Marcar compra como negada
     await q(`UPDATE compras SET status='Negada' WHERE id=$1`, [compraId]);
     
-    const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    // Se for lista de compra (cotacaoId = 0 ou não informado)
+    let fornecedor = 'Lista de Compra';
+    if (cotacaoId && cotacaoId !== '0') {
+      const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
+      if (cotacao.rows[0]) fornecedor = cotacao.rows[0].fornecedor;
+    }
     
-    const titulo = `Cotação #${compraId} - Negada por Dorian`;
+    const titulo = `Cotação #${compraId} - Negada por ${aprovadorNome}`;
     const dados = {
       'Produto': compra.rows[0].descricao || compra.rows[0].item,
       'Fornecedor': fornecedor,
-      'Negado por': 'Dorian (via email)'
+      'Negado por': `${aprovadorNome} (via email)`
     };
     
-    await notify(titulo, `Cotação #${compraId} foi negada por Dorian. Fornecedor: ${fornecedor}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    await notify(titulo, `Cotação #${compraId} foi negada por ${aprovadorNome}.`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
-    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.warning{color:#d32f2f;font-size:48px;margin-bottom:20px}h1{color:#d32f2f;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#d32f2f}</style></head><body><div class="card"><div class="warning">❌</div><h1>Compra Negada!</h1><p>A cotação foi negada por Dorian.</p><div class="details"><p><strong>Cotação:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${fornecedor}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta negação.</p></div></body></html>`);
+    res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.warning{color:#d32f2f;font-size:48px;margin-bottom:20px}h1{color:#d32f2f;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#f9f9f9;padding:20px;border-radius:8px;margin:20px 0;text-align:left}.details p{margin:8px 0}strong{color:#d32f2f}</style></head><body><div class="card"><div class="warning">❌</div><h1>Compra Negada!</h1><p>A solicitação foi negada por ${aprovadorNome}.</p><div class="details"><p><strong>Compra:</strong> #${compraId}</p></div><p style="color:#999;font-size:12px;margin-top:30px">O admin foi notificado sobre esta negação.</p></div></body></html>`);
   } catch (e) { console.error(e); res.status(500).send(`<html><body style="font-family:Arial;text-align:center;padding:40px"><h1>Erro</h1><p>${e.message}</p></body></html>`); }
 });
 
