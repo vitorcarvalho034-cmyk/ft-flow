@@ -357,23 +357,24 @@ app.post("/compras",async(req,res)=>{
       );
       const compraId = r.rows[0].id;
       
-      // Salvar cada item da lista com fornecedor e preço
+      // Salvar cada item da lista com múltiplos fornecedores
       for (const item of b.itens) {
-        await q(
-          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [compraId, item.produto, item.quantidade, item.unidade, item.fornecedor || '', Number(item.preco) || 0]
+        // Normalizar fornecedores: aceita array de fornecedores ou campo único legado
+        const fornecedores = Array.isArray(item.fornecedores) && item.fornecedores.length > 0
+          ? item.fornecedores
+          : (item.fornecedor ? [{fornecedor: item.fornecedor, preco: item.preco}] : []);
+        const primForn = fornecedores[0] || {};
+        const itemResult = await q(
+          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [compraId, item.produto, item.quantidade, item.unidade, primForn.fornecedor || '', Number(primForn.preco) || 0]
         );
-      }
-      
-      // Se for lista pronta, criar cotações automaticamente
-      if (b.status_lista === 'pronta') {
-        const itens = await q(`SELECT id FROM lista_compras_itens WHERE compra_id=$1`, [compraId]);
-        for (let idx = 0; idx < itens.rows.length; idx++) {
-          const itemData = b.itens[idx];
-          if (itemData && itemData.fornecedor && itemData.preco) {
+        const itemId = itemResult.rows[0].id;
+        // Criar cotação para cada fornecedor do item (sempre, não só quando pronta)
+        for (const forn of fornecedores) {
+          if (forn.fornecedor && forn.preco) {
             await q(
               `INSERT INTO cotacoes (compra_id, item_id, fornecedor, valor) VALUES ($1, $2, $3, $4)`,
-              [compraId, itens.rows[idx].id, itemData.fornecedor, Number(itemData.preco)]
+              [compraId, itemId, forn.fornecedor, Number(forn.preco)]
             );
           }
         }
@@ -422,8 +423,17 @@ app.get("/compras/:id",async(req,res)=>{
 
 app.get("/compras/:id/itens",async(req,res)=>{
   try{
-    const r = await q(`SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC`,[req.params.id]);
-    res.json(r.rows);
+    const compraId = req.params.id;
+    const itens = await q(`SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC`, [compraId]);
+    const cotacoes = await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY item_id ASC, valor ASC`, [compraId]);
+    // Agrupar cotações por item_id
+    const result = itens.rows.map(item => {
+      const fornecedoresItem = cotacoes.rows
+        .filter(c => c.item_id === item.id)
+        .map(c => ({ id: c.id, fornecedor: c.fornecedor, preco: c.valor }));
+      return { ...item, fornecedores: fornecedoresItem };
+    });
+    res.json(result);
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
@@ -1373,36 +1383,37 @@ app.put('/compras/:id', async (req, res) => {
       [b.item, b.solicitante, b.categoria, b.destino, b.status_lista, compraId]
     );
     
-    // Remover itens antigos
+    // Remover itens e cotações antigas
+    await q(`DELETE FROM cotacoes WHERE compra_id=$1`, [compraId]);
     await q(`DELETE FROM lista_compras_itens WHERE compra_id=$1`, [compraId]);
     
-    // Adicionar novos itens
+    // Adicionar novos itens com múltiplos fornecedores
     if (b.itens && Array.isArray(b.itens)) {
       for (const item of b.itens) {
-        await q(
-          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6)`,
-          [compraId, item.produto, item.quantidade, item.unidade, item.fornecedor || '', Number(item.preco) || 0]
+        // Normalizar fornecedores: aceita array ou campo único legado
+        const fornecedores = Array.isArray(item.fornecedores) && item.fornecedores.length > 0
+          ? item.fornecedores
+          : (item.fornecedor ? [{fornecedor: item.fornecedor, preco: item.preco}] : []);
+        const primForn = fornecedores[0] || {};
+        const itemResult = await q(
+          `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+          [compraId, item.produto, item.quantidade, item.unidade, primForn.fornecedor || '', Number(primForn.preco) || 0]
         );
-      }
-    }
-    
-    // Se for lista pronta, atualizar cotações
-    if (b.status_lista === 'pronta') {
-      // Remover cotações antigas
-      await q(`DELETE FROM cotacoes WHERE compra_id=$1`, [compraId]);
-      
-      // Criar novas cotações
-      const itens = await q(`SELECT id FROM lista_compras_itens WHERE compra_id=$1`, [compraId]);
-      for (let idx = 0; idx < itens.rows.length; idx++) {
-        const itemData = b.itens[idx];
-        if (itemData && itemData.fornecedor && itemData.preco) {
-          await q(
-            `INSERT INTO cotacoes (compra_id, item_id, fornecedor, valor) VALUES ($1, $2, $3, $4)`,
-            [compraId, itens.rows[idx].id, itemData.fornecedor, Number(itemData.preco)]
-          );
+        const itemId = itemResult.rows[0].id;
+        // Criar cotação para cada fornecedor
+        for (const forn of fornecedores) {
+          if (forn.fornecedor && forn.preco) {
+            await q(
+              `INSERT INTO cotacoes (compra_id, item_id, fornecedor, valor) VALUES ($1, $2, $3, $4)`,
+              [compraId, itemId, forn.fornecedor, Number(forn.preco)]
+            );
+          }
         }
       }
     }
+    // Atualizar status da compra conforme status_lista
+    await q(`UPDATE compras SET status=$1 WHERE id=$2`,
+      [b.status_lista === 'pronta' ? 'Em cotação' : 'Rascunho', compraId]);
     
     res.json({ok: true});
   } catch(e) {
