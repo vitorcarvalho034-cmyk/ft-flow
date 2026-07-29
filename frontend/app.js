@@ -122,7 +122,7 @@ function cardPedidoCompra(c, options = {}) {
     ? `<a href="${htmlEsc(c.link_produto)}" target="_blank" rel="noopener" class="pedido-link">🔗 Ver link do produto</a>`
     : "";
   const foto = c.foto_url
-    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto">`
+    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto" onclick="abrirLightbox('${htmlEsc(c.foto_url)}')" style="cursor:zoom-in" title="Clique para ampliar">`
     : "";
   const valor = c.valor_total ? `<div class="pedido-linha"><span>Valor total</span><b>${dinheiro(c.valor_total)}</b></div>` : "";
   const fornecedor = c.fornecedor_escolhido
@@ -306,7 +306,7 @@ function tabelaMan(data){
   return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Especificação</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Data Conclusão</th><th>Ações</th></tr></thead><tbody>${data.map(m=>{
     const dataConclusao = m.data_conclusao ? new Date(m.data_conclusao).toLocaleDateString('pt-BR') : '-';
     const botoesAcao = m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> ${isAdmin ? `<button class="primary" onclick="abrirAtualizarStatus(${m.id})">Atualizar Status</button>` : ''} <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`;
-    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${dataConclusao}</td><td>${botoesAcao}</td></tr>`;
+    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${dataConclusao}</td><td><button class="secondary" onclick="verDetalhesManutencao(${m.id})">📋 Detalhes</button> ${botoesAcao}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -411,6 +411,45 @@ async function excluirManutencao(id){
   } catch(e) {
     mostrarErro(e.message || "Erro ao excluir manutenção");
   }
+}
+
+async function verDetalhesManutencao(id) {
+  try {
+    const data = await js(API + `/manutencoes`);
+    const manData = data.data || data;
+    const m = manData.find(x => x.id === id);
+    if (!m) return mostrarErro("Manutenção não encontrada");
+    const fotoHtml = m.foto_url
+      ? `<div style="margin-bottom:16px;text-align:center"><img src="${htmlEsc(m.foto_url)}" onclick="abrirLightbox('${htmlEsc(m.foto_url)}')" style="max-width:100%;max-height:350px;border-radius:8px;cursor:zoom-in;object-fit:contain" alt="Foto da manutenção"><br><small style="color:#666">Clique para ampliar</small></div>` : '';
+    const campos = [
+      ['Local / Item', m.local_item],
+      ['Especificação', m.especificacao],
+      ['Defeito / Problema', m.defeito],
+      ['Tipo', m.tipo],
+      ['Urgência', m.urgencia],
+      ['Status', m.status],
+      ['Solicitante', m.solicitante],
+      ['Responsável', m.responsavel],
+      ['Solução Aplicada', m.solucao],
+      ['Data Ocorrência', m.data_ocorrencia ? new Date(m.data_ocorrencia).toLocaleDateString('pt-BR') : null],
+      ['Data Conclusão', m.data_conclusao ? new Date(m.data_conclusao).toLocaleDateString('pt-BR') : null],
+      ['Precisa Compra', m.precisa_compra == 1 ? 'Sim' : 'Não'],
+      ['Item da Compra', m.item_compra],
+      ['Quantidade', m.quantidade_compra ? `${m.quantidade_compra} ${m.unidade_compra || ''}` : null],
+    ];
+    const linhas = campos.filter(([,v]) => v).map(([k,v]) =>
+      `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0"><span style="color:#666;font-size:13px">${k}</span><span style="font-weight:500;font-size:13px;text-align:right;max-width:60%">${htmlEsc(String(v))}</span></div>`
+    ).join('');
+    document.getElementById('modalDetalhesManutencaoConteudo').innerHTML = fotoHtml + linhas;
+    document.getElementById('modalDetalhesManutencao').classList.remove('hidden');
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+function abrirLightbox(url) {
+  document.getElementById('lightboxFotoImg').src = url;
+  document.getElementById('lightboxFoto').classList.remove('hidden');
 }
 
 // Abrir modal para atualizar status

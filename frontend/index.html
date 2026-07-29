@@ -429,6 +429,22 @@
   </div>
 </div>
 
+<!-- Modal Detalhes Manutenção -->
+<div id="modalDetalhesManutencao" class="modal hidden">
+  <div class="modal-card" style="max-width:700px;width:95%">
+    <div class="modal-head"><h3>📋 Detalhes da Manutenção</h3><button onclick="document.getElementById('modalDetalhesManutencao').classList.add('hidden')">×</button></div>
+    <div id="modalDetalhesManutencaoConteudo" style="padding:10px 0"></div>
+  </div>
+</div>
+
+<!-- Lightbox de Foto -->
+<div id="lightboxFoto" class="modal hidden" onclick="this.classList.add('hidden')" style="background:rgba(0,0,0,0.92);z-index:9999">
+  <div style="display:flex;justify-content:center;align-items:center;height:100%;padding:20px">
+    <img id="lightboxFotoImg" src="" style="max-width:95vw;max-height:90vh;border-radius:8px;object-fit:contain" onclick="event.stopPropagation()">
+    <button onclick="document.getElementById('lightboxFoto').classList.add('hidden')" style="position:fixed;top:20px;right:20px;background:white;border:none;border-radius:50%;width:40px;height:40px;font-size:20px;cursor:pointer;z-index:10000">×</button>
+  </div>
+</div>
+
 <script src="app.js?v=37"></script>
 <script>
 if ("serviceWorker" in navigator) {
