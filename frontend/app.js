@@ -2029,17 +2029,19 @@ async function editarListaCompra(compraId) {
     // Guardar ID da lista sendo editada
     listaCompraIdEditando = compraId;
     
-    // Carregar itens
+    // Carregar itens com estrutura de múltiplos fornecedores
     listaCompraItensModal = itens.map(item => ({
+      id: item.id || Date.now() + Math.random(),
       produto: item.produto,
       quantidade: item.quantidade,
       unidade: item.unidade,
-      fornecedor: item.fornecedor || "",
-      preco: item.preco || 0,
-      id: item.id
+      fornecedores: item.fornecedores && item.fornecedores.length > 0
+        ? item.fornecedores
+        : (item.fornecedor ? [{ id: Date.now(), fornecedor: item.fornecedor, preco: item.preco || 0 }] : []),
+      expandido: false
     }));
     
-    renderizarListaCompraItensModal();
+    renderizarListaItensRows();
     abrirModalListaCompra();
   } catch(e) {
     mostrarErro(e.message);
@@ -2110,13 +2112,15 @@ async function salvarListaPronta(e) {
   }
 }
 
-// Variável global para itens da lista de compra no novo modal
-let listaCompraItensModal = [];
-let listaCompraIdEditando = null; // ID da lista sendo editada
-let fornecedoresTemporarios = []; // Fornecedores do item sendo adicionado
+// =============================================
+// NOVO MODAL DE LISTA DE COMPRA - TABELA EXPANSÍVEL
+// =============================================
+let listaCompraItensModal = []; // [{id, produto, quantidade, unidade, fornecedores: [{id, fornecedor, preco}], expandido}]
+let listaCompraIdEditando = null;
 
 function abrirModalListaCompra() {
   document.getElementById("modalListaCompra").classList.remove("hidden");
+  renderizarListaItensRows();
 }
 
 function fecharModalListaCompra() {
@@ -2124,156 +2128,124 @@ function fecharModalListaCompra() {
   document.getElementById("formListaCompra").reset();
   listaCompraItensModal = [];
   listaCompraIdEditando = null;
-  renderizarListaCompraItensModal();
+  // Limpar linha de novo item
+  const p = document.getElementById("novoItemProduto");
+  const q = document.getElementById("novoItemQtd");
+  const u = document.getElementById("novoItemUnidade");
+  if (p) p.value = "";
+  if (q) q.value = "";
+  if (u) u.value = "";
+  renderizarListaItensRows();
 }
 
-function adicionarFornecedorTemporario() {
-  const fornecedor = document.getElementById("listaCompraModalFornecedor").value.trim();
-  const preco = parseFloat(document.getElementById("listaCompraModalPreco").value) || 0;
-  
-  if (!fornecedor) return mostrarErro("Informe o fornecedor");
-  if (preco <= 0) return mostrarErro("Informe um preço válido");
-  
-  fornecedoresTemporarios.push({ fornecedor, preco, id: Date.now() });
-  
-  document.getElementById("listaCompraModalFornecedor").value = "";
-  document.getElementById("listaCompraModalPreco").value = "";
-  
-  renderizarFornecedoresTemporarios();
-  mostrarSucesso("Fornecedor adicionado!");
-}
-
-function removerFornecedorTemporario(id) {
-  fornecedoresTemporarios = fornecedoresTemporarios.filter(f => f.id !== id);
-  renderizarFornecedoresTemporarios();
-}
-
-function renderizarFornecedoresTemporarios() {
-  const container = document.getElementById("fornecedoresTemporariosContainer");
-  
-  if (fornecedoresTemporarios.length === 0) {
-    container.innerHTML = 'Nenhum fornecedor adicionado';
-    return;
-  }
-  
-  container.innerHTML = `
-    <table style="width: 100%; font-size: 12px; border-collapse: collapse;">
-      <thead>
-        <tr style="background: #e8f5e9; border-bottom: 1px solid #ddd;">
-          <th style="padding: 6px; text-align: left; color: #1b5e20;">Fornecedor</th>
-          <th style="padding: 6px; text-align: center; color: #1b5e20; width: 100px;">Preço</th>
-          <th style="padding: 6px; text-align: center; color: #1b5e20; width: 50px;">Ação</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${fornecedoresTemporarios.map(f => `
-          <tr style="border-bottom: 1px solid #ddd;">
-            <td style="padding: 6px;">${htmlEsc(f.fornecedor)}</td>
-            <td style="padding: 6px; text-align: center; font-weight: bold; color: #2e7d32;">R$ ${Number(f.preco).toFixed(2)}</td>
-            <td style="padding: 6px; text-align: center;">
-              <button type="button" onclick="removerFornecedorTemporario(${f.id})" style="padding: 2px 6px; font-size: 12px; background: #ffebee; color: #d32f2f; border: none; border-radius: 3px; cursor: pointer;">🗑️</button>
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  `;
-}
-
-function adicionarItemListaModal() {
-  const produto = document.getElementById("listaCompraModalProduto").value.trim();
-  const quantidade = parseFloat(document.getElementById("listaCompraModalQtd").value);
-  const unidade = document.getElementById("listaCompraModalUnidade").value.trim();
-  
+// Adicionar novo item pela linha inferior da tabela
+function adicionarNovoItemLista() {
+  const produto = (document.getElementById("novoItemProduto").value || "").trim();
+  const quantidade = parseFloat(document.getElementById("novoItemQtd").value);
+  const unidade = (document.getElementById("novoItemUnidade").value || "").trim();
   if (!produto) return mostrarErro("Informe o nome do produto");
   if (!quantidade || quantidade <= 0) return mostrarErro("Informe uma quantidade válida");
   if (!unidade) return mostrarErro("Selecione a unidade de medida");
-  if (fornecedoresTemporarios.length === 0) return mostrarErro("Adicione pelo menos um fornecedor");
-  
-  listaCompraItensModal.push({ 
-    produto, 
-    quantidade, 
-    unidade, 
-    fornecedores: [...fornecedoresTemporarios],
-    id: Date.now() 
-  });
-  
-  document.getElementById("listaCompraModalProduto").value = "";
-  document.getElementById("listaCompraModalQtd").value = "";
-  document.getElementById("listaCompraModalUnidade").value = "";
-  fornecedoresTemporarios = [];
-  renderizarFornecedoresTemporarios();
-  
-  renderizarListaCompraItensModal();
+  listaCompraItensModal.push({ id: Date.now(), produto, quantidade, unidade, fornecedores: [], expandido: true });
+  document.getElementById("novoItemProduto").value = "";
+  document.getElementById("novoItemQtd").value = "";
+  document.getElementById("novoItemUnidade").value = "";
+  renderizarListaItensRows();
   mostrarSucesso("Item adicionado!");
 }
 
-function editarItemListaModal(id) {
+// Expandir/recolher linha de item
+function toggleExpandirItem(id) {
   const item = listaCompraItensModal.find(i => i.id === id);
-  if (!item) return mostrarErro("Item não encontrado");
-  
-  // Preencher campos com dados do item
-  document.getElementById("listaCompraModalProduto").value = item.produto;
-  document.getElementById("listaCompraModalQtd").value = item.quantidade;
-  document.getElementById("listaCompraModalUnidade").value = item.unidade;
-  
-  // Carregar fornecedores do item
-  fornecedoresTemporarios = item.fornecedores ? [...item.fornecedores] : [];
-  renderizarFornecedoresTemporarios();
-  
-  // Remover item antigo
-  listaCompraItensModal = listaCompraItensModal.filter(i => i.id !== id);
-  renderizarListaCompraItensModal();
-  
-  mostrarSucesso("Item carregado para edição. Clique em 'Confirmar Item' para salvar as mudanças.");
+  if (item) { item.expandido = !item.expandido; renderizarListaItensRows(); }
 }
 
+// Remover item
 function removerItemListaModal(id) {
-  listaCompraItensModal = listaCompraItensModal.filter(item => item.id !== id);
-  renderizarListaCompraItensModal();
+  listaCompraItensModal = listaCompraItensModal.filter(i => i.id !== id);
+  renderizarListaItensRows();
 }
 
-function renderizarListaCompraItensModal() {
-  const container = document.getElementById("listaCompraModalItensContainer");
-  
+// Adicionar fornecedor a um item
+function adicionarFornecedorItem(itemId) {
+  const item = listaCompraItensModal.find(i => i.id === itemId);
+  if (!item) return;
+  const nomeForn = (document.getElementById(`forn_nome_${itemId}`).value || "").trim();
+  const precoForn = parseFloat(document.getElementById(`forn_preco_${itemId}`).value) || 0;
+  if (!nomeForn) return mostrarErro("Informe o nome do fornecedor");
+  if (precoForn <= 0) return mostrarErro("Informe um preço válido");
+  item.fornecedores.push({ id: Date.now(), fornecedor: nomeForn, preco: precoForn });
+  document.getElementById(`forn_nome_${itemId}`).value = "";
+  document.getElementById(`forn_preco_${itemId}`).value = "";
+  renderizarListaItensRows();
+}
+
+// Remover fornecedor de um item
+function removerFornecedorItem(itemId, fornId) {
+  const item = listaCompraItensModal.find(i => i.id === itemId);
+  if (!item) return;
+  item.fornecedores = item.fornecedores.filter(f => f.id !== fornId);
+  renderizarListaItensRows();
+}
+
+// Renderizar todas as linhas de itens na tabela
+function renderizarListaItensRows() {
+  const container = document.getElementById("listaItensRows");
+  if (!container) return;
   if (listaCompraItensModal.length === 0) {
-    container.innerHTML = '<p style="color: #999; font-style: italic;">Nenhum item adicionado ainda</p>';
+    container.innerHTML = '<div style="padding: 12px 10px; color: #999; font-style: italic; font-size: 13px;">Nenhum item adicionado ainda. Use a linha abaixo para adicionar.</div>';
     return;
   }
-  
-  container.innerHTML = `
-    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-      <thead>
-        <tr style="background: #e8f5e9; border-bottom: 2px solid #1b5e20;">
-          <th style="padding: 8px; text-align: left; color: #1b5e20;">Produto</th>
-          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 80px;">Qtd</th>
-          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 70px;">Un.</th>
-          <th style="padding: 8px; text-align: left; color: #1b5e20; width: 120px;">Fornecedor(es)</th>
-          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 100px;">Preço</th>
-          <th style="padding: 8px; text-align: center; color: #1b5e20; width: 60px;">Ação</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${listaCompraItensModal.map(item => {
-          const fornecedores = item.fornecedores || [];
-          const fornecedorPrecoTexto = fornecedores.map(f => `${htmlEsc(f.fornecedor)} - R$ ${Number(f.preco).toFixed(2)}`).join("<br>") || "";
-          return `
-            <tr style="border-bottom: 1px solid #ddd;">
-              <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
-              <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
-              <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
-              <td style="padding: 8px;">${fornecedorPrecoTexto}</td>
-              <td style="padding: 8px; text-align: center; font-weight: bold; color: #2e7d32;">-</td>
-              <td style="padding: 8px; text-align: center; display: flex; gap: 6px; justify-content: center;">
-                <button type="button" class="secondary" onclick="editarItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #e3f2fd; color: #1976d2; border-radius: 4px; cursor: pointer;">✏️</button>
-                <button type="button" class="danger" onclick="removerItemListaModal(${item.id})" style="padding: 4px 8px; font-size: 14px; border: none; background: #ffebee; color: #d32f2f; border-radius: 4px; cursor: pointer;">🗑️</button>
-              </td>
-            </tr>
-          `;
-        }).join('')}
-      </tbody>
-    </table>
-  `;
+  container.innerHTML = listaCompraItensModal.map(item => {
+    const fornecedores = item.fornecedores || [];
+    const menorPreco = fornecedores.length > 0 ? Math.min(...fornecedores.map(f => f.preco)) : null;
+    const resumoForn = fornecedores.length === 0
+      ? '<span style="color:#999; font-size:12px;">Sem fornecedor</span>'
+      : `<span style="color:#2e7d32; font-size:12px; font-weight:bold;">${fornecedores.length} fornecedor${fornecedores.length > 1 ? 'es' : ''}</span><br><span style="font-size:11px; color:#555;">Menor: R$ ${menorPreco.toFixed(2)}</span>`;
+    const expandido = item.expandido;
+    return `
+      <div style="border-bottom: 1px solid #eee;">
+        <!-- Linha principal do item -->
+        <div style="display: grid; grid-template-columns: 32px 1fr 80px 70px 1fr 60px; padding: 8px 10px; align-items: center; background: ${expandido ? '#f1f8e9' : 'white'}; cursor: pointer;" onclick="toggleExpandirItem(${item.id})">
+          <span style="text-align:center; color:#1b5e20; font-weight:bold; font-size:14px;">${expandido ? '▼' : '▶'}</span>
+          <span style="font-size:13px; font-weight: ${expandido ? 'bold' : 'normal'}; color:#1b5e20;">${htmlEsc(item.produto)}</span>
+          <span style="text-align:center; font-size:13px;">${item.quantidade}</span>
+          <span style="text-align:center; font-size:13px;">${htmlEsc(item.unidade)}</span>
+          <span>${resumoForn}</span>
+          <span style="text-align:center;">
+            <button type="button" onclick="event.stopPropagation(); removerItemListaModal(${item.id})" style="background:#ffebee; color:#d32f2f; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:13px;">🗑️</button>
+          </span>
+        </div>
+        <!-- Painel expandido com fornecedores -->
+        ${expandido ? `
+        <div style="background:#f9fbe7; border-top: 1px dashed #c5e1a5; padding: 10px 16px 10px 42px;">
+          ${fornecedores.length > 0 ? `
+          <table style="width:100%; font-size:12px; border-collapse:collapse; margin-bottom:8px;">
+            <thead><tr style="background:#e8f5e9;">
+              <th style="padding:5px 8px; text-align:left; color:#1b5e20;">Fornecedor</th>
+              <th style="padding:5px 8px; text-align:right; color:#1b5e20; width:120px;">Preço (R$)</th>
+              <th style="padding:5px 8px; width:40px;"></th>
+            </tr></thead>
+            <tbody>
+              ${fornecedores.map(f => `
+              <tr style="border-bottom:1px solid #ddd; ${f.preco === menorPreco ? 'background:#e8f5e9;' : ''}">
+                <td style="padding:5px 8px; ${f.preco === menorPreco ? 'font-weight:bold; color:#1b5e20;' : ''}">${htmlEsc(f.fornecedor)} ${f.preco === menorPreco ? '✅' : ''}</td>
+                <td style="padding:5px 8px; text-align:right; font-weight:bold; color:${f.preco === menorPreco ? '#2e7d32' : '#333'};">R$ ${Number(f.preco).toFixed(2)}</td>
+                <td style="padding:5px 8px; text-align:center;">
+                  <button type="button" onclick="removerFornecedorItem(${item.id}, ${f.id})" style="background:#ffebee; color:#d32f2f; border:none; border-radius:3px; padding:2px 6px; cursor:pointer; font-size:11px;">✕</button>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>` : '<p style="font-size:12px; color:#999; margin:0 0 8px;">Nenhum fornecedor adicionado ainda.</p>'}
+          <!-- Linha para adicionar fornecedor -->
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="forn_nome_${item.id}" placeholder="Nome do fornecedor" onclick="event.stopPropagation()" style="flex:1; padding:5px 8px; border:1px solid #c5e1a5; border-radius:4px; font-size:12px;">
+            <input id="forn_preco_${item.id}" type="number" placeholder="Preço" step="0.01" min="0" onclick="event.stopPropagation()" style="width:90px; padding:5px 8px; border:1px solid #c5e1a5; border-radius:4px; font-size:12px;">
+            <button type="button" onclick="event.stopPropagation(); adicionarFornecedorItem(${item.id})" style="background:#1b5e20; color:white; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size:12px; white-space:nowrap;">+ Fornecedor</button>
+          </div>
+        </div>` : ''}
+      </div>`;
+  }).join('');
 }
 
 async function salvarListaRascunhoModal(e) {
@@ -2339,13 +2311,10 @@ async function salvarListaProntaModal(e) {
     if (!solicitante) return mostrarErro("Informe o solicitante");
     if (listaCompraItensModal.length === 0) return mostrarErro("Adicione pelo menos um item a lista");
     
-    // Validar que todos os itens têm fornecedor e preço para Lista Pronta
+    // Validar que todos os itens têm pelo menos um fornecedor para Lista Pronta
     for (const item of listaCompraItensModal) {
-      if (!item.fornecedor || !item.fornecedor.trim()) {
-        return mostrarErro(`Informe o fornecedor para o item: ${item.produto}`);
-      }
-      if (!item.preco || item.preco <= 0) {
-        return mostrarErro(`Informe o preço para o item: ${item.produto}`);
+      if (!item.fornecedores || item.fornecedores.length === 0) {
+        return mostrarErro(`Adicione pelo menos um fornecedor para o item: ${item.produto}`);
       }
     }
     

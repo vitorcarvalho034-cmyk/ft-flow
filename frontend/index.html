@@ -194,37 +194,43 @@
 <div id="modalListaCompra" class="modal hidden">
   <div class="modal-card">
     <div class="modal-head"><h3>📋 Nova Lista de Compra</h3><button onclick="fecharModalListaCompra()">×</button></div>
-    <form id="formListaCompra" onsubmit="salvarListaCompraModal(event)">
-      <div class="grid">
-        <label>Nome da Lista<input id="listaCompraModalNome" placeholder="Ex: Defensivos Agosto" required></label>
-        <label>Solicitante<input id="listaCompraModalSolicitante" placeholder="Nome do solicitante" required></label>
+    <form id="formListaCompra" onsubmit="return false;">
+      <!-- Campos principais -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+        <label style="grid-column: span 2;">Nome da Lista<input id="listaCompraModalNome" placeholder="Ex: Defensivos Agosto" required></label>
+        <label style="grid-column: span 2;">Solicitante<input id="listaCompraModalSolicitante" placeholder="Nome do solicitante" required></label>
+        <label style="grid-column: span 2;">Categoria<select id="listaCompraModalCategoria"><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Caixa 48</option><option>Caixa 58</option><option>Outros</option></select></label>
+        <label style="grid-column: span 2;">Destino / Uso<input id="listaCompraModalDestino" placeholder="Ex: Defensivo Vinhedo"></label>
       </div>
-      <div class="grid">
-        <label>Categoria<select id="listaCompraModalCategoria"><option value="">Selecione...</option><option>Peças de manutenção</option><option>Adubo</option><option>Defensivo</option><option>Embalagens</option><option>Caixa 48</option><option>Caixa 58</option><option>Outros</option></select></label>
-        <label>Destino / Uso<input id="listaCompraModalDestino" placeholder="Ex: Defensivo Vinhedo"></label>
+
+      <!-- Tabela de itens expansível -->
+      <div id="listaCompraModalItensContainer" style="border: 1px solid #ddd; border-radius: 8px; overflow: hidden; margin-bottom: 15px;">
+        <!-- cabeçalho -->
+        <div style="display: grid; grid-template-columns: 32px 1fr 80px 70px 1fr 60px; background: #e8f5e9; border-bottom: 2px solid #1b5e20; padding: 8px 10px; font-weight: bold; font-size: 13px; color: #1b5e20;">
+          <span></span>
+          <span>Produto</span>
+          <span style="text-align:center;">Qtd</span>
+          <span style="text-align:center;">Un.</span>
+          <span>Fornecedores / Preços</span>
+          <span style="text-align:center;">Ação</span>
+        </div>
+        <!-- itens dinâmicos -->
+        <div id="listaItensRows"></div>
+        <!-- linha para adicionar novo item -->
+        <div style="display: grid; grid-template-columns: 32px 1fr 80px 70px 1fr 60px; gap: 6px; padding: 8px 10px; background: #fafafa; border-top: 1px dashed #ccc; align-items: center;">
+          <span style="text-align:center; color: #1b5e20; font-size: 18px;">+</span>
+          <input id="novoItemProduto" placeholder="Produto" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+          <input id="novoItemQtd" type="number" placeholder="Qtd" step="any" min="0" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; text-align: center;">
+          <select id="novoItemUnidade" style="padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+            <option value="">Un.</option>
+            <option>un</option><option>kg</option><option>L</option><option>m</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>balde</option><option>galão</option><option>lata</option>
+          </select>
+          <span style="font-size: 12px; color: #999;">Preencha e clique em Adicionar →</span>
+          <button type="button" onclick="adicionarNovoItemLista()" style="background: #1b5e20; color: white; border: none; border-radius: 4px; padding: 6px 8px; cursor: pointer; font-size: 12px;">+ Add</button>
+        </div>
       </div>
-      
-      <h4 style="margin-top: 20px; color: #1b5e20;">Adicionar Itens à Lista</h4>
-      <div class="grid">
-        <label>Produto<input id="listaCompraModalProduto" placeholder="Nome do produto"></label>
-        <label>Quantidade<input id="listaCompraModalQtd" type="number" placeholder="1" step="any"></label>
-      </div>
-      <div class="grid">
-        <label>Unidade<select id="listaCompraModalUnidade"><option value="">Selecione...</option><option>un</option><option>kg</option><option>L</option><option>m</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>balde</option><option>galão</option><option>lata</option></select></label>
-      </div>
-      <h4 style="margin-top: 15px; color: #1b5e20;">Fornecedores</h4>
-      <div class="grid">
-        <label>Fornecedor<input id="listaCompraModalFornecedor" placeholder="Nome do fornecedor"></label>
-        <label>Preço (R$)<input id="listaCompraModalPreco" type="number" placeholder="0.00" step="0.01" min="0"></label>
-      </div>
-      <button type="button" class="secondary" onclick="adicionarFornecedorTemporario()" style="width: 100%; margin-bottom: 10px;">+ Adicionar Fornecedor</button>
-      <div id="fornecedoresTemporariosContainer" style="margin-bottom: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px; min-height: 40px;">Nenhum fornecedor adicionado</div>
-      <button type="button" class="primary" onclick="adicionarItemListaModal()" style="width: 100%;">Confirmar Item</button>
-      <div id="listaCompraModalItensContainer" style="margin-top: 15px;">
-        <!-- Itens serão renderizados aqui -->
-      </div>
-      
-      <div style="display: flex; gap: 10px; margin-top: 20px;">
+
+      <div style="display: flex; gap: 10px; margin-top: 10px;">
         <button type="button" class="secondary" onclick="salvarListaRascunhoModal(event)" style="flex: 1;">💾 Salvar Rascunho</button>
         <button type="button" class="primary" onclick="salvarListaProntaModal(event)" style="flex: 1;">✓ Lista Pronta</button>
       </div>
