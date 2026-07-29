@@ -414,7 +414,14 @@
         <label>Fornecedor selecionado<input id="envioAprovacaoFornecedor" type="text" readonly></label>
         <label>Valor (R$)<input id="envioAprovacaoValor" type="text" readonly></label>
       </div>
-      <label>Email da aprovação<input id="envioAprovacaoEmail" type="email" placeholder="patroa@empresa.com" required></label>
+      <label>Enviar para
+        <select id="envioAprovacaoDestinatario" required>
+          <option value="">Selecione...</option>
+          <option value="dorian">Dorian (dorian@floresdaterra.com.br)</option>
+          <option value="felipe">Felipe (felipe@floresdaterra.com.br)</option>
+          <option value="ambos">Dorian e Felipe</option>
+        </select>
+      </label>
       <label>Observações (opcional)<textarea id="envioAprovacaoObs" placeholder="Adicione alguma observação importante"></textarea></label>
       <label class="check"><input type="checkbox" id="envioAprovacaoUrgente"> Marcar como urgente</label>
       <p style="color:#999; font-size:12px;">Um email será enviado ao aprovador com os detalhes da cotação para aprovação.</p>

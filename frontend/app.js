@@ -1543,7 +1543,7 @@ async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
   document.getElementById("envioAprovacaoCompra").value = compraId;
   document.getElementById("envioAprovacaoFornecedor").value = fornecedor;
   document.getElementById("envioAprovacaoValor").value = valor.toFixed(2);
-  document.getElementById("envioAprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
+  document.getElementById("envioAprovacaoDestinatario").value = "";
   modal.classList.remove("hidden");
 }
 
@@ -1645,7 +1645,7 @@ async function abrirModalAprovacaoCompra(compraId) {
     document.getElementById("envioAprovacaoCompra").value = compraId;
     document.getElementById("envioAprovacaoFornecedor").value = compra.fornecedor_escolhido || "";
     document.getElementById("envioAprovacaoValor").value = compra.valor_escolhido ? compra.valor_escolhido.toFixed(2) : "";
-    document.getElementById("envioAprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
+    document.getElementById("envioAprovacaoDestinatario").value = compra.destinatario || "";
     modal.classList.remove("hidden");
   } catch (e) {
     mostrarErro(e.message);
@@ -1658,21 +1658,28 @@ async function confirmarEnvioAprovacaoCotacao(e) {
     const compraId = document.getElementById("envioAprovacaoCompra").value;
     const fornecedor = document.getElementById("envioAprovacaoFornecedor").value;
     const valor = document.getElementById("envioAprovacaoValor").value;
-    const email = document.getElementById("envioAprovacaoEmail").value;
+    const destinatario = document.getElementById("envioAprovacaoDestinatario").value;
     const obs = document.getElementById("envioAprovacaoObs").value;
     const urgente = document.getElementById("envioAprovacaoUrgente").checked;
     
-    // Salvar email da patroa no localStorage
-    localStorage.setItem("patroa_email", email);
+    if (!destinatario) return mostrarErro("Selecione para quem enviar a aprovação");
+    
+    const DORIAN = 'dorian@floresdaterra.com.br';
+    const FELIPE = 'felipe@floresdaterra.com.br';
+    let emails = [];
+    if (destinatario === 'dorian') emails = [DORIAN];
+    else if (destinatario === 'felipe') emails = [FELIPE];
+    else if (destinatario === 'ambos') emails = [DORIAN, FELIPE];
     
     // Enviar para aprovação
     await js(API+`/compras/${compraId}/enviar-aprovacao`, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({fornecedor, valor, email, obs, urgente})
+      body: JSON.stringify({fornecedor, valor, destinatario, obs, urgente})
     });
     
-    mostrarSucesso(`Cotação enviada para aprovação de ${email}!`);
+    const nomes = destinatario === 'ambos' ? 'Dorian e Felipe' : (destinatario === 'felipe' ? 'Felipe' : 'Dorian');
+    mostrarSucesso(`Cotação enviada para aprovação de ${nomes}!`);
     fecharModalEnviarAprovacao();
     cotacoesGerais();
   } catch (e) {
