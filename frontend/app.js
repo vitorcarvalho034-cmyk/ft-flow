@@ -1791,31 +1791,36 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
   document.getElementById("novoFornecedorObs").value = "";
   
   try {
-    console.log('Buscando dados da compra...');
     const compra = await js(`${API}/compras/${cotacaoId}`);
-    console.log('Compra recebida:', compra);
+    
+    // Montar card de referência do produto (foto + descrição)
+    let refHtml = '';
+    const temFoto = compra.foto_url;
+    const temDesc = compra.descricao || compra.item;
+    if (temFoto || temDesc) {
+      refHtml = `<div style="background:#f0f8f5;border:1px solid #c8e6c9;border-radius:8px;padding:12px;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">`;
+      if (temFoto) {
+        refHtml += `<img src="${compra.foto_url}" onclick="abrirLightbox('${compra.foto_url}')" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;border:1px solid #ddd" title="Clique para ampliar">`;
+      }
+      refHtml += `<div style="flex:1;min-width:0">`;
+      refHtml += `<div style="font-weight:bold;color:#1b5e20;font-size:14px;margin-bottom:4px">${htmlEsc(compra.item || '')}</div>`;
+      if (compra.descricao) refHtml += `<div style="font-size:12px;color:#555;line-height:1.5;word-break:break-word">${htmlEsc(compra.descricao)}</div>`;
+      if (compra.destino) refHtml += `<div style="font-size:12px;color:#888;margin-top:4px">📍 ${htmlEsc(compra.destino)}</div>`;
+      if (compra.quantidade) refHtml += `<div style="font-size:12px;color:#888">📦 ${compra.quantidade} ${compra.unidade || ''}</div>`;
+      refHtml += `</div></div>`;
+    }
+    document.getElementById("fornecedoresItemContainer").innerHTML = refHtml;
     
     if (compra.tipo_solicitacao === 'lista') {
-      console.log('É lista de compra! Buscando itens...');
       const itens = await js(`${API}/compras/${cotacaoId}/itens`);
-      console.log('Itens recebidos:', itens);
       const cotacoes = await js(`${API}/compras/${cotacaoId}/cotacoes`);
-      console.log('Cotações recebidas:', cotacoes);
       
-      let itemsHtml = '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
-      
+      let itemsHtml = refHtml + '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
       for (const item of itens) {
         itemsHtml += `<option value="${item.id}">${item.produto} (${item.quantidade} ${item.unidade})</option>`;
       }
-      
       itemsHtml += '</select></div>';
-      
-      const container = document.getElementById("fornecedoresItemContainer");
-      console.log('Container encontrado:', container);
-      console.log('HTML a ser inserido:', itemsHtml);
-      container.innerHTML = itemsHtml;
-    } else {
-      console.log('Não é lista de compra');
+      document.getElementById("fornecedoresItemContainer").innerHTML = itemsHtml;
     }
   } catch (e) {
     console.log('Erro ao buscar compra:', e);
