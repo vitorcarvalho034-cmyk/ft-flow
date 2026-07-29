@@ -90,6 +90,8 @@ async function ensureDb(){
   await q(`ALTER TABLE lista_compras_itens ADD COLUMN IF NOT EXISTS fornecedor TEXT`).catch(e => console.log('fornecedor column already exists'));
   await q(`ALTER TABLE lista_compras_itens ADD COLUMN IF NOT EXISTS preco REAL DEFAULT 0`).catch(e => console.log('preco column already exists'));
   await q(`CREATE TABLE IF NOT EXISTS lista_compras_aprovacoes (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, item_id INTEGER REFERENCES lista_compras_itens(id) ON DELETE CASCADE, cotacao_id INTEGER REFERENCES cotacoes(id), fornecedor TEXT, valor REAL, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS uso TEXT`).catch(()=>{});
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS destinatario TEXT`).catch(()=>{});
 
   // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
@@ -1171,6 +1173,7 @@ app.post('/enviar-questionamento/:token', async (req, res) => {
     await notify(titulo, `Dorian questionou a cotação #${compraId}. Questão: ${questionamento}`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
     // Enviar email para admin
+    const appUrl = process.env.APP_URL || 'https://ft-flow.netlify.app';
     const linkResposta = `${appUrl}/api/responder-questionamento/${token}`;
     const emailAdmin = `
       <html>
@@ -1223,9 +1226,10 @@ app.post('/enviar-questionamento/:token', async (req, res) => {
     `;
     
     try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || 'noreply@ftflow.com',
-        to: process.env.ADMIN_EMAIL || 'admin@ftflow.com',
+      const tQ = nodemailer.createTransport({host:process.env.SMTP_HOST||'smtp.gmail.com',port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+      await tQ.sendMail({
+        from: process.env.SMTP_USER || process.env.SMTP_FROM || 'noreply@ftflow.com',
+        to: process.env.ADMIN_ALERT_EMAIL || process.env.ADMIN_EMAIL || 'admin@ftflow.com',
         subject: `❓ Dorian Questionou Cotação #${compraId}`,
         html: emailAdmin
       });
@@ -1365,14 +1369,17 @@ app.post('/enviar-resposta-questionamento/:token', async (req, res) => {
     `;
     
     try {
-      await transporter.sendMail({
-        from: process.env.SMTP_FROM || 'noreply@ftflow.com',
-        to: 'dorian@floresdaterra.com.br',
+      const tR = nodemailer.createTransport({host:process.env.SMTP_HOST||'smtp.gmail.com',port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
+      // Enviar para o destinatário correto (Dorian ou Felipe)
+      const emailDestResp = compra.rows[0].destinatario === 'felipe' ? 'felipe@floresdaterra.com.br' : 'dorian@floresdaterra.com.br';
+      await tR.sendMail({
+        from: process.env.SMTP_USER || process.env.SMTP_FROM || 'noreply@ftflow.com',
+        to: emailDestResp,
         subject: `✅ Resposta: Cotação #${compraId}`,
         html: emailDorian
       });
     } catch (e) {
-      console.log('Erro ao enviar email para Dorian:', e.message);
+      console.log('Erro ao enviar email para destinatário:', e.message);
     }
     
     res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.success{color:#2e7d32;font-size:48px;margin-bottom:20px}h1{color:#2e7d32;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="success">✅</div><h1>Resposta Enviada!</h1><p>Dorian receberá a resposta por email.</p><p style="color:#999;font-size:12px;margin-top:30px">Obrigado!</p></div></body></html>`);
