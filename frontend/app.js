@@ -57,12 +57,12 @@ const STATUS_ATIVOS_COMPRAS = [
   "pendente aprovaçao",
   "aguardando aprovação",
   "em andamento",
-  "rascunho",
-  "aprovado",
-  "aprovada"
+  "rascunho"
 ];
 
 const STATUS_HISTORICO_COMPRAS = [
+  "aprovada",
+  "aprovado",
   "comprado",
   "recebido",
   "entregue",
@@ -124,7 +124,7 @@ function cardPedidoCompra(c, options = {}) {
     ? `<a href="${htmlEsc(c.link_produto)}" target="_blank" rel="noopener" class="pedido-link">🔗 Ver link do produto</a>`
     : "";
   const foto = c.foto_url
-    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto" onclick="abrirLightbox('${htmlEsc(c.foto_url)}')" style="cursor:zoom-in" title="Clique para ampliar">`
+    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto" onclick="abrirLightbox('${htmlEsc(c.foto_url)}')" style="cursor:zoom-in" title="Clique para ampliar" onerror="this.style.display='none'">`
     : "";
   const valor = c.valor_total ? `<div class="pedido-linha"><span>Valor total</span><b>${dinheiro(c.valor_total)}</b></div>` : "";
   const fornecedor = c.fornecedor_escolhido
@@ -153,7 +153,7 @@ function cardPedidoCompra(c, options = {}) {
       acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="secondary" onclick="editarListaCompra(${c.id})">Editar</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
     } else {
       // Para compra regular
-      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="primary" style="background:#1565c0" onclick="confirmarRecebimento(${c.id})">✅ Confirmar Recebimento</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button>${c.status === 'Pendente_aprovacao' ? `<button class="primary" style="background:#2e7d32" onclick="abrirModalAprovarNoApp(${c.id})">✅ Aprovar</button>` : ''}<button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
     }
   }
 
@@ -422,7 +422,7 @@ async function verDetalhesManutencao(id) {
     const m = manData.find(x => x.id === id);
     if (!m) return mostrarErro("Manutenção não encontrada");
     const fotoHtml = m.foto_url
-      ? `<div style="margin-bottom:16px;text-align:center"><img src="${htmlEsc(m.foto_url)}" onclick="abrirLightbox('${htmlEsc(m.foto_url)}')" style="max-width:100%;max-height:350px;border-radius:8px;cursor:zoom-in;object-fit:contain" alt="Foto da manutenção"><br><small style="color:#666">Clique para ampliar</small></div>` : '';
+      ? `<div style="margin-bottom:16px;text-align:center"><img src="${htmlEsc(m.foto_url)}" onclick="abrirLightbox('${htmlEsc(m.foto_url)}')" style="max-width:100%;max-height:350px;border-radius:8px;cursor:zoom-in;object-fit:contain" alt="Foto da manutenção" onerror="this.parentElement.style.display='none'"><br><small style="color:#666">Clique para ampliar</small></div>` : '';
     const campos = [
       ['Local / Item', m.local_item],
       ['Especificação', m.especificacao],
@@ -596,7 +596,7 @@ async function abrirDetalheProduto(id) {
     window._produtoDetalhe = produto;
     const st = statusEstoqueV6(produto);
     const fotoHtml = produto.foto_url
-      ? `<img src="${esc(produto.foto_url)}" class="detalhe-foto" alt="${esc(produto.nome)}">`
+      ? `<img src="${esc(produto.foto_url)}" class="detalhe-foto" alt="${esc(produto.nome)}" onerror="this.outerHTML='<div class=\'detalhe-foto-placeholder\'>${emojiProduto(produto)}</div>'">`
       : `<div class="detalhe-foto-placeholder">${emojiProduto(produto)}</div>`;
 
     document.getElementById("detalheProdutoConteudo").innerHTML = `
@@ -1035,11 +1035,41 @@ async function statusCompra(id,status){
   }
 }
 
-async function confirmarRecebimento(id) {
-  if (!confirm('Confirmar recebimento desta compra? Um email será enviado ao admin.')) return;
+let _aprovarNoAppId = null;
+
+async function abrirModalAprovarNoApp(id) {
+  _aprovarNoAppId = id;
   try {
-    await js(API + `/compras/${id}/confirmar-recebimento`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-    mostrarSucesso('✅ Recebimento confirmado! Admin notificado por email.');
+    const compra = await js(API + `/compras/${id}`);
+    const infoEl = document.getElementById('modalAprovarNoAppInfo');
+    infoEl.innerHTML = `
+      <p style="margin:0 0 6px 0;font-size:14px;color:#1b5e20"><strong>Compra #${compra.id}</strong></p>
+      <p style="margin:4px 0;font-size:13px;color:#333">${compra.item || compra.descricao || '-'}</p>
+      ${compra.fornecedor_escolhido ? `<p style="margin:4px 0;font-size:13px;color:#555">Fornecedor: <strong>${compra.fornecedor_escolhido}</strong> &bull; R$ ${Number(compra.valor_escolhido||0).toFixed(2)}</p>` : ''}
+    `;
+    document.getElementById('modalAprovarAprovador').value = '';
+    document.getElementById('modalAprovarNoApp').classList.remove('hidden');
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+function fecharModalAprovarNoApp() {
+  document.getElementById('modalAprovarNoApp').classList.add('hidden');
+  _aprovarNoAppId = null;
+}
+
+async function confirmarAprovacaoNoApp() {
+  const aprovador = document.getElementById('modalAprovarAprovador').value;
+  if (!aprovador) return mostrarErro('Selecione quem está aprovando!');
+  try {
+    await js(API + `/compras/${_aprovarNoAppId}/aprovar-no-app`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aprovador })
+    });
+    mostrarSucesso(`✅ Compra aprovada por ${aprovador}! Admin notificado por email.`);
+    fecharModalAprovarNoApp();
     carregar();
   } catch(e) {
     mostrarErro(e.message);

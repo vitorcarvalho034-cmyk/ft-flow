@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>FT FLOW</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=42">
+<link rel="stylesheet" href="style.css?v=43">
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#052e16">
@@ -461,7 +461,30 @@
   </div>
 </div>
 
-<script src="app.js?v=42"></script>
+<!-- Modal Aprovar no App -->
+<div id="modalAprovarNoApp" class="modal hidden">
+  <div class="modal-card" style="max-width:480px;width:95%">
+    <div class="modal-head"><h3>✅ Aprovar Compra</h3><button onclick="fecharModalAprovarNoApp()">×</button></div>
+    <div style="padding:20px">
+      <div id="modalAprovarNoAppInfo" style="background:#f0f8f5;padding:15px;border-radius:8px;margin-bottom:20px;border-left:4px solid #2e7d32"></div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;margin-bottom:6px;font-weight:600;color:#333">Quem está aprovando?</label>
+        <select id="modalAprovarAprovador" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px">
+          <option value="">Selecione o aprovador...</option>
+          <option value="Dorian">Dorian</option>
+          <option value="Felipe">Felipe</option>
+          <option value="ADM">ADM</option>
+        </select>
+      </div>
+      <div class="actions" style="margin-top:20px">
+        <button class="primary" style="background:#2e7d32;flex:1" onclick="confirmarAprovacaoNoApp()">✅ Confirmar Aprovação</button>
+        <button class="secondary" onclick="fecharModalAprovarNoApp()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=43"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {
