@@ -506,6 +506,34 @@ app.post('/compras/:id/approve-received', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
+// Confirmar recebimento com email ao admin
+app.post('/compras/:id/confirmar-recebimento', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [id]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    
+    const c = compra.rows[0];
+    const confirmedBy = req.user?.nome || req.user?.username || 'Admin';
+    
+    await q(`UPDATE compras SET status='Recebido', received_at=NOW() WHERE id=$1`, [id]);
+    
+    const titulo = `✅ Compra #${id} - Recebimento Confirmado`;
+    const dados = {
+      'Compra': `#${id}`,
+      'Produto': c.descricao || c.item,
+      'Fornecedor': c.fornecedor_escolhido || 'Não informado',
+      'Valor': c.valor_escolhido ? `R$ ${Number(c.valor_escolhido).toFixed(2)}` : '-',
+      'Confirmado por': confirmedBy,
+      'Data': new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    };
+    
+    await notify(titulo, `Recebimento da compra #${id} (${c.item}) foi confirmado por ${confirmedBy}.`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 // Enviar cotação para aprovação
 app.post("/compras/:id/enviar-aprovacao", async (req, res) => {
   try {

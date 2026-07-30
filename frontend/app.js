@@ -57,12 +57,12 @@ const STATUS_ATIVOS_COMPRAS = [
   "pendente aprovaçao",
   "aguardando aprovação",
   "em andamento",
-  "rascunho"
+  "rascunho",
+  "aprovado",
+  "aprovada"
 ];
 
 const STATUS_HISTORICO_COMPRAS = [
-  "aprovada",
-  "aprovado",
   "comprado",
   "recebido",
   "entregue",
@@ -153,7 +153,7 @@ function cardPedidoCompra(c, options = {}) {
       acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="secondary" onclick="editarListaCompra(${c.id})">Editar</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
     } else {
       // Para compra regular
-      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="primary" style="background:#1565c0" onclick="confirmarRecebimento(${c.id})">✅ Confirmar Recebimento</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
     }
   }
 
@@ -1029,6 +1029,17 @@ async function statusCompra(id,status){
   try {
     await js(API+`/compras/${id}/status`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({status})}); 
     mostrarSucesso("Status atualizado!");
+    carregar();
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
+
+async function confirmarRecebimento(id) {
+  if (!confirm('Confirmar recebimento desta compra? Um email será enviado ao admin.')) return;
+  try {
+    await js(API + `/compras/${id}/confirmar-recebimento`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    mostrarSucesso('✅ Recebimento confirmado! Admin notificado por email.');
     carregar();
   } catch(e) {
     mostrarErro(e.message);
