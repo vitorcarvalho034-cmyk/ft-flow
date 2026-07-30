@@ -1063,14 +1063,21 @@ async function confirmarAprovacaoNoApp() {
   const aprovador = document.getElementById('modalAprovarAprovador').value;
   if (!aprovador) return mostrarErro('Selecione quem está aprovando!');
   try {
+    const payload = { aprovador };
+    // Se veio de selecionarFornecedorCotacao, incluir fornecedor e valor
+    if (window._cotacaoSelecionadaParaAprovar && window._cotacaoSelecionadaParaAprovar.compraId === _aprovarNoAppId) {
+      payload.fornecedor = window._cotacaoSelecionadaParaAprovar.fornecedor;
+      payload.valor = window._cotacaoSelecionadaParaAprovar.valor;
+    }
     await js(API + `/compras/${_aprovarNoAppId}/aprovar-no-app`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aprovador })
+      body: JSON.stringify(payload)
     });
     mostrarSucesso(`✅ Compra aprovada por ${aprovador}! Admin notificado por email.`);
+    window._cotacaoSelecionadaParaAprovar = null;
     fecharModalAprovarNoApp();
-    carregar();
+    cotacoesGerais();
   } catch(e) {
     mostrarErro(e.message);
   }
@@ -1256,9 +1263,10 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
           <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(cot.fornecedor)}</div>
           <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
           <div style="font-size: 12px; color: #666; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; max-height: 60px; overflow-y: auto;">${cot.observacao || '-'}</div>
-          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(cot.fornecedor)}&quot;, ${cot.valor})" style="width: 100%; margin-bottom: 6px;">
-            ${selecionado ? '✓ SELECIONADO' : 'Aprovar'}
-          </button>
+          ${compra.status === 'Pendente_aprovacao' ? `
+          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(cot.fornecedor)}&quot;, ${cot.valor})" style="width: 100%; margin-bottom: 6px; background: ${selecionado ? '#1b5e20' : '#2e7d32'}">
+            ${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}
+          </button>` : selecionado ? `<div style="color:#2e7d32;font-weight:bold;font-size:12px;margin-bottom:6px">✓ Fornecedor selecionado</div>` : ''}
           <div style="display: flex; gap: 4px; justify-content: center;">
             <button class="secondary small" onclick="editarCotacao(${cot.id})" style="flex: 1; font-size: 12px;">✏️ Editar</button>
             <button class="danger small" onclick="deletarCotacao(${compra.id}, ${cot.id})" style="flex: 1; font-size: 12px;">🗑️ Deletar</button>
@@ -1607,16 +1615,18 @@ function selecionarFornecedor(cotacaoId, indice, nome, valor) {
 }
 
 async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
-  // Armazena os dados selecionados
-  window._cotacaoSelecionada = {compraId, fornecedor, valor};
+  // Salvar fornecedor escolhido e abrir modal de aprovação no app
+  window._cotacaoSelecionadaParaAprovar = { compraId, fornecedor, valor };
+  _aprovarNoAppId = compraId;
   
-  // Abre modal para enviar para aprovação
-  const modal = document.getElementById("modalEnviarAprovacao");
-  document.getElementById("envioAprovacaoCompra").value = compraId;
-  document.getElementById("envioAprovacaoFornecedor").value = fornecedor;
-  document.getElementById("envioAprovacaoValor").value = valor.toFixed(2);
-  document.getElementById("envioAprovacaoDestinatario").value = "";
-  modal.classList.remove("hidden");
+  const infoEl = document.getElementById('modalAprovarNoAppInfo');
+  infoEl.innerHTML = `
+    <p style="margin:0 0 6px 0;font-size:14px;color:#1b5e20"><strong>Compra #${compraId}</strong></p>
+    <p style="margin:4px 0;font-size:13px;color:#333">Fornecedor: <strong>${htmlEsc(fornecedor)}</strong></p>
+    <p style="margin:4px 0;font-size:13px;color:#2e7d32;font-weight:bold">R$ ${Number(valor).toFixed(2)}</p>
+  `;
+  document.getElementById('modalAprovarAprovador').value = '';
+  document.getElementById('modalAprovarNoApp').classList.remove('hidden');
 }
 
 function fecharModalCotacaoComparacao() {

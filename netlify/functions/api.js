@@ -518,7 +518,20 @@ app.post('/compras/:id/aprovar-no-app', async (req, res) => {
     
     const c = compra.rows[0];
     
-    await q(`UPDATE compras SET status='Aprovado', received_at=NOW() WHERE id=$1`, [id]);
+    // Só permite aprovar se estiver Pendente_aprovacao
+    if (c.status !== 'Pendente_aprovacao') {
+      return res.status(400).json({ error: `Esta compra não está pendente de aprovação (status atual: ${c.status})` });
+    }
+    
+    const { fornecedor, valor } = req.body;
+    let updateQuery = `UPDATE compras SET status='Aprovado', received_at=NOW()`;
+    const updateParams = [];
+    if (fornecedor) {
+      updateQuery += `, fornecedor_escolhido=$${updateParams.length + 2}, valor_escolhido=$${updateParams.length + 3}`;
+      updateParams.push(fornecedor, valor || 0);
+    }
+    updateQuery += ` WHERE id=$1`;
+    await q(updateQuery, [id, ...updateParams]);
     
     const titulo = `✅ Compra #${id} - Aprovada por ${aprovador} (App)`;
     const dados = {
