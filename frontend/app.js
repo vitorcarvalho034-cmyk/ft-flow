@@ -69,7 +69,9 @@ const STATUS_HISTORICO_COMPRAS = [
   "concluído",
   "concluido",
   "rejeitado",
-  "cancelado"
+  "cancelado",
+  "negada",
+  "negado"
 ];
 
 function normalizarStatus(status) {
@@ -925,7 +927,7 @@ async function verComparativoCotacoes(cotacaoId) {
 }
 
 async function compras(){
-  const data=await js(API+"/compras");
+  const data=await js(API+"/compras?limit=1000");
   const compData = data.data || data;
   const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
   const isAdmin=usuario&&usuario.role==="admin";
@@ -1066,7 +1068,7 @@ async function salvarCotacao(id){
 }
 
 async function historico(){
-  const data = await js(API + "/compras");
+  const data = await js(API + "/compras?limit=1000");
   const compData = data.data || data;
   const historicoData = compData.filter(c => statusEhHistorico(c.status)).sort((a, b) => {
     const dataA = new Date(a.received_at || a.updated_at || a.created_at || 0);
