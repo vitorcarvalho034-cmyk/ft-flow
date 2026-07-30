@@ -1592,10 +1592,16 @@ function abrirModalCotacaoComparacao(compraId) {
           const bgColor = selecionado ? '#e8f5e9' : 'white';
           const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
           
-          html += `<tr style="background-color: ${bgColor};"><td style="padding: 12px; border: ${borderStyle};"><strong>${htmlEsc(fornecedor)}</strong></td><td style="padding: 12px; text-align: center; border: ${borderStyle}; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td><td style="padding: 12px; border: ${borderStyle};"><small>${cot.observacao || '-'}</small></td><td style="padding: 12px; text-align: center; border: ${borderStyle};"><button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right: 4px;">${selecionado ? '✓ SELECIONADO' : 'Enviar para Aprovação'}</button><button class="small danger" onclick="deletarFornecedor(${compraId}, '${htmlEsc(fornecedor)}')">Deletar</button></td></tr>`;
+          const btnAcao = compra.status === 'Pendente_aprovacao'
+            ? `<button class="small primary" onclick="selecionarFornecedorCotacao(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right:4px;background:#2e7d32">${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}</button>`
+            : `<button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right:4px">${selecionado ? '✓ SELECIONADO' : 'Selecionar'}</button>`;
+          html += `<tr style="background-color: ${bgColor};"><td style="padding: 12px; border: ${borderStyle};"><strong>${htmlEsc(fornecedor)}</strong></td><td style="padding: 12px; text-align: center; border: ${borderStyle}; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td><td style="padding: 12px; border: ${borderStyle};"><small>${cot.observacao || '-'}</small></td><td style="padding: 12px; text-align: center; border: ${borderStyle};">${btnAcao}<button class="small danger" onclick="deletarFornecedor(${compraId}, '${htmlEsc(fornecedor)}')">🗑️</button></td></tr>`;
         });
         
-        html += `</tbody></table></div><div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-right: 10px;">+ Adicionar Fornecedor</button>${fornecedorSelecionado && fornecedorSelecionado.compraId === compraId ? `<button class="primary" onclick="enviarParaAprovacao(${compraId})">Enviar para Aprovação</button>` : ''}</div>`;
+        const btnEnviar = compra.status !== 'Pendente_aprovacao' && fornecedorSelecionado && fornecedorSelecionado.compraId === compraId
+          ? `<button class="primary" onclick="enviarParaAprovacao(${compraId})">Enviar para Aprovação</button>`
+          : '';
+        html += `</tbody></table></div><div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})" style="margin-right: 10px;">+ Adicionar Fornecedor</button>${btnEnviar}</div>`;
         
         container.innerHTML = html;
       }
