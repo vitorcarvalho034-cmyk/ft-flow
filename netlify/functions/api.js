@@ -773,6 +773,16 @@ app.get('/selecionar-fornecedores-lista/:token', async (req, res) => {
     const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
     if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
     
+    const aprovNomeLista = compra.rows[0].destinatario === 'felipe' ? 'Felipe' : 'Dorian';
+    
+    // Verificar se já foi processada
+    if (compra.rows[0].status === 'Aprovado') {
+      return res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.icon{font-size:48px;margin-bottom:20px}h1{color:#1565c0;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="icon">ℹ️</div><h1>Já Aprovada!</h1><p>Esta lista de compra já foi aprovada anteriormente por ${aprovNomeLista}.</p><p style="color:#999;font-size:12px;margin-top:30px">Nenhuma ação necessária.</p></div></body></html>`);
+    }
+    if (compra.rows[0].status === 'Negada') {
+      return res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.icon{font-size:48px;margin-bottom:20px}h1{color:#c62828;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="icon">❌</div><h1>Já Negada!</h1><p>Esta lista de compra já foi negada anteriormente.</p><p style="color:#999;font-size:12px;margin-top:30px">Nenhuma ação necessária.</p></div></body></html>`);
+    }
+    
     const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC', [compraId]);
     const cotacoes = await q('SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY item_id ASC, valor ASC', [compraId]);
     
@@ -980,6 +990,16 @@ app.get('/aprovar-cotacao/:token', async (req, res) => {
     const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1 AND compra_id=$2', [cotacaoId, compraId]);
     if (!cotacao.rows[0]) return res.status(404).json({ error: 'Cotação não encontrada' });
     
+    // Verificar se já foi processada
+    const compraAtual = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
+    if (compraAtual.rows[0]?.status === 'Aprovado') {
+      const aprovNome = compraAtual.rows[0].destinatario === 'felipe' ? 'Felipe' : 'Dorian';
+      return res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.icon{font-size:48px;margin-bottom:20px}h1{color:#1565c0;margin:0 0 10px 0}p{color:#666;margin:10px 0}.details{background:#e3f2fd;padding:20px;border-radius:8px;margin:20px 0;text-align:left;border-left:4px solid #1565c0}.details p{margin:8px 0}strong{color:#1565c0}</style></head><body><div class="card"><div class="icon">ℹ️</div><h1>Já Aprovada!</h1><p>Esta cotação já foi aprovada anteriormente por ${aprovNome}.</p><div class="details"><p><strong>Compra:</strong> #${compraId}</p><p><strong>Fornecedor:</strong> ${compraAtual.rows[0].fornecedor_escolhido || '-'}</p><p><strong>Valor:</strong> R$ ${Number(compraAtual.rows[0].valor_escolhido||0).toFixed(2)}</p></div><p style="color:#999;font-size:12px;margin-top:30px">Nenhuma ação necessária.</p></div></body></html>`);
+    }
+    if (compraAtual.rows[0]?.status === 'Negada') {
+      return res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.icon{font-size:48px;margin-bottom:20px}h1{color:#c62828;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="icon">❌</div><h1>Já Negada!</h1><p>Esta cotação já foi negada anteriormente.</p><p style="color:#999;font-size:12px;margin-top:30px">Nenhuma ação necessária.</p></div></body></html>`);
+    }
+    
     const { fornecedor, valor } = cotacao.rows[0];
     
     await q(`UPDATE compras SET status='Aprovado', fornecedor_escolhido=$1, valor_escolhido=$2, received_at=NOW() WHERE id=$3`,
@@ -1074,6 +1094,14 @@ app.get('/negar-cotacao/:token', async (req, res) => {
     if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
     
     const aprovadorNome = compra.rows[0].destinatario === 'felipe' ? 'Felipe' : 'Dorian';
+    
+    // Verificar se já foi processada
+    if (compra.rows[0].status === 'Aprovado') {
+      return res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.icon{font-size:48px;margin-bottom:20px}h1{color:#1565c0;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="icon">ℹ️</div><h1>Já Aprovada!</h1><p>Esta compra já foi aprovada anteriormente por ${aprovadorNome}.</p><p style="color:#999;font-size:12px;margin-top:30px">Nenhuma ação necessária.</p></div></body></html>`);
+    }
+    if (compra.rows[0].status === 'Negada') {
+      return res.send(`<html><head><meta charset="UTF-8"><style>body{font-family:Arial;background:#f3f7f4;display:flex;justify-content:center;align-items:center;height:100vh;margin:0}.card{background:white;padding:40px;border-radius:12px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1);max-width:500px}.icon{font-size:48px;margin-bottom:20px}h1{color:#c62828;margin:0 0 10px 0}p{color:#666;margin:10px 0}</style></head><body><div class="card"><div class="icon">❌</div><h1>Já Negada!</h1><p>Esta compra já foi negada anteriormente.</p><p style="color:#999;font-size:12px;margin-top:30px">Nenhuma ação necessária.</p></div></body></html>`);
+    }
     
     // Marcar compra como negada
     await q(`UPDATE compras SET status='Negada' WHERE id=$1`, [compraId]);
