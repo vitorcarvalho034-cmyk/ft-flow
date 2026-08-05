@@ -1654,7 +1654,22 @@ function selecionarFornecedor(cotacaoId, indice, nome, valor) {
 }
 
 async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
-  // Salvar fornecedor escolhido e abrir modal de aprovação no app
+  // Verificar se é lista de compra
+  try {
+    const compra = await js(API + `/compras/${compraId}`);
+    
+    if (compra.tipo_solicitacao === 'lista') {
+      // Para lista: abrir página de seleção em nova aba (igual ao link do email)
+      const token = btoa('lista:' + compraId);
+      const url = `${API}/selecionar-fornecedores-lista/${token}`;
+      window.open(url, '_blank');
+      return;
+    }
+  } catch(e) {
+    console.log('Erro ao verificar tipo da compra:', e);
+  }
+  
+  // Para compra regular: abrir modal de aprovação no app
   window._cotacaoSelecionadaParaAprovar = { compraId, fornecedor, valor };
   _aprovarNoAppId = compraId;
   
