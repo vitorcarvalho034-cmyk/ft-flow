@@ -176,7 +176,7 @@
       </div>
       <div class="grid">
         <label>Uso<input id="compUsoModal" placeholder="Ex: Defensivo, Manutenção, Irrigação..." required></label>
-        <label>Enviar para<select id="compDestinatarioModal" required>
+        <label id="compDestinatarioLabel">Enviar para<select id="compDestinatarioModal" required>
           <option value="">Selecione...</option>
           <option value="dorian">Dorian</option>
           <option value="felipe">Felipe</option>
@@ -461,6 +461,33 @@
   </div>
 </div>
 
+<!-- Modal Aprovar Lista no App -->
+<div id="modalAprovarLista" class="modal hidden">
+  <div class="modal-card" style="max-width:700px;width:95%;max-height:90vh;overflow-y:auto">
+    <div class="modal-head"><h3>✅ Aprovar Lista de Compra</h3><button onclick="fecharModalAprovarLista()">×</button></div>
+    <div style="padding:20px">
+      <div id="modalAprovarListaInfo" style="background:#f0f8f5;padding:12px 16px;border-radius:8px;margin-bottom:16px;border-left:4px solid #2e7d32;font-size:14px"></div>
+      <div id="modalAprovarListaItens"></div>
+      <div style="background:#e8f5e9;padding:12px 16px;border-radius:8px;margin:16px 0;border-left:4px solid #1b5e20">
+        <strong style="color:#1b5e20">Total selecionado: <span id="modalAprovarListaTotal">R$ 0,00</span></strong>
+      </div>
+      <div style="margin-bottom:16px">
+        <label style="display:block;margin-bottom:6px;font-weight:600;color:#333">Quem está aprovando?</label>
+        <select id="modalAprovarListaAprovador" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:15px">
+          <option value="">Selecione o aprovador...</option>
+          <option value="Dorian">Dorian</option>
+          <option value="Felipe">Felipe</option>
+          <option value="ADM">ADM</option>
+        </select>
+      </div>
+      <div class="actions" style="margin-top:16px">
+        <button class="primary" style="background:#2e7d32;flex:1" onclick="confirmarAprovacaoLista()">✅ Confirmar Aprovação</button>
+        <button class="secondary" onclick="fecharModalAprovarLista()">Cancelar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Aprovar no App -->
 <div id="modalAprovarNoApp" class="modal hidden">
   <div class="modal-card" style="max-width:480px;width:95%">
@@ -484,7 +511,7 @@
   </div>
 </div>
 
-<script src="app.js?v=47"></script>
+<script src="app.js?v=48"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {

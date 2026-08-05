@@ -451,6 +451,13 @@ app.get("/compras/:id/itens",async(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
+app.get("/compras/:id/aprovacoes",async(req,res)=>{
+  try{
+    const r = await q(`SELECT lca.*, lci.produto, lci.quantidade, lci.unidade FROM lista_compras_aprovacoes lca LEFT JOIN lista_compras_itens lci ON lca.item_id = lci.id WHERE lca.compra_id=$1 ORDER BY lca.id ASC`,[req.params.id]);
+    res.json(r.rows);
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
+});
+
 app.get("/compras/:id/cotacoes",async(req,res)=>{
   try{
     const r = await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id]);
@@ -503,6 +510,54 @@ app.post('/compras/:id/approve-received', async (req, res) => {
     await q('UPDATE compras SET status=$1, received_at=NOW(), received_by=$2 WHERE id=$3', ['recebido', req.user.id, id]);
     await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)', [req.user.id, 'approve_received', 'compras', id, JSON.stringify({ by: req.user.username })]);
     res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+// Aprovar lista de compra diretamente no app com seleções por item
+app.post('/compras/:id/aprovar-lista-no-app', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { aprovador, selecoes } = req.body;
+    if (!aprovador) return res.status(400).json({ error: 'Informe o aprovador' });
+    if (!selecoes || selecoes.length === 0) return res.status(400).json({ error: 'Nenhuma seleção fornecida' });
+    
+    const compra = await q('SELECT * FROM compras WHERE id=$1', [id]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    if (compra.rows[0].status !== 'Pendente_aprovacao') return res.status(400).json({ error: 'Esta lista não está pendente de aprovação' });
+    
+    // Salvar cada seleção
+    for (const sel of selecoes) {
+      await q('INSERT INTO lista_compras_aprovacoes (compra_id, item_id, cotacao_id, fornecedor, valor) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
+        [id, sel.item_id, sel.cotacao_id, sel.fornecedor, sel.valor]);
+    }
+    
+    // Calcular total
+    const totalValor = selecoes.reduce((s, sel) => s + Number(sel.valor || 0), 0);
+    
+    // Atualizar status
+    await q(`UPDATE compras SET status='Aprovado', received_at=NOW() WHERE id=$1`, [id]);
+    
+    // Buscar itens para o email
+    const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC', [id]);
+    
+    // Montar detalhes dos fornecedores por item
+    const detalhes = selecoes.map(sel => {
+      const item = itens.rows.find(i => i.id === sel.item_id);
+      return `${item ? item.produto : 'Item'}: ${sel.fornecedor} — R$ ${Number(sel.valor).toFixed(2)}`;
+    }).join('\n');
+    
+    const titulo = `✅ Lista #${id} - Aprovada por ${aprovador} (App)`;
+    const dados = {
+      'Lista': `#${id}`,
+      'Aprovado por': `${aprovador} (via app)`,
+      'Itens aprovados': selecoes.length,
+      'Valor Total': `R$ ${totalValor.toFixed(2)}`,
+      'Detalhes': detalhes
+    };
+    
+    await notify(titulo, `Lista #${id} aprovada por ${aprovador}. ${selecoes.length} item(ns), total R$ ${totalValor.toFixed(2)}.`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    
+    res.json({ ok: true, total: totalValor, aprovacoes: selecoes.length });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 

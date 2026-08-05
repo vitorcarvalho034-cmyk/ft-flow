@@ -264,6 +264,7 @@ async function fazerLogin(){
     await trocarTela("dashboard", document.querySelector(".nav"));
     atualizarContadorNotificacoes();
     setInterval(atualizarContadorNotificacoes,15000);
+    iniciarRefreshAutomatico();
   }catch(e){ mostrarErro("Erro ao conectar com servidor: "+e.message); }
 }
 
@@ -945,6 +946,17 @@ function abrirModalCompra() {
   
   const botao = document.querySelector("#formCompra button[type='submit']");
   if (botao) botao.innerText = "Enviar Solicitação";
+  
+  // Para operador: esconder campo Enviar para e definir valor padrão
+  const destLabel = document.getElementById('compDestinatarioLabel');
+  const destSelect = document.getElementById('compDestinatarioModal');
+  if (!isAdmin) {
+    if (destLabel) destLabel.style.display = 'none';
+    if (destSelect) { destSelect.value = 'dorian'; destSelect.required = false; }
+  } else {
+    if (destLabel) destLabel.style.display = '';
+    if (destSelect) { destSelect.value = ''; destSelect.required = true; }
+  }
 }
 
 function fecharModalCompra() {
@@ -1036,6 +1048,93 @@ async function statusCompra(id,status){
 }
 
 let _aprovarNoAppId = null;
+let _aprovarListaId = null;
+let _aprovarListaSelecoes = {};
+
+async function abrirModalAprovarLista(compraId) {
+  _aprovarListaId = compraId;
+  _aprovarListaSelecoes = {};
+  try {
+    const [compra, itens, cotacoes] = await Promise.all([
+      js(API + `/compras/${compraId}`),
+      js(API + `/compras/${compraId}/itens`),
+      js(API + `/compras/${compraId}/cotacoes`)
+    ]);
+    
+    document.getElementById('modalAprovarListaInfo').innerHTML =
+      `<strong>#${compraId} — ${htmlEsc(compra.item || 'Lista de Compra')}</strong><br>
+       <span style="color:#555">Solicitante: ${htmlEsc(compra.solicitante || '-')} &bull; ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}</span>`;
+    
+    let itensHtml = '';
+    for (const item of itens) {
+      const cotsItem = cotacoes.filter(c => c.item_id === item.id);
+      itensHtml += `
+        <div style="background:#f9f9f9;border:1px solid #ddd;border-radius:8px;padding:14px;margin-bottom:12px">
+          <div style="font-weight:bold;color:#1b5e20;margin-bottom:4px">${htmlEsc(item.produto)}</div>
+          <div style="font-size:12px;color:#666;margin-bottom:10px">${item.quantidade} ${htmlEsc(item.unidade)}</div>
+          ${cotsItem.length === 0
+            ? '<p style="color:#999;font-size:12px">Nenhuma cotação disponível</p>'
+            : cotsItem.map(cot => `
+              <label style="display:flex;align-items:center;padding:10px;margin:6px 0;background:white;border:2px solid #ddd;border-radius:6px;cursor:pointer" id="label_cot_${cot.id}">
+                <input type="radio" name="lista_item_${item.id}" value="${cot.id}" data-item="${item.id}" data-valor="${cot.valor}" data-fornecedor="${htmlEsc(cot.fornecedor)}" onchange="atualizarTotalLista()"
+                  style="margin-right:10px;cursor:pointer;accent-color:#2e7d32">
+                <span style="flex:1;font-size:13px">${htmlEsc(cot.fornecedor)}</span>
+                <span style="font-size:14px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
+              </label>`).join('')
+          }
+        </div>`;
+    }
+    
+    document.getElementById('modalAprovarListaItens').innerHTML = itensHtml;
+    document.getElementById('modalAprovarListaAprovador').value = '';
+    document.getElementById('modalAprovarListaTotal').textContent = 'R$ 0,00';
+    document.getElementById('modalAprovarLista').classList.remove('hidden');
+  } catch(e) {
+    mostrarErro('Erro ao carregar lista: ' + e.message);
+  }
+}
+
+function fecharModalAprovarLista() {
+  document.getElementById('modalAprovarLista').classList.add('hidden');
+  _aprovarListaId = null;
+  _aprovarListaSelecoes = {};
+}
+
+function atualizarTotalLista() {
+  let total = 0;
+  document.querySelectorAll('#modalAprovarListaItens input[type=radio]:checked').forEach(r => {
+    total += Number(r.dataset.valor || 0);
+  });
+  document.getElementById('modalAprovarListaTotal').textContent = 'R$ ' + total.toFixed(2).replace('.', ',');
+}
+
+async function confirmarAprovacaoLista() {
+  const aprovador = document.getElementById('modalAprovarListaAprovador').value;
+  if (!aprovador) return mostrarErro('Selecione quem está aprovando!');
+  
+  const radios = document.querySelectorAll('#modalAprovarListaItens input[type=radio]:checked');
+  if (radios.length === 0) return mostrarErro('Selecione ao menos um fornecedor!');
+  
+  const selecoes = [];
+  radios.forEach(r => {
+    selecoes.push({ item_id: Number(r.dataset.item), cotacao_id: Number(r.value), fornecedor: r.dataset.fornecedor, valor: Number(r.dataset.valor) });
+  });
+  
+  try {
+    await js(API + `/compras/${_aprovarListaId}/aprovar-lista-no-app`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aprovador, selecoes })
+    });
+    mostrarSucesso(`✅ Lista aprovada por ${aprovador}! Admin notificado por email.`);
+    fecharModalAprovarLista();
+    const filtroAtivo = window._cotacoesFiltroAtivo || 'pendente-aprovacao';
+    await cotacoesGerais();
+    filtrarCotacoesPor(filtroAtivo);
+  } catch(e) {
+    mostrarErro(e.message);
+  }
+}
 
 async function abrirModalAprovarNoApp(id) {
   _aprovarNoAppId = id;
@@ -1142,7 +1241,10 @@ async function historico(){
             ? historicoData.map(c => {
               const dataRecebimento = c.received_at ? new Date(c.received_at).toLocaleDateString('pt-BR', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '-';
               const card = cardPedidoCompra(c);
-              return card + `<div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; font-size: 12px; color: #666;"><small><strong>Recebido em:</strong> ${dataRecebimento}</small></div>`;
+              const btnDetalhes = c.tipo_solicitacao === 'lista'
+                ? `<button class="secondary" style="margin-top:8px;font-size:12px" onclick="verDetalhesListaHistorico(${c.id})">📋 Ver fornecedores confirmados</button>`
+                : '';
+              return card + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #ddd;font-size:12px;color:#666;display:flex;align-items:center;gap:10px"><small><strong>Aprovado em:</strong> ${dataRecebimento}</small>${btnDetalhes}</div><div id="detalhesLista_${c.id}" style="display:none"></div>`;
             }).join("")
             : `<div class="card"><small>Nenhum item no histórico.</small></div>`
         }
@@ -1153,6 +1255,52 @@ async function historico(){
   // Armazenar dados para filtro
   window._historicoData = historicoData;
 }
+
+async function verDetalhesListaHistorico(compraId) {
+  const el = document.getElementById(`detalhesLista_${compraId}`);
+  if (!el) return;
+  if (el.style.display !== 'none') { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = '<p style="font-size:12px;color:#999;padding:8px">Carregando...</p>';
+  try {
+    const aprovacoes = await js(API + `/compras/${compraId}/aprovacoes`);
+    if (!aprovacoes.length) {
+      el.innerHTML = '<p style="font-size:12px;color:#999;padding:8px">Nenhum fornecedor confirmado encontrado.</p>';
+      return;
+    }
+    let html = '<div style="background:#f0f8f5;border-radius:8px;padding:12px;margin-top:8px;border-left:4px solid #2e7d32">';
+    html += '<p style="font-weight:bold;color:#1b5e20;margin:0 0 10px 0;font-size:13px">✅ Fornecedores Confirmados</p>';
+    let total = 0;
+    aprovacoes.forEach(a => {
+      total += Number(a.valor || 0);
+      html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px">
+        <span><strong>${htmlEsc(a.produto || 'Item')}</strong> — ${htmlEsc(a.fornecedor)}</span>
+        <span style="color:#2e7d32;font-weight:bold">R$ ${Number(a.valor).toFixed(2)}</span>
+      </div>`;
+    });
+    html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:bold;color:#1b5e20"><span>Total</span><span>R$ ${total.toFixed(2)}</span></div>`;
+    html += '</div>';
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<p style="font-size:12px;color:#c62828;padding:8px">Erro: ${e.message}</p>`;
+  }
+}
+
+// Refresh automático a cada 60 segundos quando o app está ativo
+let _autoRefreshInterval = null;
+function iniciarRefreshAutomatico() {
+  if (_autoRefreshInterval) clearInterval(_autoRefreshInterval);
+  _autoRefreshInterval = setInterval(() => {
+    if (document.visibilityState === 'visible') {
+      carregar().catch(() => {});
+    }
+  }, 60000);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    carregar().catch(() => {});
+  }
+});
 
 function filtrarHistorico() {
   const filtro = document.getElementById('historicoFiltro')?.value?.toLowerCase() || '';
@@ -1659,10 +1807,8 @@ async function selecionarFornecedorCotacao(compraId, fornecedor, valor) {
     const compra = await js(API + `/compras/${compraId}`);
     
     if (compra.tipo_solicitacao === 'lista') {
-      // Para lista: abrir página de seleção em nova aba (igual ao link do email)
-      const token = btoa('lista:' + compraId);
-      const url = `${API}/selecionar-fornecedores-lista/${token}`;
-      window.open(url, '_blank');
+      // Para lista: abrir modal de seleção por item diretamente no app
+      await abrirModalAprovarLista(compraId);
       return;
     }
   } catch(e) {
