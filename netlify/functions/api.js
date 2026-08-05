@@ -460,7 +460,7 @@ app.get("/compras/:id/aprovacoes",async(req,res)=>{
 
 app.get("/compras/:id/cotacoes",async(req,res)=>{
   try{
-    const r = await q(`SELECT * FROM cotacoes WHERE compra_id=$1 ORDER BY valor ASC`,[req.params.id]);
+    const r = await q(`SELECT c.*, lci.produto as item_nome, lci.quantidade as item_qtd, lci.unidade as item_unidade FROM cotacoes c LEFT JOIN lista_compras_itens lci ON c.item_id = lci.id WHERE c.compra_id=$1 ORDER BY c.item_id ASC, c.valor ASC`,[req.params.id]);
     res.json(r.rows);
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });

@@ -1412,44 +1412,67 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
       </div>`;
     
     if (cotacoes && cotacoes.length > 0) {
-      // Para lista de compra: tabela compacta com fornecedores nas colunas
+      // Para lista de compra: tabela planilha (produtos nas linhas, fornecedores nas colunas)
       if (compra.tipo_solicitacao === 'lista') {
         const fornecedoresUnicos = [...new Set(cotacoes.map(c => c.fornecedor))];
-        // Agrupar cotações por item_id
-        const itensMapa = {};
+        // Agrupar por item_id
+        const itensMap = {};
         cotacoes.forEach(cot => {
-          if (!itensMapa[cot.item_id]) itensMapa[cot.item_id] = { nome: cot.item_nome || `Item ${cot.item_id}`, cots: {} };
-          itensMapa[cot.item_id].cots[cot.fornecedor] = cot.valor;
+          const key = cot.item_id || cot.id;
+          if (!itensMap[key]) itensMap[key] = { nome: cot.item_nome || cot.fornecedor, qtd: cot.item_qtd, unidade: cot.item_unidade, precos: {} };
+          itensMap[key].precos[cot.fornecedor] = Number(cot.valor || 0);
         });
-        // Calcular totais por fornecedor
-        const totaisForn = {};
-        fornecedoresUnicos.forEach(f => {
-          totaisForn[f] = cotacoes.filter(c => c.fornecedor === f).reduce((s, c) => s + Number(c.valor || 0), 0);
-        });
-        const nItens = Object.keys(itensMapa).length;
+        const itensLista = Object.values(itensMap);
+        // Totais por fornecedor
+        const totais = {};
+        fornecedoresUnicos.forEach(f => { totais[f] = itensLista.reduce((s, it) => s + (it.precos[f] || 0), 0); });
+        const menorTotal = Math.min(...Object.values(totais));
+        
         cardHtml += `
           <div style="overflow-x:auto;margin-top:12px">
-            <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:400px">
               <thead>
                 <tr style="background:#052e16;color:white">
-                  <th style="padding:10px 12px;text-align:left;border-radius:6px 0 0 0">Fornecedor</th>
-                  <th style="padding:10px 12px;text-align:center">Itens</th>
-                  <th style="padding:10px 12px;text-align:right">Total</th>
-                  ${compra.status === 'Pendente_aprovacao' ? '<th style="padding:10px 12px;text-align:center;border-radius:0 6px 0 0">Ação</th>' : ''}
+                  <th style="padding:10px 12px;text-align:left;min-width:140px">Produto</th>
+                  ${fornecedoresUnicos.map(f => `<th style="padding:10px 12px;text-align:center;white-space:nowrap">${htmlEsc(f)}</th>`).join('')}
                 </tr>
               </thead>
               <tbody>
-                ${fornecedoresUnicos.map((f, i) => {
+                ${itensLista.map((it, i) => {
                   const bg = i % 2 === 0 ? '#f9f9f9' : 'white';
+                  const valoresItem = fornecedoresUnicos.map(f => it.precos[f] || null).filter(v => v);
+                  const menorItem = valoresItem.length ? Math.min(...valoresItem) : null;
                   return `<tr style="background:${bg}">
-                    <td style="padding:10px 12px;font-weight:600;border-bottom:1px solid #eee">${htmlEsc(f)}</td>
-                    <td style="padding:10px 12px;text-align:center;color:#666;border-bottom:1px solid #eee">${cotacoes.filter(c => c.fornecedor === f).length}/${nItens || cotacoes.length}</td>
-                    <td style="padding:10px 12px;text-align:right;font-weight:bold;color:#2e7d32;border-bottom:1px solid #eee">R$ ${totaisForn[f].toFixed(2)}</td>
-                    ${compra.status === 'Pendente_aprovacao' ? `<td style="padding:8px 12px;text-align:center;border-bottom:1px solid #eee"><button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f)}&quot;, ${totaisForn[f]})" style="background:#2e7d32;padding:6px 14px;font-size:12px">✅ Aprovar</button></td>` : ''}
+                    <td style="padding:9px 12px;border-bottom:1px solid #eee">
+                      <div style="font-weight:600;color:#222">${htmlEsc(it.nome || '-')}</div>
+                      ${it.qtd ? `<div style="font-size:11px;color:#888">${it.qtd} ${it.unidade || ''}</div>` : ''}
+                    </td>
+                    ${fornecedoresUnicos.map(f => {
+                      const v = it.precos[f];
+                      const isMenor = v && v === menorItem;
+                      return `<td style="padding:9px 12px;text-align:center;border-bottom:1px solid #eee;${isMenor ? 'background:#e8f5e9;' : ''}">
+                        ${v ? `<span style="font-weight:${isMenor ? 'bold' : '500'};color:${isMenor ? '#1b5e20' : '#444'}">${isMenor ? '🟢 ' : ''}R$ ${v.toFixed(2)}</span>` : '<span style="color:#ccc">—</span>'}
+                      </td>`;
+                    }).join('')}
                   </tr>`;
                 }).join('')}
+                <tr style="background:#e8f5e9;font-weight:bold">
+                  <td style="padding:10px 12px;color:#1b5e20;border-top:2px solid #1b5e20">TOTAL</td>
+                  ${fornecedoresUnicos.map(f => {
+                    const isMelhor = totais[f] === menorTotal;
+                    return `<td style="padding:10px 12px;text-align:center;color:${isMelhor ? '#1b5e20' : '#333'};border-top:2px solid #1b5e20;${isMelhor ? 'background:#c8e6c9;' : ''}">
+                      ${isMelhor ? '🏆 ' : ''}R$ ${totais[f].toFixed(2)}
+                    </td>`;
+                  }).join('')}
+                </tr>
               </tbody>
             </table>
+            ${compra.status === 'Pendente_aprovacao' ? `
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+              ${fornecedoresUnicos.map(f => `
+                <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f)}&quot;, ${totais[f]})" style="background:#2e7d32;padding:7px 16px;font-size:13px">✅ Aprovar ${htmlEsc(f)} &mdash; R$ ${totais[f].toFixed(2)}</button>
+              `).join('')}
+            </div>` : ''}
           </div>`;
       } else {
         // Compra regular: mostrar cada cotação individualmente
