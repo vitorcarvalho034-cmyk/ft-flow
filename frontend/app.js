@@ -1077,7 +1077,10 @@ async function confirmarAprovacaoNoApp() {
     mostrarSucesso(`✅ Compra aprovada por ${aprovador}! Admin notificado por email.`);
     window._cotacaoSelecionadaParaAprovar = null;
     fecharModalAprovarNoApp();
-    cotacoesGerais();
+    // Manter o filtro ativo após aprovar
+    const filtroAtivo = window._cotacoesFiltroAtivo || 'pendente-aprovacao';
+    await cotacoesGerais();
+    filtrarCotacoesPor(filtroAtivo);
   } catch(e) {
     mostrarErro(e.message);
   }
@@ -1207,7 +1210,9 @@ async function cotacoesGerais(){
     cotacoes: cotacoesMap.find(m => m.id === c.id)?.cotacoes || []
   }));
   
-  renderizarCotacoes(window._cotacoesDataFull, 'todas');
+  // Manter o filtro ativo se já havia um selecionado
+  const filtroAtivo = window._cotacoesFiltroAtivo || 'todas';
+  renderizarCotacoes(window._cotacoesDataFull, filtroAtivo);
 }
 
 function renderizarCotacoes(cotacoesData, filtro = 'todas') {
@@ -1252,29 +1257,57 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
       </div>`;
     
     if (cotacoes && cotacoes.length > 0) {
-      cardHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
-      
-      cotacoes.forEach(cot => {
-        const selecionado = compra.fornecedor_escolhido === cot.fornecedor;
-        const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
-        const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
-        
-        cardHtml += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center; display: flex; flex-direction: column;">
-          <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(cot.fornecedor)}</div>
-          <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
-          <div style="font-size: 12px; color: #666; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; max-height: 60px; overflow-y: auto;">${cot.observacao || '-'}</div>
-          ${compra.status === 'Pendente_aprovacao' ? `
-          <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(cot.fornecedor)}&quot;, ${cot.valor})" style="width: 100%; margin-bottom: 6px; background: ${selecionado ? '#1b5e20' : '#2e7d32'}">
-            ${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}
-          </button>` : selecionado ? `<div style="color:#2e7d32;font-weight:bold;font-size:12px;margin-bottom:6px">✓ Fornecedor selecionado</div>` : ''}
-          <div style="display: flex; gap: 4px; justify-content: center;">
-            <button class="secondary small" onclick="editarCotacao(${cot.id})" style="flex: 1; font-size: 12px;">✏️ Editar</button>
-            <button class="danger small" onclick="deletarCotacao(${compra.id}, ${cot.id})" style="flex: 1; font-size: 12px;">🗑️ Deletar</button>
-          </div>
-        </div>`;
-      });
-      
-      cardHtml += `</div>`;
+      // Para lista de compra, agrupar por fornecedor e somar valores
+      if (compra.tipo_solicitacao === 'lista') {
+        const fornecedoresMap = {};
+        cotacoes.forEach(cot => {
+          if (!fornecedoresMap[cot.fornecedor]) {
+            fornecedoresMap[cot.fornecedor] = { fornecedor: cot.fornecedor, total: 0, itens: 0, ids: [] };
+          }
+          fornecedoresMap[cot.fornecedor].total += Number(cot.valor || 0);
+          fornecedoresMap[cot.fornecedor].itens += 1;
+          fornecedoresMap[cot.fornecedor].ids.push(cot.id);
+        });
+        const fornecedoresLista = Object.values(fornecedoresMap);
+        cardHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
+        fornecedoresLista.forEach(f => {
+          const selecionado = compra.fornecedor_escolhido === f.fornecedor;
+          const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
+          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+          cardHtml += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center; display: flex; flex-direction: column;">
+            <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(f.fornecedor)}</div>
+            <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 4px;">R$ ${f.total.toFixed(2)}</div>
+            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">${f.itens} ${f.itens === 1 ? 'item' : 'itens'}</div>
+            ${compra.status === 'Pendente_aprovacao' ? `
+            <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f.fornecedor)}&quot;, ${f.total})" style="width: 100%; margin-bottom: 6px; background: ${selecionado ? '#1b5e20' : '#2e7d32'}">
+              ${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}
+            </button>` : selecionado ? `<div style="color:#2e7d32;font-weight:bold;font-size:12px;margin-bottom:6px">✓ Selecionado</div>` : ''}
+          </div>`;
+        });
+        cardHtml += `</div>`;
+      } else {
+        // Compra regular: mostrar cada cotação individualmente
+        cardHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
+        cotacoes.forEach(cot => {
+          const selecionado = compra.fornecedor_escolhido === cot.fornecedor;
+          const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
+          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+          cardHtml += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center; display: flex; flex-direction: column;">
+            <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(cot.fornecedor)}</div>
+            <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; max-height: 60px; overflow-y: auto;">${cot.observacao || '-'}</div>
+            ${compra.status === 'Pendente_aprovacao' ? `
+            <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(cot.fornecedor)}&quot;, ${cot.valor})" style="width: 100%; margin-bottom: 6px; background: ${selecionado ? '#1b5e20' : '#2e7d32'}">
+              ${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}
+            </button>` : selecionado ? `<div style="color:#2e7d32;font-weight:bold;font-size:12px;margin-bottom:6px">✓ Fornecedor selecionado</div>` : ''}
+            <div style="display: flex; gap: 4px; justify-content: center;">
+              <button class="secondary small" onclick="editarCotacao(${cot.id})" style="flex: 1; font-size: 12px;">✏️ Editar</button>
+              <button class="danger small" onclick="deletarCotacao(${compra.id}, ${cot.id})" style="flex: 1; font-size: 12px;">🗑️ Deletar</button>
+            </div>
+          </div>`;
+        });
+        cardHtml += `</div>`;
+      }
     } else {
       cardHtml += `<p style="color: #999; margin: 10px 0;">Nenhuma cotação adicionada ainda.</p>
         <button class="primary" onclick="abrirModalAdicionarFornecedor(${compra.id})">+ Adicionar Fornecedor</button>`;
