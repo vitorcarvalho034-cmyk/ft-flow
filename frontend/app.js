@@ -1412,34 +1412,45 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
       </div>`;
     
     if (cotacoes && cotacoes.length > 0) {
-      // Para lista de compra, agrupar por fornecedor e somar valores
+      // Para lista de compra: tabela compacta com fornecedores nas colunas
       if (compra.tipo_solicitacao === 'lista') {
-        const fornecedoresMap = {};
+        const fornecedoresUnicos = [...new Set(cotacoes.map(c => c.fornecedor))];
+        // Agrupar cotações por item_id
+        const itensMapa = {};
         cotacoes.forEach(cot => {
-          if (!fornecedoresMap[cot.fornecedor]) {
-            fornecedoresMap[cot.fornecedor] = { fornecedor: cot.fornecedor, total: 0, itens: 0, ids: [] };
-          }
-          fornecedoresMap[cot.fornecedor].total += Number(cot.valor || 0);
-          fornecedoresMap[cot.fornecedor].itens += 1;
-          fornecedoresMap[cot.fornecedor].ids.push(cot.id);
+          if (!itensMapa[cot.item_id]) itensMapa[cot.item_id] = { nome: cot.item_nome || `Item ${cot.item_id}`, cots: {} };
+          itensMapa[cot.item_id].cots[cot.fornecedor] = cot.valor;
         });
-        const fornecedoresLista = Object.values(fornecedoresMap);
-        cardHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
-        fornecedoresLista.forEach(f => {
-          const selecionado = compra.fornecedor_escolhido === f.fornecedor;
-          const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
-          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
-          cardHtml += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center; display: flex; flex-direction: column;">
-            <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(f.fornecedor)}</div>
-            <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 4px;">R$ ${f.total.toFixed(2)}</div>
-            <div style="font-size: 11px; color: #888; margin-bottom: 10px;">${f.itens} ${f.itens === 1 ? 'item' : 'itens'}</div>
-            ${compra.status === 'Pendente_aprovacao' ? `
-            <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f.fornecedor)}&quot;, ${f.total})" style="width: 100%; margin-bottom: 6px; background: ${selecionado ? '#1b5e20' : '#2e7d32'}">
-              ${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}
-            </button>` : selecionado ? `<div style="color:#2e7d32;font-weight:bold;font-size:12px;margin-bottom:6px">✓ Selecionado</div>` : ''}
+        // Calcular totais por fornecedor
+        const totaisForn = {};
+        fornecedoresUnicos.forEach(f => {
+          totaisForn[f] = cotacoes.filter(c => c.fornecedor === f).reduce((s, c) => s + Number(c.valor || 0), 0);
+        });
+        const nItens = Object.keys(itensMapa).length;
+        cardHtml += `
+          <div style="overflow-x:auto;margin-top:12px">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead>
+                <tr style="background:#052e16;color:white">
+                  <th style="padding:10px 12px;text-align:left;border-radius:6px 0 0 0">Fornecedor</th>
+                  <th style="padding:10px 12px;text-align:center">Itens</th>
+                  <th style="padding:10px 12px;text-align:right">Total</th>
+                  ${compra.status === 'Pendente_aprovacao' ? '<th style="padding:10px 12px;text-align:center;border-radius:0 6px 0 0">Ação</th>' : ''}
+                </tr>
+              </thead>
+              <tbody>
+                ${fornecedoresUnicos.map((f, i) => {
+                  const bg = i % 2 === 0 ? '#f9f9f9' : 'white';
+                  return `<tr style="background:${bg}">
+                    <td style="padding:10px 12px;font-weight:600;border-bottom:1px solid #eee">${htmlEsc(f)}</td>
+                    <td style="padding:10px 12px;text-align:center;color:#666;border-bottom:1px solid #eee">${cotacoes.filter(c => c.fornecedor === f).length}/${nItens || cotacoes.length}</td>
+                    <td style="padding:10px 12px;text-align:right;font-weight:bold;color:#2e7d32;border-bottom:1px solid #eee">R$ ${totaisForn[f].toFixed(2)}</td>
+                    ${compra.status === 'Pendente_aprovacao' ? `<td style="padding:8px 12px;text-align:center;border-bottom:1px solid #eee"><button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f)}&quot;, ${totaisForn[f]})" style="background:#2e7d32;padding:6px 14px;font-size:12px">✅ Aprovar</button></td>` : ''}
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
           </div>`;
-        });
-        cardHtml += `</div>`;
       } else {
         // Compra regular: mostrar cada cotação individualmente
         cardHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
