@@ -1069,19 +1069,26 @@ async function abrirModalAprovarLista(compraId) {
     for (const item of itens) {
       const cotsItem = cotacoes.filter(c => c.item_id === item.id);
       itensHtml += `
-        <div style="background:#f9f9f9;border:1px solid #ddd;border-radius:8px;padding:14px;margin-bottom:12px">
-          <div style="font-weight:bold;color:#1b5e20;margin-bottom:4px">${htmlEsc(item.produto)}</div>
-          <div style="font-size:12px;color:#666;margin-bottom:10px">${item.quantidade} ${htmlEsc(item.unidade)}</div>
+        <div style="background:#f9f9f9;border:1px solid #e0e0e0;border-radius:10px;padding:16px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="background:#1b5e20;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;flex-shrink:0">${itens.indexOf(item)+1}</span>
+            <div>
+              <div style="font-weight:bold;color:#1b5e20;font-size:15px">${htmlEsc(item.produto)}</div>
+              <div style="font-size:12px;color:#888">${item.quantidade} ${htmlEsc(item.unidade)}</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
           ${cotsItem.length === 0
-            ? '<p style="color:#999;font-size:12px">Nenhuma cotação disponível</p>'
+            ? '<p style="color:#999;font-size:12px;padding:8px">Nenhuma cotação disponível</p>'
             : cotsItem.map(cot => `
-              <label style="display:flex;align-items:center;padding:10px;margin:6px 0;background:white;border:2px solid #ddd;border-radius:6px;cursor:pointer" id="label_cot_${cot.id}">
+              <label style="display:flex;align-items:center;padding:12px 14px;background:white;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;transition:border-color 0.15s" onclick="this.style.borderColor='#2e7d32'">
                 <input type="radio" name="lista_item_${item.id}" value="${cot.id}" data-item="${item.id}" data-valor="${cot.valor}" data-fornecedor="${htmlEsc(cot.fornecedor)}" onchange="atualizarTotalLista()"
-                  style="margin-right:10px;cursor:pointer;accent-color:#2e7d32">
-                <span style="flex:1;font-size:13px">${htmlEsc(cot.fornecedor)}</span>
-                <span style="font-size:14px;font-weight:bold;color:#2e7d32">R$ ${Number(cot.valor).toFixed(2)}</span>
+                  style="width:18px;height:18px;margin-right:12px;cursor:pointer;accent-color:#2e7d32;flex-shrink:0">
+                <span style="flex:1;font-size:14px;font-weight:500;color:#333">${htmlEsc(cot.fornecedor)}</span>
+                <span style="font-size:15px;font-weight:bold;color:#2e7d32;white-space:nowrap">R$ ${Number(cot.valor).toFixed(2)}</span>
               </label>`).join('')
           }
+          </div>
         </div>`;
     }
     
