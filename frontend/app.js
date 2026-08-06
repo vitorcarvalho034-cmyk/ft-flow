@@ -970,7 +970,8 @@ function abrirModalCompra() {
   // Para operador: esconder campo Enviar para e definir valor padrão
   const destLabel = document.getElementById('compDestinatarioLabel');
   const destSelect = document.getElementById('compDestinatarioModal');
-  if (!isAdmin) {
+  const _isAdmin = usuario && usuario.role === 'admin';
+  if (!_isAdmin) {
     if (destLabel) destLabel.style.display = 'none';
     if (destSelect) { destSelect.value = 'dorian'; destSelect.required = false; }
   } else {
