@@ -75,7 +75,9 @@ async function ensureDb(){
   await q(`CREATE TABLE IF NOT EXISTS notificacoes (id SERIAL PRIMARY KEY, titulo TEXT, mensagem TEXT, tipo TEXT, destino_role TEXT DEFAULT 'admin', lida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, criado_em TIMESTAMP DEFAULT NOW())`);
-  await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, email TEXT, telefone TEXT, endereco TEXT, observacoes TEXT)`);
+  await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, email TEXT, telefone TEXT, endereco TEXT, observacoes TEXT, contato TEXT, tipo_produto TEXT)`);
+  await q(`ALTER TABLE fornecedores ADD COLUMN IF NOT EXISTS contato TEXT`).catch(()=>{});
+  await q(`ALTER TABLE fornecedores ADD COLUMN IF NOT EXISTS tipo_produto TEXT`).catch(()=>{});
   await q(`CREATE TABLE IF NOT EXISTS audit_log (id SERIAL PRIMARY KEY, actor_id INTEGER, action TEXT, target_table TEXT, target_id INTEGER, meta JSONB, created_at TIMESTAMP DEFAULT NOW())`);
   
   // Adicionar coluna received_at se nao existir
@@ -1568,6 +1570,37 @@ app.post('/upload/foto', async (req, res) => {
 
 // Basic fornecedores/notificacoes endpoints
 app.get('/fornecedores', async (req, res) => { try{ const r = await q('SELECT * FROM fornecedores ORDER BY nome'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message});}});
+
+app.post('/fornecedores', async (req, res) => {
+  try {
+    const { nome, email, telefone, endereco, observacoes, contato, tipo_produto } = req.body;
+    if (!nome) return res.status(400).json({ error: 'Nome é obrigatório' });
+    // Garantir colunas extras existam
+    await q(`ALTER TABLE fornecedores ADD COLUMN IF NOT EXISTS contato TEXT`).catch(()=>{});
+    await q(`ALTER TABLE fornecedores ADD COLUMN IF NOT EXISTS tipo_produto TEXT`).catch(()=>{});
+    const r = await q('INSERT INTO fornecedores (nome, email, telefone, endereco, observacoes, contato, tipo_produto) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [nome, email||null, telefone||null, endereco||null, observacoes||null, contato||null, tipo_produto||null]);
+    res.json(r.rows[0]);
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.put('/fornecedores/:id', async (req, res) => {
+  try {
+    const { nome, email, telefone, endereco, observacoes } = req.body;
+    if (!nome) return res.status(400).json({ error: 'Nome é obrigatório' });
+    const r = await q('UPDATE fornecedores SET nome=$1, email=$2, telefone=$3, endereco=$4, observacoes=$5 WHERE id=$6 RETURNING *',
+      [nome, email||null, telefone||null, endereco||null, observacoes||null, req.params.id]);
+    if (!r.rows[0]) return res.status(404).json({ error: 'Fornecedor não encontrado' });
+    res.json(r.rows[0]);
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/fornecedores/:id', async (req, res) => {
+  try {
+    await q('DELETE FROM fornecedores WHERE id=$1', [req.params.id]);
+    res.json({ ok: true });
+  } catch(e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
 app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message})}});
 app.put('/notificacoes/:id/marcar-lida', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1 WHERE id=$1', [req.params.id]); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
 app.put('/notificacoes/marcar-todas-lidas', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1'); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
