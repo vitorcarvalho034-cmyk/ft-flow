@@ -511,7 +511,23 @@
   </div>
 </div>
 
-<script src="app.js?v=51"></script>
+<!-- Modal Descrição do Produto -->
+<div id="modalDescricaoProduto" class="modal hidden" onclick="if(event.target===this)fecharModalDescricaoProduto()">
+  <div class="modal-card" style="max-width:600px;width:95%">
+    <div class="modal-head">
+      <h3 id="modalDescricaoProdutoNome">Produto</h3>
+      <button onclick="fecharModalDescricaoProduto()">×</button>
+    </div>
+    <div style="padding:20px">
+      <img id="modalDescricaoProdutoFoto" src="" alt="Foto do produto" style="width:100%;max-height:380px;object-fit:contain;border-radius:8px;margin-bottom:16px;display:none">
+      <div style="background:#f0f8f5;border-left:4px solid #2e7d32;border-radius:6px;padding:16px">
+        <p style="margin:0;font-size:15px;line-height:1.6;color:#333;white-space:pre-wrap" id="modalDescricaoProdutoTexto"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js?v=52"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {

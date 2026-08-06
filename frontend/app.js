@@ -113,6 +113,26 @@ function htmlEsc(s){
   return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
+function abrirModalDescricaoProduto(id, fotoUrl, descricao, nome) {
+  const modal = document.getElementById('modalDescricaoProduto');
+  if (!modal) return;
+  document.getElementById('modalDescricaoProdutoNome').textContent = nome || 'Produto';
+  const fotoEl = document.getElementById('modalDescricaoProdutoFoto');
+  if (fotoUrl) {
+    fotoEl.src = fotoUrl;
+    fotoEl.style.display = 'block';
+    fotoEl.onerror = () => { fotoEl.style.display = 'none'; };
+  } else {
+    fotoEl.style.display = 'none';
+  }
+  document.getElementById('modalDescricaoProdutoTexto').textContent = descricao || 'Sem descrição.';
+  modal.classList.remove('hidden');
+}
+
+function fecharModalDescricaoProduto() {
+  document.getElementById('modalDescricaoProduto')?.classList.add('hidden');
+}
+
 function cardPedidoCompra(c, options = {}) {
   const isAdmin = options.admin ?? false;
   const modo = options.modo || "full";
@@ -204,9 +224,9 @@ function cardPedidoCompra(c, options = {}) {
       ${valor}${fornecedor}
     </div>
     ${itemsHtml}
-    ${c.tipo_solicitacao !== 'lista' ? `<div class="pedido-descricao-box">
-      <span class="pedido-label">Descrição do produto</span>
-      <p class="pedido-descricao-texto">${descricaoTxt}</p>
+    ${c.tipo_solicitacao !== 'lista' ? `<div class="pedido-descricao-box" onclick="abrirModalDescricaoProduto(${c.id}, '${htmlEsc(c.foto_url||'')}', '${htmlEsc(c.descricao||'')}', '${htmlEsc(c.item||'')}')" style="cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background=''">
+      <span class="pedido-label" style="display:flex;align-items:center;gap:6px">Descrição do produto <span style="font-size:11px;color:#2e7d32;font-weight:normal">🔍 clique para ampliar</span></span>
+      <p class="pedido-descricao-texto" style="margin:0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${descricaoTxt}</p>
     </div>` : ''}
     ${c.tipo_solicitacao !== 'lista' ? link : ''}
     ${acoes}
