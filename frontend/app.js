@@ -1314,21 +1314,28 @@ async function verDetalhesListaHistorico(compraId) {
   }
 }
 
-// Refresh automático a cada 60 segundos quando o app está ativo
+// Refresh automático inteligente — só atualiza se não há modal aberto nem formulário preenchido
+function podeFazerRefresh() {
+  // Verificar se algum modal está aberto
+  const modalAberto = document.querySelector('.modal:not(.hidden)');
+  if (modalAberto) return false;
+  // Verificar se há algum input/textarea preenchido pelo usuário
+  const inputs = document.querySelectorAll('input:not([type=hidden]):not([type=radio]):not([type=checkbox]), textarea, select');
+  for (const inp of inputs) {
+    if (inp.value && inp.value.trim() !== '' && inp.value !== inp.defaultValue) return false;
+  }
+  return true;
+}
+
 let _autoRefreshInterval = null;
 function iniciarRefreshAutomatico() {
   if (_autoRefreshInterval) clearInterval(_autoRefreshInterval);
   _autoRefreshInterval = setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      carregar().catch(() => {});
+    if (document.visibilityState === 'visible' && podeFazerRefresh()) {
+      atualizarContadorNotificacoes().catch(() => {});
     }
   }, 60000);
 }
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    carregar().catch(() => {});
-  }
-});
 
 function filtrarHistorico() {
   const filtro = document.getElementById('historicoFiltro')?.value?.toLowerCase() || '';
