@@ -349,7 +349,7 @@ app.post('/admin/change-password', async (req, res) => {
 app.get("/compras",async(req,res)=>{
   try{
     const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(50, Number(req.query.limit) || 20);
+    const limit = Math.min(2000, Number(req.query.limit) || 20);
     const offset = (page - 1) * limit;
     const total = await q(`SELECT COUNT(*)::int total FROM compras`);
     const data = await q(`SELECT * FROM compras ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
@@ -798,8 +798,8 @@ app.post('/manutencoes', async (req, res) => {
     // Se precisa de compra, criar automaticamente
     if (b.precisa_compra === '1' || b.precisa_compra === true) {
       const compra = await q(
-        `INSERT INTO compras (item, quantidade, unidade, solicitante, categoria, destino, status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [b.item_compra || 'Peça para manutenção', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Não informado', 'Peças de manutenção', 'Manutenção', 'Em cotação']
+        `INSERT INTO compras (item, quantidade, unidade, solicitante, categoria, destino, status, tipo_solicitacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+        [b.item_compra || 'Peça para manutenção', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Não informado', 'Peças de manutenção', 'Manutenção', 'Em cotação', 'compra']
       );
       
       // Registrar no audit log
