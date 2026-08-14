@@ -318,7 +318,7 @@ async function carregar(){
 }
 
 function st(s){
-  if(s==="Concluído"||s==="Recebido"||s==="Confirmada")return `<span class="badge done">${s}</span>`;
+  if(s==="Concluído"||s==="Recebido"||s==="Confirmada"||s==="Comprado")return `<span class="badge done">${s}</span>`;
   if(s==="Aguardando peça"||s==="Em cotação"||s==="Aberta"||s==="Pendente")return `<span class="badge wait">${s}</span>`;
   return `<span class="badge open">${s||"-"}</span>`;
 }
@@ -1068,6 +1068,24 @@ async function statusCompra(id,status){
   }
 }
 
+async function confirmarCompra(id) {
+  const compra = window._historicoData?.find(c => Number(c.id) === Number(id));
+  const item = compra?.item || 'esta compra';
+  const destino = compra?.destino || 'o destino informado';
+  if (!confirm(`Confirmar que ${item} já foi comprado?\n\nO status será alterado para "Comprado" e o produto ficará registrado como a caminho de ${destino}.`)) return;
+  try {
+    await js(API + `/compras/${id}/confirmar-compra`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    mostrarSucesso(`🛒 Compra confirmada! O produto segue para: ${destino}.`);
+    await historico();
+  } catch (e) {
+    mostrarErro(e.message || 'Não foi possível confirmar a compra.');
+  }
+}
+
 let _aprovarNoAppId = null;
 let _aprovarListaId = null;
 let _aprovarListaSelecoes = {};
@@ -1267,12 +1285,18 @@ async function historico(){
         ${
           historicoData.length
             ? historicoData.map(c => {
-              const dataRecebimento = c.received_at ? new Date(c.received_at).toLocaleDateString('pt-BR', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '-';
+              const statusNormalizado = normalizarStatus(c.status);
+              const dataMarco = c.purchased_at || c.received_at || c.updated_at || c.created_at;
+              const dataFormatada = dataMarco ? new Date(dataMarco).toLocaleDateString('pt-BR', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '-';
+              const rotuloData = statusNormalizado === 'comprado' ? 'Comprado em:' : 'Aprovado em:';
               const card = cardPedidoCompra(c);
               const btnDetalhes = c.tipo_solicitacao === 'lista'
                 ? `<button class="secondary" style="margin-top:8px;font-size:12px" onclick="verDetalhesListaHistorico(${c.id})">📋 Ver fornecedores confirmados</button>`
                 : '';
-              return card + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #ddd;font-size:12px;color:#666;display:flex;align-items:center;gap:10px"><small><strong>Aprovado em:</strong> ${dataRecebimento}</small>${btnDetalhes}</div><div id="detalhesLista_${c.id}" style="display:none"></div>`;
+              const btnComprado = (statusNormalizado === 'aprovado' || statusNormalizado === 'aprovada') && usuario?.role === 'admin'
+                ? `<button class="primary" style="margin-top:8px;font-size:12px;background:#1565c0" onclick="confirmarCompra(${c.id})">🛒 Marcar como comprado</button>`
+                : '';
+              return card + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #ddd;font-size:12px;color:#666;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><small><strong>${rotuloData}</strong> ${dataFormatada}</small>${btnComprado}${btnDetalhes}</div><div id="detalhesLista_${c.id}" style="display:none"></div>`;
             }).join("")
             : `<div class="card"><small>Nenhum item no histórico.</small></div>`
         }

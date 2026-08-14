@@ -80,8 +80,9 @@ async function ensureDb(){
   await q(`ALTER TABLE fornecedores ADD COLUMN IF NOT EXISTS tipo_produto TEXT`).catch(()=>{});
   await q(`CREATE TABLE IF NOT EXISTS audit_log (id SERIAL PRIMARY KEY, actor_id INTEGER, action TEXT, target_table TEXT, target_id INTEGER, meta JSONB, created_at TIMESTAMP DEFAULT NOW())`);
   
-  // Adicionar coluna received_at se nao existir
+  // Datas de controle do fluxo de compra
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(e => console.log('received_at column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP`).catch(e => console.log('purchased_at column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_by INTEGER`).catch(e => console.log('received_by column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS questionamento TEXT`).catch(e => console.log('questionamento column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS resposta_admin TEXT`).catch(e => console.log('resposta_admin column already exists'));
@@ -500,6 +501,30 @@ app.delete("/compras/:id/cotacoes/:preco_id", async (req, res) => {
 });
 
 app.put("/compras/:id/status",async(req,res)=>{try{await q(`UPDATE compras SET status=$1 WHERE id=$2`,[req.body.status,req.params.id]);res.json({ok:true});}catch(e){res.status(500).json({error:e.message});}});
+
+// Confirma a realização da compra após a aprovação, antes da entrega/recebimento no destino.
+app.post('/compras/:id/confirmar-compra', async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas o administrador pode confirmar a compra' });
+    const id = req.params.id;
+    const compra = await q('SELECT id, item, status, destino FROM compras WHERE id=$1', [id]);
+    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
+    const statusAtual = String(compra.rows[0].status || '').trim().toLowerCase();
+    if (!['aprovado', 'aprovada'].includes(statusAtual)) {
+      return res.status(409).json({ error: 'Somente compras aprovadas podem ser marcadas como compradas' });
+    }
+    await q(`UPDATE compras SET status='Comprado', purchased_at=NOW() WHERE id=$1`, [id]);
+    await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)', [
+      req.user.id || 0,
+      'confirmar_compra',
+      'compras',
+      id,
+      JSON.stringify({ item: compra.rows[0].item, destino: compra.rows[0].destino || null, confirmado_por: req.user.username || req.user.nome || 'Administrador' })
+    ]);
+    res.json({ ok: true, status: 'Comprado', destino: compra.rows[0].destino || null });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{try{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});}catch(e){res.status(500).json({error:e.message});}});
 
 // Approve received (admin only)
