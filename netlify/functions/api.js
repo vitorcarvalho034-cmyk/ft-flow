@@ -73,6 +73,8 @@ async function ensureDb(){
   await q(`CREATE TABLE IF NOT EXISTS cotacoes (id SERIAL PRIMARY KEY, compra_id INTEGER, fornecedor TEXT, valor REAL, observacao TEXT)`);
   await q(`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS item_id INTEGER`).catch(e => console.log('item_id column already exists'));
   await q(`CREATE TABLE IF NOT EXISTS notificacoes (id SERIAL PRIMARY KEY, titulo TEXT, mensagem TEXT, tipo TEXT, destino_role TEXT DEFAULT 'admin', lida INTEGER DEFAULT 0, created_at TIMESTAMP DEFAULT NOW())`);
+  // Evita acúmulo de alertas já lidos por meses.
+  await q(`DELETE FROM notificacoes WHERE lida=1 AND created_at < NOW() - INTERVAL '30 days'`).catch(e => console.log('notification cleanup skipped', e.message));
   await q(`CREATE TABLE IF NOT EXISTS estoque (id SERIAL PRIMARY KEY, nome TEXT, categoria TEXT, unidade TEXT, quantidade REAL DEFAULT 0, minimo REAL DEFAULT 0, foto_url TEXT, fornecedor TEXT, local TEXT, observacoes TEXT)`);
   await q(`CREATE TABLE IF NOT EXISTS manutencoes (id SERIAL PRIMARY KEY, solicitante TEXT, data_ocorrencia TEXT, tipo TEXT, local_item TEXT, defeito TEXT, urgencia TEXT, status TEXT DEFAULT 'Aberto', responsavel TEXT, solucao TEXT, precisa_compra INTEGER DEFAULT 0, item_compra TEXT, quantidade_compra REAL, categoria_compra TEXT, destino_compra TEXT, criado_em TIMESTAMP DEFAULT NOW())`);
   await q(`CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT UNIQUE, email TEXT, telefone TEXT, endereco TEXT, observacoes TEXT, contato TEXT, tipo_produto TEXT)`);
@@ -84,6 +86,8 @@ async function ensureDb(){
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(e => console.log('received_at column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP`).catch(e => console.log('purchased_at column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_by INTEGER`).catch(e => console.log('received_by column already exists'));
+  // Recupera o vínculo de compras antigas criadas a partir de uma manutenção.
+  await q(`UPDATE compras c SET manutencao_id=(a.meta->>'manutencao_id')::INTEGER FROM audit_log a WHERE c.id=a.target_id AND c.manutencao_id IS NULL AND a.action='criar_compra_manutencao' AND (a.meta->>'manutencao_id') ~ '^[0-9]+$'`).catch(e => console.log('maintenance link migration skipped', e.message));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS questionamento TEXT`).catch(e => console.log('questionamento column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS resposta_admin TEXT`).catch(e => console.log('resposta_admin column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_questionamento VARCHAR(50)`).catch(e => console.log('status_questionamento column already exists'));
@@ -309,6 +313,17 @@ async function notify(titulo,msg,tipo="sistema",dados={}){
   if (tipo === 'compra' || tipo === 'manutencao') whatsapp(titulo, montarTextoWhatsApp(titulo,dados,msg)).catch(e=>console.log('WA err',e.message));
 }
 
+// Mantém o mesmo nome de fornecedor em todas as cotações, evitando duplicidades por maiúscula/minúscula.
+async function normalizarFornecedor(nome) {
+  const nomeLimpo = String(nome || '').trim().replace(/\s+/g, ' ');
+  if (!nomeLimpo) return '';
+  const existente = await q(`SELECT nome FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)) ORDER BY id ASC LIMIT 1`, [nomeLimpo]);
+  if (existente.rows[0]?.nome) return existente.rows[0].nome;
+  await q(`INSERT INTO fornecedores (nome) VALUES ($1) ON CONFLICT (nome) DO NOTHING`, [nomeLimpo]);
+  const criado = await q(`SELECT nome FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)) ORDER BY id ASC LIMIT 1`, [nomeLimpo]);
+  return criado.rows[0]?.nome || nomeLimpo;
+}
+
 // LOGIN
 app.post("/auth/login", async (req, res) => {
   try{
@@ -374,9 +389,14 @@ app.post("/compras",async(req,res)=>{
       // Salvar cada item da lista com múltiplos fornecedores
       for (const item of b.itens) {
         // Normalizar fornecedores: aceita array de fornecedores ou campo único legado
-        const fornecedores = Array.isArray(item.fornecedores) && item.fornecedores.length > 0
+        const fornecedoresBrutos = Array.isArray(item.fornecedores) && item.fornecedores.length > 0
           ? item.fornecedores
           : (item.fornecedor ? [{fornecedor: item.fornecedor, preco: item.preco}] : []);
+        const fornecedores = [];
+        for (const forn of fornecedoresBrutos) {
+          const fornecedor = await normalizarFornecedor(forn.fornecedor);
+          if (fornecedor) fornecedores.push({ ...forn, fornecedor });
+        }
         const primForn = fornecedores[0] || {};
         const itemResult = await q(
           `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
@@ -468,6 +488,18 @@ app.get("/compras/:id/cotacoes",async(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
+// Carrega em uma única resposta todas as compras que ainda exigem cotação ou aprovação.
+app.get('/cotacoes/abertas', async (req, res) => {
+  try {
+    const statusEmAberto = ['pendente', 'em cotação', 'pendente_aprovacao', 'pendente aprovaçao', 'aguardando aprovação', 'em andamento', 'rascunho'];
+    const compras = await q(`SELECT * FROM compras WHERE LOWER(TRIM(status)) = ANY($1::text[]) ORDER BY id DESC`, [statusEmAberto]);
+    const ids = compras.rows.map(c => c.id);
+    if (!ids.length) return res.json({ compras: [], cotacoes: [] });
+    const cotacoes = await q(`SELECT c.*, lci.produto as item_nome, lci.quantidade as item_qtd, lci.unidade as item_unidade FROM cotacoes c LEFT JOIN lista_compras_itens lci ON c.item_id=lci.id WHERE c.compra_id = ANY($1::int[]) ORDER BY c.compra_id DESC, c.item_id ASC, c.valor ASC`, [ids]);
+    res.json({ compras: compras.rows, cotacoes: cotacoes.rows });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 app.get("/cotacoes/:id",async(req,res)=>{
   try{
     const r = await q(`SELECT * FROM cotacoes WHERE id=$1`,[req.params.id]);
@@ -478,16 +510,20 @@ app.get("/cotacoes/:id",async(req,res)=>{
 app.post("/compras/:id/cotacoes",async(req,res)=>{
   try{
     const b=req.body;
-    const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao,item_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,[req.params.id,b.fornecedor,b.valor,b.observacao,b.item_id||null]);
-    res.json({id:r.rows[0].id});
+    const fornecedor = await normalizarFornecedor(b.fornecedor);
+    if (!fornecedor) return res.status(400).json({ error: 'Informe o fornecedor' });
+    const r=await q(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao,item_id) VALUES ($1,$2,$3,$4,$5) RETURNING id`,[req.params.id,fornecedor,b.valor,b.observacao,b.item_id||null]);
+    res.json({id:r.rows[0].id, fornecedor});
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
 app.put("/cotacoes/:id",async(req,res)=>{
   try{
     const b=req.body;
-    await q(`UPDATE cotacoes SET fornecedor=$1,valor=$2,observacao=$3 WHERE id=$4`,[b.fornecedor,b.valor,b.observacao,req.params.id]);
-    res.json({ok:true});
+    const fornecedor = await normalizarFornecedor(b.fornecedor);
+    if (!fornecedor) return res.status(400).json({ error: 'Informe o fornecedor' });
+    await q(`UPDATE cotacoes SET fornecedor=$1,valor=$2,observacao=$3 WHERE id=$4`,[fornecedor,b.valor,b.observacao,req.params.id]);
+    res.json({ok:true, fornecedor});
   }catch(e){res.status(500).json({error:e.message});}
 });
 
@@ -640,6 +676,9 @@ app.post('/compras/:id/confirmar-recebimento', async (req, res) => {
     
     const c = compra.rows[0];
     const confirmedBy = req.user?.nome || req.user?.username || 'Admin';
+    if (String(c.status || '').trim().toLowerCase() !== 'comprado') {
+      return res.status(409).json({ error: 'Marque a compra como Comprado antes de confirmar o recebimento' });
+    }
     
     await q(`UPDATE compras SET status='Recebido', received_at=NOW() WHERE id=$1`, [id]);
     
@@ -791,7 +830,7 @@ app.get('/dashboard', async (req, res) => {
     const manutencoesAbertas = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aberto'`);
     const urgentes = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE urgencia='Alta'`);
     const aguardandoPeca = await q(`SELECT COUNT(*)::int total FROM manutencoes WHERE status='Aguardando peça'`);
-    const comprasPendentes = await q(`SELECT COUNT(*)::int total FROM compras WHERE status IN ('Em cotação','Aprovado')`);
+    const comprasPendentes = await q(`SELECT COUNT(*)::int total FROM compras WHERE status IN ('Em cotação','Pendente_aprovacao','Aprovado','Comprado')`);
     const estoqueBaixo = await q(`SELECT COUNT(*)::int total FROM estoque WHERE quantidade < minimo`);
     res.json({
       manutencoesAbertas: manutencoesAbertas.rows[0].total,
@@ -806,8 +845,8 @@ app.get('/dashboard', async (req, res) => {
 // MANUTENCOES
 app.get('/manutencoes', async (req, res) => {
   try {
-    const limit = Math.min(50, Number(req.query.limit) || 20);
-    const r = await q(`SELECT * FROM manutencoes ORDER BY id DESC LIMIT $1`, [limit]);
+    const limit = Math.min(2000, Number(req.query.limit) || 20);
+    const r = await q(`SELECT m.*, c.id AS compra_id, c.status AS compra_status, c.item AS compra_item FROM manutencoes m LEFT JOIN LATERAL (SELECT id,status,item FROM compras WHERE manutencao_id=m.id ORDER BY id DESC LIMIT 1) c ON TRUE ORDER BY m.id DESC LIMIT $1`, [limit]);
     res.json(r.rows);
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
@@ -823,8 +862,8 @@ app.post('/manutencoes', async (req, res) => {
     // Se precisa de compra, criar automaticamente
     if (b.precisa_compra === '1' || b.precisa_compra === true) {
       const compra = await q(
-        `INSERT INTO compras (item, quantidade, unidade, solicitante, categoria, destino, status, tipo_solicitacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-        [b.item_compra || 'Peça para manutenção', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Não informado', 'Peças de manutenção', 'Manutenção', 'Em cotação', 'compra']
+        `INSERT INTO compras (manutencao_id, item, quantidade, unidade, solicitante, categoria, destino, status, tipo_solicitacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [r.rows[0].id, b.item_compra || 'Peça para manutenção', b.quantidade_compra || 1, b.unidade_compra || 'un', b.solicitante || 'Não informado', 'Peças de manutenção', 'Manutenção', 'Em cotação', 'compra']
       );
       
       // Registrar no audit log
@@ -851,7 +890,7 @@ app.post('/manutencoes', async (req, res) => {
 
 app.get('/manutencoes/:id', async (req, res) => {
   try {
-    const r = await q(`SELECT * FROM manutencoes WHERE id=$1`, [req.params.id]);
+    const r = await q(`SELECT m.*, c.id AS compra_id, c.status AS compra_status, c.item AS compra_item FROM manutencoes m LEFT JOIN LATERAL (SELECT id,status,item FROM compras WHERE manutencao_id=m.id ORDER BY id DESC LIMIT 1) c ON TRUE WHERE m.id=$1`, [req.params.id]);
     res.json(r.rows[0] || {});
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
@@ -1626,7 +1665,13 @@ app.delete('/fornecedores/:id', async (req, res) => {
     res.json({ ok: true });
   } catch(e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
-app.get('/notificacoes', async (req, res) => { try{ const r = await q('SELECT * FROM notificacoes ORDER BY id DESC LIMIT 50'); res.json(r.rows);}catch(e){res.status(500).json({error:e.message})}});
+app.get('/notificacoes', async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 30));
+    const r = await q('SELECT * FROM notificacoes ORDER BY lida ASC, id DESC LIMIT $1', [limit]);
+    res.json(r.rows);
+  } catch(e) { res.status(500).json({error:e.message}); }
+});
 app.put('/notificacoes/:id/marcar-lida', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1 WHERE id=$1', [req.params.id]); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
 app.put('/notificacoes/marcar-todas-lidas', async (req, res) => { try{ await q('UPDATE notificacoes SET lida=1'); res.json({ok:true});}catch(e){res.status(500).json({error:e.message})}});
 

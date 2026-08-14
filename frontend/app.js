@@ -57,13 +57,14 @@ const STATUS_ATIVOS_COMPRAS = [
   "pendente aprovaçao",
   "aguardando aprovação",
   "em andamento",
-  "rascunho"
-];
-
-const STATUS_HISTORICO_COMPRAS = [
+  "rascunho",
   "aprovada",
   "aprovado",
-  "comprado",
+  "comprado"
+];
+
+// O histórico fica reservado a solicitações finalizadas, recebidas ou encerradas.
+const STATUS_HISTORICO_COMPRAS = [
   "recebido",
   "entregue",
   "concluído",
@@ -84,6 +85,14 @@ function statusEhAtivo(status) {
 
 function statusEhHistorico(status) {
   return STATUS_HISTORICO_COMPRAS.includes(normalizarStatus(status));
+}
+
+function filaCompra(status) {
+  const s = normalizarStatus(status);
+  if (['pendente_aprovacao', 'pendente aprovaçao', 'aguardando aprovação'].includes(s)) return 'aprovacao';
+  if (['aprovado', 'aprovada'].includes(s)) return 'aprovado';
+  if (s === 'comprado') return 'comprado';
+  return 'cotacao';
 }
 
 function atualizarInfosUsuario() {
@@ -168,12 +177,30 @@ function cardPedidoCompra(c, options = {}) {
   if (modo === "cotacao") {
     acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Ver cotações</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
   } else if (modo === "full" && isAdmin) {
-    // Para lista de compra
+    const etapa = filaCompra(c.status);
+    const btnCotacao = `<button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button>`;
+    const btnExcluir = `<button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button>`;
+    const btnComprado = `<button class="primary" style="background:#1565c0" onclick="confirmarCompra(${c.id})">🛒 Marcar como comprado</button>`;
+    const btnRecebido = `<button class="primary" style="background:#2e7d32" onclick="confirmarRecebimentoCompra(${c.id})">📦 Confirmar recebimento</button>`;
+
     if (c.tipo_solicitacao === 'lista') {
-      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="secondary" onclick="editarListaCompra(${c.id})">Editar</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+      const etapaLista = etapa === 'cotacao'
+        ? `${btnCotacao}<button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button><button class="secondary" onclick="editarListaCompra(${c.id})">Editar</button>`
+        : etapa === 'aprovacao'
+          ? `${btnCotacao}<button class="primary" style="background:#2e7d32" onclick="abrirModalAprovarLista(${c.id})">✅ Aprovar lista</button>`
+          : etapa === 'aprovado'
+            ? btnComprado
+            : btnRecebido;
+      acoes = `<div class="actions" style="margin-top:10px">${etapaLista}${btnExcluir}</div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
     } else {
-      // Para compra regular
-      acoes = `<div class="actions" style="margin-top:10px"><button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button><button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button>${c.status === 'Pendente_aprovacao' ? `<button class="primary" style="background:#2e7d32" onclick="abrirModalAprovarNoApp(${c.id})">✅ Aprovar</button>` : ''}<button class="primary" onclick="statusCompra(${c.id},'Recebido')">Recebido</button><button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button></div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
+      const etapaCompra = etapa === 'cotacao'
+        ? `${btnCotacao}<button class="primary" onclick="abrirModalAprovacaoCompra(${c.id})">Enviar para Aprovação</button>`
+        : etapa === 'aprovacao'
+          ? `${btnCotacao}<button class="primary" style="background:#2e7d32" onclick="abrirModalAprovarNoApp(${c.id})">✅ Aprovar</button>`
+          : etapa === 'aprovado'
+            ? btnComprado
+            : btnRecebido;
+      acoes = `<div class="actions" style="margin-top:10px">${etapaCompra}${btnExcluir}</div><div id="cotacoes-${c.id}" class="cotacao-box hidden"></div>`;
     }
   }
 
@@ -329,7 +356,8 @@ function tabelaMan(data){
   return `<table class="table"><thead><tr><th>ID</th><th>Local/Item</th><th>Especificação</th><th>Tipo</th><th>Urgência</th><th>Status</th><th>Data Conclusão</th><th>Ações</th></tr></thead><tbody>${data.map(m=>{
     const dataConclusao = m.data_conclusao ? new Date(m.data_conclusao).toLocaleDateString('pt-BR') : '-';
     const botoesAcao = m.status==="Concluído"?"✅ Finalizada":`<button class="secondary" onclick="abrirConcluir(${m.id})">Concluir</button> ${isAdmin ? `<button class="primary" onclick="abrirAtualizarStatus(${m.id})">Atualizar Status</button>` : ''} <button class="danger" onclick="excluirManutencao(${m.id})">🗑️ Excluir</button>`;
-    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${dataConclusao}</td><td><button class="secondary" onclick="verDetalhesManutencao(${m.id})">📋 Detalhes</button> ${botoesAcao}</td></tr>`;
+    const compraVinculada = m.compra_id ? `<button class="secondary" style="margin-top:4px;font-size:11px" onclick="abrirCompraVinculada(${m.compra_id})">🛒 Compra #${m.compra_id} — ${htmlEsc(m.compra_status || 'ver')}</button>` : '';
+    return `<tr><td>#${m.id}</td><td><b>${m.local_item||"-"}</b><br><small>${m.defeito||""}</small></td><td>${m.especificacao||"-"}</td><td>${m.tipo||"-"}</td><td>${urg(m.urgencia)}</td><td>${st(m.status)}</td><td>${dataConclusao}</td><td><button class="secondary" onclick="verDetalhesManutencao(${m.id})">📋 Detalhes</button>${compraVinculada} ${botoesAcao}</td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -355,9 +383,49 @@ async function dashboard(){
 }
 
 async function manutencoes(){
-  const data=await js(API+"/manutencoes");
+  const data = await js(API + "/manutencoes?limit=1000");
   const manData = data.data || data;
-  content.innerHTML=`<div class="panel"><div class="actions"><button class="primary" onclick="abrirModalManutencao()">+ Nova Solicitação</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel">${tabelaMan(manData)}</div>`;
+  window._manutencoesData = manData;
+  content.innerHTML = `<div class="panel">
+    <div class="actions"><button class="primary" onclick="abrirModalManutencao()">+ Nova Solicitação</button><button class="secondary" onclick="carregar()">Atualizar</button></div>
+    <div style="margin-top:14px"><input id="manutencoesBusca" type="text" placeholder="🔍 Buscar por local, problema, solicitante ou responsável..." oninput="filtrarManutencoes(window._manutencoesFiltroAtivo||'todas')" style="width:100%;padding:10px 14px;border:1px solid #ddd;border-radius:8px;box-sizing:border-box"></div>
+    <div class="grid" style="margin-top:10px;gap:8px;grid-template-columns:repeat(5,minmax(110px,1fr))">
+      <button class="secondary" id="manFiltro-todas" onclick="filtrarManutencoes('todas')">Todas</button>
+      <button class="secondary" id="manFiltro-abertas" onclick="filtrarManutencoes('abertas')">Abertas</button>
+      <button class="secondary" id="manFiltro-urgentes" onclick="filtrarManutencoes('urgentes')">Urgentes</button>
+      <button class="secondary" id="manFiltro-aguardando" onclick="filtrarManutencoes('aguardando')">Aguardando peça</button>
+      <button class="secondary" id="manFiltro-concluidas" onclick="filtrarManutencoes('concluidas')">Concluídas</button>
+    </div>
+  </div><div class="panel" id="manutencoesContainer"></div>`;
+  filtrarManutencoes('todas');
+}
+
+function filtrarManutencoes(filtro = 'todas') {
+  window._manutencoesFiltroAtivo = filtro;
+  const busca = (document.getElementById('manutencoesBusca')?.value || '').toLowerCase().trim();
+  const dados = (window._manutencoesData || []).filter(m => {
+    const status = normalizarStatus(m.status);
+    if (filtro === 'abertas' && ['concluído', 'concluido'].includes(status)) return false;
+    if (filtro === 'urgentes' && normalizarStatus(m.urgencia) !== 'alta') return false;
+    if (filtro === 'aguardando' && status !== 'aguardando peça') return false;
+    if (filtro === 'concluidas' && !['concluído', 'concluido'].includes(status)) return false;
+    const texto = `${m.id} ${m.local_item} ${m.defeito} ${m.solicitante} ${m.responsavel} ${m.tipo} ${m.compra_item}`.toLowerCase();
+    return !busca || texto.includes(busca);
+  });
+  const alvo = document.getElementById('manutencoesContainer');
+  if (alvo) alvo.innerHTML = dados.length ? tabelaMan(dados) : '<p style="color:#647066">Nenhuma manutenção encontrada.</p>';
+  ['todas','abertas','urgentes','aguardando','concluidas'].forEach(id => {
+    const btn = document.getElementById(`manFiltro-${id}`);
+    if (btn) { btn.style.background = id === filtro ? '#052e16' : '#e5e7eb'; btn.style.color = id === filtro ? 'white' : '#111'; }
+  });
+}
+
+function abrirCompraVinculada(compraId) {
+  tela = 'compras';
+  const titulo = document.getElementById('pageTitle');
+  if (titulo) titulo.innerText = 'Compras';
+  carregar();
+  mostrarSucesso(`Abrindo a compra #${compraId} na fila correspondente.`);
 }
 
 function abrirModalManutencao() {
@@ -438,10 +506,8 @@ async function excluirManutencao(id){
 
 async function verDetalhesManutencao(id) {
   try {
-    const data = await js(API + `/manutencoes`);
-    const manData = data.data || data;
-    const m = manData.find(x => x.id === id);
-    if (!m) return mostrarErro("Manutenção não encontrada");
+    const m = await js(API + `/manutencoes/${id}`);
+    if (!m || !m.id) return mostrarErro("Manutenção não encontrada");
     const fotoHtml = m.foto_url
       ? `<div style="margin-bottom:16px;text-align:center"><img src="${htmlEsc(m.foto_url)}" onclick="abrirLightbox('${htmlEsc(m.foto_url)}')" style="max-width:100%;max-height:350px;border-radius:8px;cursor:zoom-in;object-fit:contain" alt="Foto da manutenção" onerror="this.parentElement.style.display='none'"><br><small style="color:#666">Clique para ampliar</small></div>` : '';
     const campos = [
@@ -459,6 +525,7 @@ async function verDetalhesManutencao(id) {
       ['Precisa Compra', m.precisa_compra == 1 ? 'Sim' : 'Não'],
       ['Item da Compra', m.item_compra],
       ['Quantidade', m.quantidade_compra ? `${m.quantidade_compra} ${m.unidade_compra || ''}` : null],
+      ['Compra vinculada', m.compra_id ? `#${m.compra_id} — ${m.compra_item || 'Compra'} (${m.compra_status || '-'})` : null],
     ];
     const linhas = campos.filter(([,v]) => v).map(([k,v]) =>
       `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f0f0f0"><span style="color:#666;font-size:13px">${k}</span><span style="font-weight:500;font-size:13px;text-align:right;max-width:60%">${htmlEsc(String(v))}</span></div>`
@@ -948,11 +1015,34 @@ async function verComparativoCotacoes(cotacaoId) {
 }
 
 async function compras(){
-  const data=await js(API+"/compras?limit=1000");
+  const data = await js(API + "/compras?limit=1000");
   const compData = data.data || data;
   const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
-  const isAdmin=usuario&&usuario.role==="admin";
-  content.innerHTML=`<div class="panel"><h3>${isAdmin?"Compras e solicitações":"Nova solicitação de compra"}</h3><p style="color:#647066">${isAdmin?"Acompanhe pedidos avulsos e de manutenção.":"Use quando precisar solicitar compra sem abrir manutenção."}</p><div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirModalListaCompra()">📋 Nova Lista de Compra</button><button class="primary" onclick="abrirCompraRapida()">Compra Rápida (<R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button><button class="secondary" onclick="carregar()">Atualizar</button></div></div><div class="panel"><h3>${isAdmin?"Pedidos de compra":"Solicitações enviadas"}</h3><p class="app-version">Versão ${APP_VERSION} — unidade de medida obrigatória (m, cm, kg, g, L, mL, un)</p>${comprasAtivas.map(c=>cardPedidoCompra(c,{admin:isAdmin})).join("")||"Nenhuma solicitação."}</div>`;
+  const isAdmin = usuario && usuario.role === "admin";
+  window._comprasAtivas = comprasAtivas;
+
+  const filas = [
+    { id: 'cotacao', titulo: '🧾 Pendente de cotação', descricao: 'Adicionar e comparar fornecedores antes de enviar para aprovação.', cor: '#b7791f' },
+    { id: 'aprovacao', titulo: '⏳ Pendente de aprovação', descricao: 'Aguardando decisão por email ou diretamente no app.', cor: '#1565c0' },
+    { id: 'aprovado', titulo: '✅ Aprovados para comprar', descricao: 'Já autorizados. Confirme quando a compra for realmente efetuada.', cor: '#2e7d32' },
+    { id: 'comprado', titulo: '📦 Comprados aguardando recebimento', descricao: 'Compras realizadas; confirme quando chegarem ao destino.', cor: '#6a1b9a' }
+  ];
+
+  const filasHtml = filas.map(fila => {
+    const itens = comprasAtivas.filter(c => filaCompra(c.status) === fila.id);
+    return `<details class="panel" ${itens.length ? 'open' : ''} style="margin-top:14px;padding:0;overflow:hidden">
+      <summary style="cursor:pointer;list-style:none;padding:16px 18px;background:#fff;display:flex;justify-content:space-between;align-items:center;border-left:5px solid ${fila.cor}">
+        <div><strong style="font-size:16px">${fila.titulo}</strong><div style="font-size:12px;color:#647066;margin-top:3px">${fila.descricao}</div></div>
+        <span style="background:${fila.cor};color:white;border-radius:16px;padding:4px 10px;font-weight:bold;font-size:13px">${itens.length}</span>
+      </summary>
+      <div style="padding:0 16px 16px;background:#fafcfb">${itens.length ? itens.map(c => cardPedidoCompra(c, {admin:isAdmin})).join('') : '<p style="margin:16px 0;color:#647066">Nenhuma solicitação nesta etapa.</p>'}</div>
+    </details>`;
+  }).join('');
+
+  content.innerHTML = `<div class="panel"><h3>${isAdmin ? 'Compras e solicitações' : 'Nova solicitação de compra'}</h3>
+    <p style="color:#647066">${isAdmin ? 'Trabalhe por etapa: cotar, aprovar, comprar e confirmar o recebimento.' : 'Use quando precisar solicitar compra sem abrir manutenção.'}</p>
+    <div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirModalListaCompra()">📋 Nova Lista de Compra</button>${isAdmin ? '<button class="primary" onclick="abrirCompraRapida()">Compra Rápida (&lt;R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button>' : ''}<button class="secondary" onclick="carregar()">Atualizar</button></div></div>
+    <div style="margin-top:14px">${filasHtml}</div>`;
 }
 function abrirModalCompra() {
   modalCompra.classList.remove("hidden");
@@ -1069,20 +1159,40 @@ async function statusCompra(id,status){
 }
 
 async function confirmarCompra(id) {
-  const compra = window._historicoData?.find(c => Number(c.id) === Number(id));
-  const item = compra?.item || 'esta compra';
-  const destino = compra?.destino || 'o destino informado';
-  if (!confirm(`Confirmar que ${item} já foi comprado?\n\nO status será alterado para "Comprado" e o produto ficará registrado como a caminho de ${destino}.`)) return;
+  let compra = window._historicoData?.find(c => Number(c.id) === Number(id)) || window._comprasAtivas?.find(c => Number(c.id) === Number(id));
   try {
+    if (!compra) compra = await js(API + `/compras/${id}`);
+    const item = compra?.item || 'esta compra';
+    const destino = compra?.destino || 'o destino informado';
+    if (!confirm(`Confirmar que ${item} já foi comprado?\n\nO status será alterado para "Comprado" e o produto ficará registrado como a caminho de ${destino}.`)) return;
     await js(API + `/compras/${id}/confirmar-compra`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
     });
     mostrarSucesso(`🛒 Compra confirmada! O produto segue para: ${destino}.`);
-    await historico();
+    await carregar();
   } catch (e) {
     mostrarErro(e.message || 'Não foi possível confirmar a compra.');
+  }
+}
+
+async function confirmarRecebimentoCompra(id) {
+  let compra = window._comprasAtivas?.find(c => Number(c.id) === Number(id));
+  try {
+    if (!compra) compra = await js(API + `/compras/${id}`);
+    const item = compra?.item || 'esta compra';
+    const destino = compra?.destino || 'o destino informado';
+    if (!confirm(`Confirmar que ${item} foi recebido no destino: ${destino}?`)) return;
+    await js(API + `/compras/${id}/confirmar-recebimento`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    mostrarSucesso(`📦 Recebimento confirmado no destino: ${destino}.`);
+    await carregar();
+  } catch (e) {
+    mostrarErro(e.message || 'Não foi possível confirmar o recebimento.');
   }
 }
 
@@ -1152,6 +1262,24 @@ function atualizarTotalLista() {
     total += Number(r.dataset.valor || 0);
   });
   document.getElementById('modalAprovarListaTotal').textContent = 'R$ ' + total.toFixed(2).replace('.', ',');
+}
+
+function selecionarMenoresPrecosLista() {
+  const radios = [...document.querySelectorAll('#modalAprovarListaItens input[type=radio][data-item]')];
+  const menorPorItem = new Map();
+  radios.forEach(radio => {
+    const itemId = radio.dataset.item;
+    const valor = Number(radio.dataset.valor || 0);
+    const atual = menorPorItem.get(itemId);
+    if (!atual || valor < Number(atual.dataset.valor || 0)) menorPorItem.set(itemId, radio);
+  });
+  menorPorItem.forEach(radio => {
+    radio.checked = true;
+    const label = radio.closest('label');
+    if (label) label.style.borderColor = '#2e7d32';
+  });
+  atualizarTotalLista();
+  mostrarSucesso(`⚡ ${menorPorItem.size} menor(es) preço(s) selecionado(s). Revise antes de confirmar.`);
 }
 
 async function confirmarAprovacaoLista() {
@@ -1263,6 +1391,36 @@ async function salvarCotacao(id){
   }
 }
 
+function formatarDataHistorico(data) {
+  return data ? new Date(data).toLocaleDateString('pt-BR', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '-';
+}
+
+function renderizarHistoricoCompacto(itens) {
+  const container = document.getElementById('historicoContainer');
+  if (!container) return;
+  container.innerHTML = itens.length ? itens.map(c => {
+    const statusNormalizado = normalizarStatus(c.status);
+    const dataMarco = c.received_at || c.updated_at || c.created_at;
+    const rotuloData = ['recebido', 'entregue'].includes(statusNormalizado) ? 'Recebido em' : 'Encerrado em';
+    const detalhesLista = c.tipo_solicitacao === 'lista'
+      ? `<button class="secondary" style="font-size:12px" onclick="event.preventDefault();verDetalhesListaHistorico(${c.id})">📋 Fornecedores confirmados</button>`
+      : '';
+    return `<details class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
+      <summary style="cursor:pointer;list-style:none;padding:14px 16px;display:grid;grid-template-columns:minmax(180px,2fr) minmax(110px,1fr) minmax(120px,1fr) auto;gap:12px;align-items:center">
+        <div><strong>#${c.id} — ${htmlEsc(c.item || 'Compra')}</strong><div style="font-size:12px;color:#647066;margin-top:3px">${htmlEsc(c.destino || 'Destino não informado')}</div></div>
+        <div style="font-size:13px">${st(c.status)}</div>
+        <div style="font-size:12px;color:#647066"><strong>${rotuloData}:</strong><br>${formatarDataHistorico(dataMarco)}</div>
+        <span style="color:#1b5e20;font-size:13px;font-weight:600">Ver detalhes ▾</span>
+      </summary>
+      <div style="border-top:1px solid #e5e7eb;padding:0 16px 16px;background:#fafcfb">
+        ${cardPedidoCompra(c)}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${detalhesLista}</div>
+        <div id="detalhesLista_${c.id}" style="display:none"></div>
+      </div>
+    </details>`;
+  }).join('') : '<div class="card"><small>Nenhum resultado encontrado.</small></div>';
+}
+
 async function historico(){
   const data = await js(API + "/compras?limit=1000");
   const compData = data.data || data;
@@ -1275,37 +1433,12 @@ async function historico(){
   content.innerHTML = `
     <div class="panel">
       <h3>Histórico</h3>
-      <p style="color:#647066">Itens aprovados, comprados, concluídos, rejeitados ou cancelados.</p>
-      
-      <div class="grid" style="margin-bottom: 15px;">
-        <input type="text" id="historicoFiltro" placeholder="Buscar por ID, produto, fornecedor..." style="width: 100%;" onkeyup="filtrarHistorico()">
-      </div>
-
-      <div id="historicoContainer">
-        ${
-          historicoData.length
-            ? historicoData.map(c => {
-              const statusNormalizado = normalizarStatus(c.status);
-              const dataMarco = c.purchased_at || c.received_at || c.updated_at || c.created_at;
-              const dataFormatada = dataMarco ? new Date(dataMarco).toLocaleDateString('pt-BR', {year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'}) : '-';
-              const rotuloData = statusNormalizado === 'comprado' ? 'Comprado em:' : 'Aprovado em:';
-              const card = cardPedidoCompra(c);
-              const btnDetalhes = c.tipo_solicitacao === 'lista'
-                ? `<button class="secondary" style="margin-top:8px;font-size:12px" onclick="verDetalhesListaHistorico(${c.id})">📋 Ver fornecedores confirmados</button>`
-                : '';
-              const btnComprado = (statusNormalizado === 'aprovado' || statusNormalizado === 'aprovada') && usuario?.role === 'admin'
-                ? `<button class="primary" style="margin-top:8px;font-size:12px;background:#1565c0" onclick="confirmarCompra(${c.id})">🛒 Marcar como comprado</button>`
-                : '';
-              return card + `<div style="margin-top:10px;padding-top:10px;border-top:1px solid #ddd;font-size:12px;color:#666;display:flex;align-items:center;gap:10px;flex-wrap:wrap"><small><strong>${rotuloData}</strong> ${dataFormatada}</small>${btnComprado}${btnDetalhes}</div><div id="detalhesLista_${c.id}" style="display:none"></div>`;
-            }).join("")
-            : `<div class="card"><small>Nenhum item no histórico.</small></div>`
-        }
-      </div>
-    </div>
-  `;
-  
-  // Armazenar dados para filtro
+      <p style="color:#647066">Itens recebidos, concluídos, rejeitados ou cancelados. Clique em uma linha para abrir os detalhes.</p>
+      <div class="grid" style="margin-bottom:15px"><input type="text" id="historicoFiltro" placeholder="Buscar por ID, produto, fornecedor ou destino..." style="width:100%;" oninput="filtrarHistorico()"></div>
+      <div id="historicoContainer"></div>
+    </div>`;
   window._historicoData = historicoData;
+  renderizarHistoricoCompacto(historicoData);
 }
 
 async function verDetalhesListaHistorico(compraId) {
@@ -1363,25 +1496,19 @@ function iniciarRefreshAutomatico() {
 
 function filtrarHistorico() {
   const filtro = document.getElementById('historicoFiltro')?.value?.toLowerCase() || '';
-  const historicoContainer = document.getElementById('historicoContainer');
-  
   if (!window._historicoData) return;
-  
   const filtrados = window._historicoData.filter(c => {
-    const texto = `${c.id} ${c.item} ${c.fornecedor_escolhido} ${c.solicitante}`.toLowerCase();
+    const texto = `${c.id} ${c.item} ${c.fornecedor_escolhido} ${c.solicitante} ${c.destino} ${c.categoria}`.toLowerCase();
     return texto.includes(filtro);
   });
-  
-  historicoContainer.innerHTML = filtrados.length
-    ? filtrados.map(c => cardPedidoCompra(c)).join('')
-    : '<div class="card"><small>Nenhum resultado encontrado.</small></div>';
+  renderizarHistoricoCompacto(filtrados);
 }
 
 async function cotacoesGerais(){
-  // Buscar TODAS as compras sem paginação (limit=1000 para pegar tudo)
-  const data=await js(API+"/compras?limit=1000");
-  const compData = data.data || data;
-  const comCotacao = compData.filter(c => statusEhAtivo(c.status));
+  // Uma única requisição substitui várias buscas individuais de cotações.
+  const data = await js(API + "/cotacoes/abertas");
+  const comCotacao = data.compras || [];
+  const cotacoesTodas = data.cotacoes || [];
   
   // Armazenar dados para filtro
   window._cotacoesData = comCotacao;
@@ -1406,15 +1533,10 @@ async function cotacoesGerais(){
     return;
   }
   
-  // Carregar todas as cotações em paralelo para melhor performance
-  const cotacoesMap = await Promise.all(
-    comCotacao.map(c => js(API+`/compras/${c.id}/cotacoes`).then(cots => ({id: c.id, cotacoes: cots})))
-  );
-  
-  // Armazenar cotações para filtro
+  // Agrupar as cotações que já vieram na mesma resposta do servidor.
   window._cotacoesDataFull = comCotacao.map(c => ({
     compra: c,
-    cotacoes: cotacoesMap.find(m => m.id === c.id)?.cotacoes || []
+    cotacoes: cotacoesTodas.filter(cot => Number(cot.compra_id) === Number(c.id))
   }));
   
   // Manter o filtro ativo se já havia um selecionado
@@ -1615,20 +1737,36 @@ async function deletarFornecedor(cotacaoId, fornecedorNome) {
   } catch (e) { mostrarErro("Erro ao deletar: " + e.message); }
 }
 
+function formatoNotificacao(n) {
+  const tipo = n.tipo === 'compra' ? '🛒 Compra' : n.tipo === 'manutencao' ? '🛠️ Manutenção' : 'ℹ️ Sistema';
+  return `<div class="notif-item ${n.lida ? '' : 'unread'}" onclick="marcarNotificacaoLida(${n.id})">
+    <div class="notif-type">${tipo}</div><strong style="font-size:13px">${htmlEsc(n.titulo || 'Atualização')}</strong>
+    <p>${htmlEsc(n.mensagem || '')}</p><small class="notif-date">${new Date(n.created_at).toLocaleString('pt-BR')}</small>
+  </div>`;
+}
+
+async function carregarNotificacoes() {
+  const notifs = await js(API + "/notificacoes?limit=30");
+  const novas = notifs.filter(n => !n.lida);
+  const recentes = notifs.filter(n => n.lida).slice(0, 10);
+  notifList.innerHTML = `${novas.length ? `<div style="padding:8px 4px;font-size:12px;font-weight:bold;color:#b91c1c">NOVAS (${novas.length})</div>${novas.map(formatoNotificacao).join('')}` : '<p style="padding:8px;color:#647066">Nenhuma notificação nova.</p>'}
+    ${recentes.length ? `<div style="padding:12px 4px 8px;font-size:12px;font-weight:bold;color:#647066;border-top:1px solid #e5e7eb;margin-top:8px">RECENTES</div>${recentes.map(formatoNotificacao).join('')}` : ''}`;
+}
+
 function abrirNotificacoes(){
   notifPanel.classList.toggle("hidden");
-  if(!notifPanel.classList.contains("hidden")){
-    js(API+"/notificacoes").then(notifs=>{
-      notifList.innerHTML=notifs.map(n=>`<div class="notif-item ${n.lida?'':'unread'}" onclick="marcarNotificacaoLida(${n.id})"><div class="notif-type">${n.tipo}</div><p>${n.mensagem}</p><small class="notif-date">${new Date(n.created_at).toLocaleString()}</small></div>`).join("")||"Sem notificacoes.";
-    });
-  }
+  if(!notifPanel.classList.contains("hidden")) carregarNotificacoes().catch(e => console.error(e));
 }
 function fecharNotificacoes(){ notifPanel.classList.add("hidden"); }
-function marcarTodasNotificacoes(){ js(API+"/notificacoes/marcar-todas-lidas",{method:"PUT"}); atualizarContadorNotificacoes(); }
-function marcarNotificacaoLida(notifId){ js(API+`/notificacoes/${notifId}/marcar-lida`,{method:"PUT"}).then(()=>{ abrirNotificacoes(); atualizarContadorNotificacoes(); }).catch(e=>console.error(e)); }
+async function marcarTodasNotificacoes(){
+  try { await js(API+"/notificacoes/marcar-todas-lidas",{method:"PUT"}); await atualizarContadorNotificacoes(); await carregarNotificacoes(); } catch(e) { console.error(e); }
+}
+async function marcarNotificacaoLida(notifId){
+  try { await js(API+`/notificacoes/${notifId}/marcar-lida`,{method:"PUT"}); await atualizarContadorNotificacoes(); await carregarNotificacoes(); } catch(e) { console.error(e); }
+}
 async function atualizarContadorNotificacoes(){
   try{
-    const notifs=await js(API+"/notificacoes");
+    const notifs=await js(API+"/notificacoes?limit=100");
     const naoLidas=notifs.filter(n=>!n.lida).length;
     notifCount.innerText=naoLidas;
     notifCount.classList.toggle("hidden",naoLidas===0);
@@ -2137,7 +2275,14 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
   document.getElementById("novoFornecedorObs").value = "";
   
   try {
-    const compra = await js(`${API}/compras/${cotacaoId}`);
+    const [compra, fornecedoresCadastrados] = await Promise.all([
+      js(`${API}/compras/${cotacaoId}`),
+      js(`${API}/fornecedores`).catch(() => [])
+    ]);
+    const listaFornecedores = document.getElementById('listaFornecedoresCadastrados');
+    if (listaFornecedores) {
+      listaFornecedores.innerHTML = (fornecedoresCadastrados || []).map(f => `<option value="${htmlEsc(f.nome)}">${htmlEsc(f.tipo_produto || f.contato || '')}</option>`).join('');
+    }
     
     // Montar card de referência do produto (foto + descrição)
     let refHtml = '';

@@ -437,7 +437,8 @@
     <form id="formAdicionarFornecedor" onsubmit="salvarNovoFornecedor(event)">
       <input type="hidden" id="novoFornecedorCotacaoId">
       <div id="fornecedoresItemContainer"></div>
-      <label>Fornecedor<input id="novoFornecedorNome" type="text" placeholder="Ex: Mercado Livre, Amazon..." required></label>
+      <label>Fornecedor<input id="novoFornecedorNome" type="text" list="listaFornecedoresCadastrados" placeholder="Digite ou selecione um fornecedor..." required></label>
+      <datalist id="listaFornecedoresCadastrados"></datalist>
       <label>Preço (R$)<input id="novoFornecedorValor" type="number" step="0.01" placeholder="0.00" required></label>
       <label>Observação (opcional)<textarea id="novoFornecedorObs" placeholder="Ex: Frete grátis, prazo 5 dias..."></textarea></label>
       <button class="primary full">Adicionar Fornecedor</button>
@@ -467,6 +468,10 @@
     <div class="modal-head"><h3>✅ Aprovar Lista de Compra</h3><button onclick="fecharModalAprovarLista()">×</button></div>
     <div style="padding:20px">
       <div id="modalAprovarListaInfo" style="background:#f0f8f5;padding:12px 16px;border-radius:8px;margin-bottom:16px;border-left:4px solid #2e7d32;font-size:14px"></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 12px 0;flex-wrap:wrap">
+        <span style="font-size:13px;color:#647066">Selecione um fornecedor por produto ou comece pelo menor preço.</span>
+        <button type="button" class="secondary" onclick="selecionarMenoresPrecosLista()" style="font-size:13px">⚡ Selecionar menores preços</button>
+      </div>
       <div id="modalAprovarListaItens"></div>
       <div style="background:#e8f5e9;padding:12px 16px;border-radius:8px;margin:16px 0;border-left:4px solid #1b5e20">
         <strong style="color:#1b5e20">Total selecionado: <span id="modalAprovarListaTotal">R$ 0,00</span></strong>
@@ -527,7 +532,7 @@
   </div>
 </div>
 
-<script src="app.js?v=55"></script>
+<script src="app.js?v=56"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {
