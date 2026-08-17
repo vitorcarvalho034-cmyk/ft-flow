@@ -1017,7 +1017,8 @@ async function verComparativoCotacoes(cotacaoId) {
 async function compras(){
   const data = await js(API + "/compras?limit=1000");
   const compData = data.data || data;
-  const comprasAtivas = compData.filter(c => statusEhAtivo(c.status));
+  // Toda compra não encerrada permanece visível nas filas, inclusive registros antigos com status diferente.
+  const comprasAtivas = compData.filter(c => !statusEhHistorico(c.status));
   const isAdmin = usuario && usuario.role === "admin";
   window._comprasAtivas = comprasAtivas;
 

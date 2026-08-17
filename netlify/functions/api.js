@@ -492,8 +492,10 @@ app.get("/compras/:id/cotacoes",async(req,res)=>{
 // Carrega em uma única resposta todas as compras que ainda exigem cotação ou aprovação.
 app.get('/cotacoes/abertas', async (req, res) => {
   try {
-    const statusEmAberto = ['pendente', 'em cotação', 'pendente_aprovacao', 'pendente aprovaçao', 'aguardando aprovação', 'em andamento', 'rascunho'];
-    const compras = await q(`SELECT * FROM compras WHERE LOWER(TRIM(status)) = ANY($1::text[]) ORDER BY id DESC`, [statusEmAberto]);
+    // Considera aberta qualquer compra que ainda não chegou a uma etapa final.
+    // Assim, registros antigos com variações de texto continuam visíveis para cotação.
+    const statusEncerrados = ['aprovado', 'aprovada', 'comprado', 'recebido', 'entregue', 'concluído', 'concluido', 'rejeitado', 'cancelado', 'negada', 'negado'];
+    const compras = await q(`SELECT * FROM compras WHERE COALESCE(LOWER(TRIM(status)), 'em cotação') <> ALL($1::text[]) ORDER BY id DESC`, [statusEncerrados]);
     const ids = compras.rows.map(c => c.id);
     if (!ids.length) return res.json({ compras: [], cotacoes: [] });
     const cotacoes = await q(`SELECT c.*, lci.produto as item_nome, lci.quantidade as item_qtd, lci.unidade as item_unidade FROM cotacoes c LEFT JOIN lista_compras_itens lci ON c.item_id=lci.id WHERE c.compra_id = ANY($1::int[]) ORDER BY c.compra_id DESC, c.item_id ASC, c.valor ASC`, [ids]);
