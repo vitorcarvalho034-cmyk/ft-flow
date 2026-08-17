@@ -319,7 +319,8 @@ async function normalizarFornecedor(nome) {
   if (!nomeLimpo) return '';
   const existente = await q(`SELECT nome FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)) ORDER BY id ASC LIMIT 1`, [nomeLimpo]);
   if (existente.rows[0]?.nome) return existente.rows[0].nome;
-  await q(`INSERT INTO fornecedores (nome) VALUES ($1) ON CONFLICT (nome) DO NOTHING`, [nomeLimpo]);
+  // Alguns bancos antigos não possuem UNIQUE(nome); por isso verificamos antes de inserir.
+  await q(`INSERT INTO fornecedores (nome) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)))`, [nomeLimpo]);
   const criado = await q(`SELECT nome FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)) ORDER BY id ASC LIMIT 1`, [nomeLimpo]);
   return criado.rows[0]?.nome || nomeLimpo;
 }
