@@ -165,6 +165,13 @@ function cardPedidoCompra(c, options = {}) {
 
   let acoes = "";
   let statusBadge = "";
+  const statusNormalizadoCompra = normalizarStatus(c.status);
+  const podeVerAprovacoesLista = c.tipo_solicitacao === 'lista'
+    && ['aprovado', 'aprovada', 'comprado', 'recebido', 'entregue', 'concluído', 'concluido'].includes(statusNormalizadoCompra)
+    && modo !== 'historico';
+  const aprovacoesListaHtml = podeVerAprovacoesLista
+    ? `<div style="margin-top:12px;padding:10px 12px;background:#f0f8f5;border:1px solid #c8e6c9;border-radius:8px"><button class="secondary" style="font-size:12px" onclick="verDetalhesListaHistorico(${c.id})">📋 Ver itens e fornecedores aprovados</button><div id="detalhesLista_${c.id}" style="display:none"></div></div>`
+    : '';
   
   // Para lista de compra, mostrar status
   if (c.tipo_solicitacao === 'lista') {
@@ -257,6 +264,7 @@ function cardPedidoCompra(c, options = {}) {
     </div>` : ''}
     ${c.tipo_solicitacao !== 'lista' ? link : ''}
     ${acoes}
+    ${aprovacoesListaHtml}
   </div>`;
 }
 
@@ -1200,10 +1208,12 @@ async function confirmarRecebimentoCompra(id) {
 let _aprovarNoAppId = null;
 let _aprovarListaId = null;
 let _aprovarListaSelecoes = {};
+let _aprovarListaModoReparo = false;
 
-async function abrirModalAprovarLista(compraId) {
+async function abrirModalAprovarLista(compraId, modoReparo = false) {
   _aprovarListaId = compraId;
   _aprovarListaSelecoes = {};
+  _aprovarListaModoReparo = modoReparo;
   try {
     const [compra, itens, cotacoes] = await Promise.all([
       js(API + `/compras/${compraId}`),
@@ -1255,6 +1265,7 @@ function fecharModalAprovarLista() {
   document.getElementById('modalAprovarLista').classList.add('hidden');
   _aprovarListaId = null;
   _aprovarListaSelecoes = {};
+  _aprovarListaModoReparo = false;
 }
 
 function atualizarTotalLista() {
@@ -1299,13 +1310,11 @@ async function confirmarAprovacaoLista() {
     await js(API + `/compras/${_aprovarListaId}/aprovar-lista-no-app`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aprovador, selecoes })
+      body: JSON.stringify({ aprovador, selecoes, reparar: _aprovarListaModoReparo })
     });
-    mostrarSucesso(`✅ Lista aprovada por ${aprovador}! Admin notificado por email.`);
+    mostrarSucesso(_aprovarListaModoReparo ? '✅ Seleções da lista corrigidas com sucesso!' : `✅ Lista aprovada por ${aprovador}! Admin notificado por email.`);
     fecharModalAprovarLista();
-    const filtroAtivo = window._cotacoesFiltroAtivo || 'pendente-aprovacao';
-    await cotacoesGerais();
-    filtrarCotacoesPor(filtroAtivo);
+    await carregar();
   } catch(e) {
     mostrarErro(e.message);
   }
@@ -1414,7 +1423,7 @@ function renderizarHistoricoCompacto(itens) {
         <span style="color:#1b5e20;font-size:13px;font-weight:600">Ver detalhes ▾</span>
       </summary>
       <div style="border-top:1px solid #e5e7eb;padding:0 16px 16px;background:#fafcfb">
-        ${cardPedidoCompra(c)}
+        ${cardPedidoCompra(c, {modo:'historico'})}
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">${detalhesLista}</div>
         <div id="detalhesLista_${c.id}" style="display:none"></div>
       </div>
@@ -1451,7 +1460,9 @@ async function verDetalhesListaHistorico(compraId) {
   try {
     const aprovacoes = await js(API + `/compras/${compraId}/aprovacoes`);
     if (!aprovacoes.length) {
-      el.innerHTML = '<p style="font-size:12px;color:#999;padding:8px">Nenhum fornecedor confirmado encontrado.</p>';
+      const compra = window._comprasAtivas?.find(c => Number(c.id) === Number(compraId)) || window._historicoData?.find(c => Number(c.id) === Number(compraId));
+      const podeCorrigir = usuario?.role === 'admin' && ['aprovado', 'aprovada'].includes(normalizarStatus(compra?.status));
+      el.innerHTML = `<p style="font-size:12px;color:#a15c00;padding:8px;margin:0">Nenhum fornecedor foi gravado para esta lista.</p>${podeCorrigir ? `<button class="primary" style="font-size:12px;margin:0 8px 8px" onclick="abrirModalAprovarLista(${compraId}, true)">🛠️ Selecionar fornecedores agora</button>` : ''}`;
       return;
     }
     let html = '<div style="background:#f0f8f5;border-radius:8px;padding:12px;margin-top:8px;border-left:4px solid #2e7d32">';

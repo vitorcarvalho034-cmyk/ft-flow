@@ -85,6 +85,7 @@ async function ensureDb(){
   // Datas de controle do fluxo de compra
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_at TIMESTAMP`).catch(e => console.log('received_at column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP`).catch(e => console.log('purchased_at column already exists'));
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP`).catch(e => console.log('approved_at column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS received_by INTEGER`).catch(e => console.log('received_by column already exists'));
   // Recupera o vínculo de compras antigas criadas a partir de uma manutenção.
   await q(`UPDATE compras c SET manutencao_id=(a.meta->>'manutencao_id')::INTEGER FROM audit_log a WHERE c.id=a.target_id AND c.manutencao_id IS NULL AND a.action='criar_compra_manutencao' AND (a.meta->>'manutencao_id') ~ '^[0-9]+$'`).catch(e => console.log('maintenance link migration skipped', e.message));
@@ -323,6 +324,64 @@ async function normalizarFornecedor(nome) {
   await q(`INSERT INTO fornecedores (nome) SELECT $1 WHERE NOT EXISTS (SELECT 1 FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)))`, [nomeLimpo]);
   const criado = await q(`SELECT nome FROM fornecedores WHERE LOWER(TRIM(nome))=LOWER(TRIM($1)) ORDER BY id ASC LIMIT 1`, [nomeLimpo]);
   return criado.rows[0]?.nome || nomeLimpo;
+}
+
+// Salva uma escolha por item de lista como uma única operação. Isso impede que uma lista
+// fique aprovada sem os fornecedores escolhidos ou com dados parciais/duplicados.
+async function gravarAprovacoesLista(compraId, selecoes, permitirReparo = false) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const compra = await client.query('SELECT id,status FROM compras WHERE id=$1 FOR UPDATE', [compraId]);
+    if (!compra.rows[0]) throw new Error('Compra não encontrada');
+    const statusAtual = String(compra.rows[0].status || '');
+    const podeReparar = permitirReparo && ['Aprovado', 'Aprovada'].includes(statusAtual);
+    if (statusAtual !== 'Pendente_aprovacao' && !podeReparar) {
+      throw new Error('Esta lista já foi processada ou não está pendente de aprovação');
+    }
+    if (podeReparar) {
+      const existentes = await client.query('SELECT COUNT(*)::int total FROM lista_compras_aprovacoes WHERE compra_id=$1', [compraId]);
+      if (existentes.rows[0].total > 0) throw new Error('Esta lista já possui fornecedores aprovados e não precisa ser reparada');
+    }
+
+    const itens = await client.query('SELECT id,produto,quantidade,unidade FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC', [compraId]);
+    if (!itens.rows.length) throw new Error('Esta lista não possui itens cadastrados');
+    const idsItens = new Set(itens.rows.map(i => Number(i.id)));
+    const porItem = new Map();
+    for (const selecao of selecoes || []) {
+      const itemId = Number(selecao.item_id);
+      const cotacaoId = Number(selecao.cotacao_id);
+      if (!itemId || !cotacaoId || !idsItens.has(itemId)) throw new Error('Há uma seleção de item inválida');
+      if (porItem.has(itemId)) throw new Error('Selecione apenas um fornecedor para cada produto');
+      porItem.set(itemId, cotacaoId);
+    }
+    if (porItem.size !== itens.rows.length) throw new Error('Selecione um fornecedor para cada produto da lista');
+
+    const idsCotacoes = [...porItem.values()];
+    const cotacoes = await client.query('SELECT id,compra_id,item_id,fornecedor,valor FROM cotacoes WHERE compra_id=$1 AND id = ANY($2::int[])', [compraId, idsCotacoes]);
+    const cotacaoPorId = new Map(cotacoes.rows.map(c => [Number(c.id), c]));
+    const aprovadas = [];
+    for (const item of itens.rows) {
+      const cotacaoId = porItem.get(Number(item.id));
+      const cotacao = cotacaoPorId.get(cotacaoId);
+      if (!cotacao || Number(cotacao.item_id) !== Number(item.id)) throw new Error(`A cotação de ${item.produto} não pertence a este item`);
+      aprovadas.push({ item_id: item.id, cotacao_id: cotacao.id, fornecedor: cotacao.fornecedor, valor: Number(cotacao.valor || 0), produto: item.produto, quantidade: item.quantidade, unidade: item.unidade });
+    }
+
+    // Se uma aprovação for reenviada antes da conclusão, os registros anteriores são substituídos.
+    await client.query('DELETE FROM lista_compras_aprovacoes WHERE compra_id=$1', [compraId]);
+    for (const aprovacao of aprovadas) {
+      await client.query('INSERT INTO lista_compras_aprovacoes (compra_id,item_id,cotacao_id,fornecedor,valor) VALUES ($1,$2,$3,$4,$5)', [compraId, aprovacao.item_id, aprovacao.cotacao_id, aprovacao.fornecedor, aprovacao.valor]);
+    }
+    await client.query("UPDATE compras SET status='Aprovado', approved_at=NOW(), received_at=NULL WHERE id=$1", [compraId]);
+    await client.query('COMMIT');
+    return { aprovadas, total: aprovadas.reduce((s, a) => s + a.valor, 0) };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 // LOGIN
@@ -583,48 +642,30 @@ app.post('/compras/:id/approve-received', async (req, res) => {
 app.post('/compras/:id/aprovar-lista-no-app', async (req, res) => {
   try {
     const id = req.params.id;
-    const { aprovador, selecoes } = req.body;
+    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas o administrador pode aprovar ou reparar uma lista no aplicativo' });
+    const { aprovador, selecoes, reparar } = req.body;
     if (!aprovador) return res.status(400).json({ error: 'Informe o aprovador' });
     if (!selecoes || selecoes.length === 0) return res.status(400).json({ error: 'Nenhuma seleção fornecida' });
     
-    const compra = await q('SELECT * FROM compras WHERE id=$1', [id]);
-    if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
-    if (compra.rows[0].status !== 'Pendente_aprovacao') return res.status(400).json({ error: 'Esta lista não está pendente de aprovação' });
-    
-    // Salvar cada seleção
-    for (const sel of selecoes) {
-      await q('INSERT INTO lista_compras_aprovacoes (compra_id, item_id, cotacao_id, fornecedor, valor) VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING',
-        [id, sel.item_id, sel.cotacao_id, sel.fornecedor, sel.valor]);
-    }
-    
-    // Calcular total
-    const totalValor = selecoes.reduce((s, sel) => s + Number(sel.valor || 0), 0);
-    
-    // Atualizar status
-    await q(`UPDATE compras SET status='Aprovado', received_at=NOW() WHERE id=$1`, [id]);
-    
-    // Buscar itens para o email
-    const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1 ORDER BY id ASC', [id]);
-    
-    // Montar detalhes dos fornecedores por item
-    const detalhes = selecoes.map(sel => {
-      const item = itens.rows.find(i => i.id === sel.item_id);
-      return `${item ? item.produto : 'Item'}: ${sel.fornecedor} — R$ ${Number(sel.valor).toFixed(2)}`;
-    }).join('\n');
+    const resultado = await gravarAprovacoesLista(id, selecoes, Boolean(reparar));
+    const totalValor = resultado.total;
+    const detalhes = resultado.aprovadas.map(aprovacao =>
+      `${aprovacao.produto}: ${aprovacao.fornecedor} — R$ ${Number(aprovacao.valor).toFixed(2)}`
+    ).join('\n');
     
     const titulo = `✅ Lista #${id} - Aprovada por ${aprovador} (App)`;
     const dados = {
       'Lista': `#${id}`,
       'Aprovado por': `${aprovador} (via app)`,
-      'Itens aprovados': selecoes.length,
+      'Itens aprovados': resultado.aprovadas.length,
       'Valor Total': `R$ ${totalValor.toFixed(2)}`,
       'Detalhes': detalhes
     };
     
-    await notify(titulo, `Lista #${id} aprovada por ${aprovador}. ${selecoes.length} item(ns), total R$ ${totalValor.toFixed(2)}.`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    await notify(titulo, `Lista #${id} aprovada por ${aprovador}. ${resultado.aprovadas.length} item(ns), total R$ ${totalValor.toFixed(2)}.`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
-    res.json({ ok: true, total: totalValor, aprovacoes: selecoes.length });
-  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+    res.json({ ok: true, total: totalValor, aprovacoes: resultado.aprovadas.length, selecoes: resultado.aprovadas });
+  } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });
 
 // Aprovar compra diretamente no app com email ao admin
@@ -1232,44 +1273,24 @@ app.post('/aprovar-lista-fornecedores/:compraId', async (req, res) => {
     const compra = await q('SELECT * FROM compras WHERE id=$1', [compraId]);
     if (!compra.rows[0]) return res.status(404).json({ error: 'Compra não encontrada' });
     
-    // Salvar cada seleção
-    for (const sel of selecoes) {
-      const cotacao = await q('SELECT * FROM cotacoes WHERE id=$1', [sel.cotacao_id]);
-      if (cotacao.rows[0]) {
-        await q(
-          'INSERT INTO lista_compras_aprovacoes (compra_id, item_id, cotacao_id, fornecedor, valor) VALUES ($1, $2, $3, $4, $5)',
-          [compraId, sel.item_id, sel.cotacao_id, cotacao.rows[0].fornecedor, cotacao.rows[0].valor]
-        );
-      }
-    }
-    
-    // Atualizar status para Aprovado
-    await q('UPDATE compras SET status=$1 WHERE id=$2', ['Aprovado', compraId]);
-    
-    // Buscar itens para notificação
-    const itens = await q('SELECT * FROM lista_compras_itens WHERE compra_id=$1', [compraId]);
-    const aprovacoes = await q('SELECT * FROM lista_compras_aprovacoes WHERE compra_id=$1', [compraId]);
-    
-    // Calcular total
-    let totalValor = 0;
-    for (const apr of aprovacoes.rows) {
-      totalValor += apr.valor;
-    }
+    const resultado = await gravarAprovacoesLista(compraId, selecoes);
+    const totalValor = resultado.total;
+    const aprovacoes = resultado.aprovadas;
     
     // Notificar admin
     const aprovadorNome = compra.rows[0].destinatario === 'felipe' ? 'Felipe' : (compra.rows[0].destinatario === 'ambos' ? 'Dorian/Felipe' : 'Dorian');
     const titulo = `Lista de Compra #${compraId} - Aprovada por ${aprovadorNome}`;
     const dados = {
       'ID': `#${compraId}`,
-      'Itens': itens.rows.length,
-      'Fornecedores Selecionados': aprovacoes.rows.length,
+      'Itens': aprovacoes.length,
+      'Fornecedores Selecionados': aprovacoes.length,
       'Valor Total': `R$ ${totalValor.toFixed(2)}`,
       'Aprovado por': `${aprovadorNome} (via email)`
     };
     
-    await notify(titulo, `Lista de compra #${compraId} foi aprovada por ${aprovadorNome} com ${aprovacoes.rows.length} fornecedor(es) selecionado(s).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
+    await notify(titulo, `Lista de compra #${compraId} foi aprovada por ${aprovadorNome} com ${aprovacoes.length} fornecedor(es) selecionado(s).`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
-    res.json({ ok: true, aprovacoes: aprovacoes.rows.length, total: totalValor });
+    res.json({ ok: true, aprovacoes: aprovacoes.length, total: totalValor, selecoes: aprovacoes });
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: e.message });
@@ -1683,6 +1704,13 @@ app.put('/compras/:id', async (req, res) => {
   try {
     const b = req.body;
     const compraId = req.params.id;
+    const atual = await q('SELECT tipo_solicitacao,status FROM compras WHERE id=$1', [compraId]);
+    if (!atual.rows[0]) return res.status(404).json({ error: 'Lista não encontrada' });
+    if (atual.rows[0].tipo_solicitacao !== 'lista') return res.status(400).json({ error: 'Esta rota é exclusiva para listas de compra' });
+    const statusAtual = String(atual.rows[0].status || '').trim().toLowerCase();
+    if (!['rascunho', 'em cotação', 'em cotacao'].includes(statusAtual)) {
+      return res.status(409).json({ error: 'Esta lista já está em aprovação ou foi aprovada. Para preservar os fornecedores escolhidos, ela não pode mais ser editada.' });
+    }
     
     // Atualizar dados da compra
     await q(
@@ -1698,9 +1726,14 @@ app.put('/compras/:id', async (req, res) => {
     if (b.itens && Array.isArray(b.itens)) {
       for (const item of b.itens) {
         // Normalizar fornecedores: aceita array ou campo único legado
-        const fornecedores = Array.isArray(item.fornecedores) && item.fornecedores.length > 0
+        const fornecedoresBrutos = Array.isArray(item.fornecedores) && item.fornecedores.length > 0
           ? item.fornecedores
           : (item.fornecedor ? [{fornecedor: item.fornecedor, preco: item.preco}] : []);
+        const fornecedores = [];
+        for (const forn of fornecedoresBrutos) {
+          const fornecedor = await normalizarFornecedor(forn.fornecedor);
+          if (fornecedor) fornecedores.push({ ...forn, fornecedor });
+        }
         const primForn = fornecedores[0] || {};
         const itemResult = await q(
           `INSERT INTO lista_compras_itens (compra_id, produto, quantidade, unidade, fornecedor, preco) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
