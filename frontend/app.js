@@ -1238,10 +1238,16 @@ async function abrirModalAprovarLista(compraId, modoReparo = false) {
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px">
+            <label style="display:flex;align-items:center;padding:12px 14px;background:#fff8f7;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;transition:border-color 0.15s">
+              <input type="radio" name="lista_item_${item.id}" value="nao_comprar" data-item="${item.id}" data-nao-comprar="true" onchange="atualizarTotalLista()"
+                style="width:18px;height:18px;margin-right:12px;cursor:pointer;accent-color:#c62828;flex-shrink:0">
+              <span style="flex:1;font-size:14px;font-weight:600;color:#9b1c1c">Não comprar este item</span>
+              <span style="font-size:12px;font-weight:600;color:#9b1c1c;white-space:nowrap">Fora do total</span>
+            </label>
           ${cotsItem.length === 0
             ? '<p style="color:#999;font-size:12px;padding:8px">Nenhuma cotação disponível</p>'
             : cotsItem.map(cot => `
-              <label style="display:flex;align-items:center;padding:12px 14px;background:white;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;transition:border-color 0.15s" onclick="this.style.borderColor='#2e7d32'">
+              <label style="display:flex;align-items:center;padding:12px 14px;background:white;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;transition:border-color 0.15s">
                 <input type="radio" name="lista_item_${item.id}" value="${cot.id}" data-item="${item.id}" data-valor="${cot.valor}" data-fornecedor="${htmlEsc(cot.fornecedor)}" onchange="atualizarTotalLista()"
                   style="width:18px;height:18px;margin-right:12px;cursor:pointer;accent-color:#2e7d32;flex-shrink:0">
                 <span style="flex:1;font-size:14px;font-weight:500;color:#333">${htmlEsc(cot.fornecedor)}</span>
@@ -1270,6 +1276,10 @@ function fecharModalAprovarLista() {
 
 function atualizarTotalLista() {
   let total = 0;
+  document.querySelectorAll('#modalAprovarListaItens label').forEach(label => {
+    const radio = label.querySelector('input[type=radio]');
+    if (radio) label.style.borderColor = radio.checked ? (radio.dataset.naoComprar === 'true' ? '#c62828' : '#2e7d32') : '#e0e0e0';
+  });
   document.querySelectorAll('#modalAprovarListaItens input[type=radio]:checked').forEach(r => {
     total += Number(r.dataset.valor || 0);
   });
@@ -1277,7 +1287,7 @@ function atualizarTotalLista() {
 }
 
 function selecionarMenoresPrecosLista() {
-  const radios = [...document.querySelectorAll('#modalAprovarListaItens input[type=radio][data-item]')];
+  const radios = [...document.querySelectorAll('#modalAprovarListaItens input[type=radio][data-item][data-valor]')];
   const menorPorItem = new Map();
   radios.forEach(radio => {
     const itemId = radio.dataset.item;
@@ -1298,21 +1308,24 @@ async function confirmarAprovacaoLista() {
   const aprovador = document.getElementById('modalAprovarListaAprovador').value;
   if (!aprovador) return mostrarErro('Selecione quem está aprovando!');
   
-  const radios = document.querySelectorAll('#modalAprovarListaItens input[type=radio]:checked');
-  if (radios.length === 0) return mostrarErro('Selecione ao menos um fornecedor!');
+  const radios = [...document.querySelectorAll('#modalAprovarListaItens input[type=radio]:checked')];
+  const itensDaLista = new Set([...document.querySelectorAll('#modalAprovarListaItens input[type=radio][data-item]')].map(r => r.dataset.item));
+  const itensComDecisao = new Set(radios.map(r => r.dataset.item));
+  if (itensComDecisao.size !== itensDaLista.size) return mostrarErro('Para cada produto, escolha um fornecedor ou marque “Não comprar este item”.');
   
-  const selecoes = [];
-  radios.forEach(r => {
-    selecoes.push({ item_id: Number(r.dataset.item), cotacao_id: Number(r.value), fornecedor: r.dataset.fornecedor, valor: Number(r.dataset.valor) });
-  });
+  const selecoes = radios.map(r => r.dataset.naoComprar === 'true'
+    ? { item_id: Number(r.dataset.item), decisao: 'nao_comprar' }
+    : { item_id: Number(r.dataset.item), cotacao_id: Number(r.value), fornecedor: r.dataset.fornecedor, valor: Number(r.dataset.valor) }
+  );
   
   try {
-    await js(API + `/compras/${_aprovarListaId}/aprovar-lista-no-app`, {
+    const resultado = await js(API + `/compras/${_aprovarListaId}/aprovar-lista-no-app`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ aprovador, selecoes, reparar: _aprovarListaModoReparo })
     });
-    mostrarSucesso(_aprovarListaModoReparo ? '✅ Seleções da lista corrigidas com sucesso!' : `✅ Lista aprovada por ${aprovador}! Admin notificado por email.`);
+    const resumoNaoComprados = Number(resultado.nao_compradas || 0) ? ` ${resultado.nao_compradas} item(ns) marcado(s) como não comprar.` : '';
+    mostrarSucesso(_aprovarListaModoReparo ? `✅ Seleções da lista corrigidas com sucesso!${resumoNaoComprados}` : `✅ Lista aprovada por ${aprovador}! Admin notificado por email.${resumoNaoComprados}`);
     fecharModalAprovarLista();
     await carregar();
   } catch(e) {
@@ -1466,16 +1479,16 @@ async function verDetalhesListaHistorico(compraId) {
       return;
     }
     let html = '<div style="background:#f0f8f5;border-radius:8px;padding:12px;margin-top:8px;border-left:4px solid #2e7d32">';
-    html += '<p style="font-weight:bold;color:#1b5e20;margin:0 0 10px 0;font-size:13px">✅ Fornecedores Confirmados</p>';
+    html += '<p style="font-weight:bold;color:#1b5e20;margin:0 0 10px 0;font-size:13px">✅ Decisões da Lista</p>';
     let total = 0;
     aprovacoes.forEach(a => {
-      total += Number(a.valor || 0);
-      html += `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px">
-        <span><strong>${htmlEsc(a.produto || 'Item')}</strong> — ${htmlEsc(a.fornecedor)}</span>
-        <span style="color:#2e7d32;font-weight:bold">R$ ${Number(a.valor).toFixed(2)}</span>
-      </div>`;
+      const naoComprar = a.decisao === 'nao_comprar';
+      total += naoComprar ? 0 : Number(a.valor || 0);
+      html += naoComprar
+        ? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px"><span><strong>${htmlEsc(a.produto || 'Item')}</strong></span><span style="color:#9b1c1c;font-weight:bold">Não comprar</span></div>`
+        : `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px"><span><strong>${htmlEsc(a.produto || 'Item')}</strong> — ${htmlEsc(a.fornecedor)}</span><span style="color:#2e7d32;font-weight:bold">R$ ${Number(a.valor).toFixed(2)}</span></div>`;
     });
-    html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:bold;color:#1b5e20"><span>Total</span><span>R$ ${total.toFixed(2)}</span></div>`;
+    html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:bold;color:#1b5e20"><span>Total aprovado</span><span>R$ ${total.toFixed(2)}</span></div>`;
     html += '</div>';
     el.innerHTML = html;
   } catch(e) {

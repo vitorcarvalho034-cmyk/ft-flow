@@ -97,7 +97,8 @@ async function ensureDb(){
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS status_lista VARCHAR(50) DEFAULT 'rascunho'`).catch(e => console.log('status_lista column already exists'));
   await q(`ALTER TABLE lista_compras_itens ADD COLUMN IF NOT EXISTS fornecedor TEXT`).catch(e => console.log('fornecedor column already exists'));
   await q(`ALTER TABLE lista_compras_itens ADD COLUMN IF NOT EXISTS preco REAL DEFAULT 0`).catch(e => console.log('preco column already exists'));
-  await q(`CREATE TABLE IF NOT EXISTS lista_compras_aprovacoes (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, item_id INTEGER REFERENCES lista_compras_itens(id) ON DELETE CASCADE, cotacao_id INTEGER REFERENCES cotacoes(id), fornecedor TEXT, valor REAL, created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`CREATE TABLE IF NOT EXISTS lista_compras_aprovacoes (id SERIAL PRIMARY KEY, compra_id INTEGER REFERENCES compras(id) ON DELETE CASCADE, item_id INTEGER REFERENCES lista_compras_itens(id) ON DELETE CASCADE, cotacao_id INTEGER REFERENCES cotacoes(id), fornecedor TEXT, valor REAL, decisao VARCHAR(30) DEFAULT 'comprar', created_at TIMESTAMP DEFAULT NOW())`);
+  await q(`ALTER TABLE lista_compras_aprovacoes ADD COLUMN IF NOT EXISTS decisao VARCHAR(30) DEFAULT 'comprar'`).catch(e => console.log('decisao column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS uso TEXT`).catch(()=>{});
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS destinatario TEXT`).catch(()=>{});
 
@@ -350,32 +351,48 @@ async function gravarAprovacoesLista(compraId, selecoes, permitirReparo = false)
     const porItem = new Map();
     for (const selecao of selecoes || []) {
       const itemId = Number(selecao.item_id);
+      const naoComprar = selecao?.decisao === 'nao_comprar' || selecao?.nao_comprar === true;
+      if (!itemId || !idsItens.has(itemId)) throw new Error('Há uma decisão de item inválida');
+      if (porItem.has(itemId)) throw new Error('Escolha apenas uma decisão para cada produto');
+      if (naoComprar) {
+        porItem.set(itemId, { decisao: 'nao_comprar' });
+        continue;
+      }
       const cotacaoId = Number(selecao.cotacao_id);
-      if (!itemId || !cotacaoId || !idsItens.has(itemId)) throw new Error('Há uma seleção de item inválida');
-      if (porItem.has(itemId)) throw new Error('Selecione apenas um fornecedor para cada produto');
-      porItem.set(itemId, cotacaoId);
+      if (!cotacaoId) throw new Error('Selecione um fornecedor ou marque que não deseja comprar o item');
+      porItem.set(itemId, { decisao: 'comprar', cotacaoId });
     }
-    if (porItem.size !== itens.rows.length) throw new Error('Selecione um fornecedor para cada produto da lista');
+    if (porItem.size !== itens.rows.length) throw new Error('Para cada produto, selecione um fornecedor ou marque “Não comprar este item”');
 
-    const idsCotacoes = [...porItem.values()];
+    const idsCotacoes = [...porItem.values()].filter(decisao => decisao.decisao === 'comprar').map(decisao => decisao.cotacaoId);
     const cotacoes = await client.query('SELECT id,compra_id,item_id,fornecedor,valor FROM cotacoes WHERE compra_id=$1 AND id = ANY($2::int[])', [compraId, idsCotacoes]);
     const cotacaoPorId = new Map(cotacoes.rows.map(c => [Number(c.id), c]));
     const aprovadas = [];
+    const naoCompradas = [];
+    const decisoes = [];
     for (const item of itens.rows) {
-      const cotacaoId = porItem.get(Number(item.id));
-      const cotacao = cotacaoPorId.get(cotacaoId);
+      const decisao = porItem.get(Number(item.id));
+      if (decisao.decisao === 'nao_comprar') {
+        const naoComprada = { item_id: item.id, cotacao_id: null, fornecedor: null, valor: 0, produto: item.produto, quantidade: item.quantidade, unidade: item.unidade, decisao: 'nao_comprar' };
+        naoCompradas.push(naoComprada);
+        decisoes.push(naoComprada);
+        continue;
+      }
+      const cotacao = cotacaoPorId.get(decisao.cotacaoId);
       if (!cotacao || Number(cotacao.item_id) !== Number(item.id)) throw new Error(`A cotação de ${item.produto} não pertence a este item`);
-      aprovadas.push({ item_id: item.id, cotacao_id: cotacao.id, fornecedor: cotacao.fornecedor, valor: Number(cotacao.valor || 0), produto: item.produto, quantidade: item.quantidade, unidade: item.unidade });
+      const aprovada = { item_id: item.id, cotacao_id: cotacao.id, fornecedor: cotacao.fornecedor, valor: Number(cotacao.valor || 0), produto: item.produto, quantidade: item.quantidade, unidade: item.unidade, decisao: 'comprar' };
+      aprovadas.push(aprovada);
+      decisoes.push(aprovada);
     }
 
     // Se uma aprovação for reenviada antes da conclusão, os registros anteriores são substituídos.
     await client.query('DELETE FROM lista_compras_aprovacoes WHERE compra_id=$1', [compraId]);
-    for (const aprovacao of aprovadas) {
-      await client.query('INSERT INTO lista_compras_aprovacoes (compra_id,item_id,cotacao_id,fornecedor,valor) VALUES ($1,$2,$3,$4,$5)', [compraId, aprovacao.item_id, aprovacao.cotacao_id, aprovacao.fornecedor, aprovacao.valor]);
+    for (const decisao of decisoes) {
+      await client.query('INSERT INTO lista_compras_aprovacoes (compra_id,item_id,cotacao_id,fornecedor,valor,decisao) VALUES ($1,$2,$3,$4,$5,$6)', [compraId, decisao.item_id, decisao.cotacao_id, decisao.fornecedor, decisao.valor, decisao.decisao]);
     }
     await client.query("UPDATE compras SET status='Aprovado', approved_at=NOW(), received_at=NULL WHERE id=$1", [compraId]);
     await client.query('COMMIT');
-    return { aprovadas, total: aprovadas.reduce((s, a) => s + a.valor, 0) };
+    return { aprovadas, naoCompradas, total: aprovadas.reduce((s, a) => s + a.valor, 0) };
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
     throw e;
@@ -664,7 +681,7 @@ app.post('/compras/:id/aprovar-lista-no-app', async (req, res) => {
     
     await notify(titulo, `Lista #${id} aprovada por ${aprovador}. ${resultado.aprovadas.length} item(ns), total R$ ${totalValor.toFixed(2)}.`, 'compra', dados).catch(e => console.log('Notify err', e.message));
     
-    res.json({ ok: true, total: totalValor, aprovacoes: resultado.aprovadas.length, selecoes: resultado.aprovadas });
+    res.json({ ok: true, total: totalValor, aprovacoes: resultado.aprovadas.length, nao_compradas: resultado.naoCompradas.length, selecoes: resultado.aprovadas });
   } catch (e) { console.error(e); res.status(400).json({ error: e.message }); }
 });
 
@@ -1033,7 +1050,12 @@ app.get('/selecionar-fornecedores-lista/:token', async (req, res) => {
           <p style="margin:5px 0;font-size:13px;color:#555"><strong>Quantidade:</strong> ${item.quantidade} ${item.unidade}</p>
           
           <div style="margin-top:15px">
-            <p style="margin:10px 0 10px 0;font-size:12px;color:#666;font-weight:bold">Selecione um fornecedor:</p>
+            <p style="margin:10px 0 10px 0;font-size:12px;color:#666;font-weight:bold">Escolha o fornecedor ou marque que não deseja comprar:</p>
+            <label style="display:flex;align-items:center;padding:10px;margin:8px 0;background:#fff8f7;border:2px solid #f1c7c7;border-radius:4px;cursor:pointer">
+              <input type="radio" name="item_${item.id}" value="nao_comprar" style="margin-right:10px;cursor:pointer" />
+              <span style="flex:1;font-size:13px;font-weight:bold;color:#9b1c1c">Não comprar este item</span>
+              <span style="font-size:12px;color:#9b1c1c">Fora do total</span>
+            </label>
       `;
       
       if (cotacoesItem.length === 0) {
@@ -1175,12 +1197,13 @@ app.get('/selecionar-fornecedores-lista/:token', async (req, res) => {
               for (const [key, value] of formData.entries()) {
                 if (key.startsWith('item_')) {
                   const itemId = key.replace('item_', '');
-                  selecoes.push({ item_id: itemId, cotacao_id: value });
+                  selecoes.push(value === 'nao_comprar' ? { item_id: itemId, decisao: 'nao_comprar' } : { item_id: itemId, cotacao_id: value });
                 }
               }
               
-              if (selecoes.length === 0) {
-                alert('Selecione pelo menos um fornecedor!');
+              const itensDaLista = new Set(Array.from(document.querySelectorAll('#formSelecao input[type="radio"][name^="item_"]')).map(input => input.name));
+              if (selecoes.length !== itensDaLista.size) {
+                alert('Para cada produto, escolha um fornecedor ou marque “Não comprar este item”.');
                 return;
               }
               
