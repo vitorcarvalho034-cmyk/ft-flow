@@ -283,6 +283,19 @@ async function apiJson(url, options={}){
 }
 async function js(u,o){ return apiJson(u,o); }
 
+// Busca todas as páginas para que registros antigos não desapareçam quando a base crescer.
+async function buscarTodasCompras() {
+  const primeira = await js(API + '/compras?page=1&limit=2000');
+  const primeiraPagina = Array.isArray(primeira) ? primeira : (primeira.data || []);
+  const totalPaginas = Number(primeira.pages || 1);
+  if (Array.isArray(primeira) || totalPaginas <= 1) return primeiraPagina;
+
+  const respostas = await Promise.all(
+    Array.from({ length: totalPaginas - 1 }, (_, i) => js(API + `/compras?page=${i + 2}&limit=2000`))
+  );
+  return primeiraPagina.concat(...respostas.map(resposta => resposta.data || []));
+}
+
 // Funções de feedback visual
 function mostrarSucesso(msg = "Operação realizada com sucesso!") {
   const toast = document.createElement("div");
@@ -1023,8 +1036,7 @@ async function verComparativoCotacoes(cotacaoId) {
 }
 
 async function compras(){
-  const data = await js(API + "/compras?limit=1000");
-  const compData = data.data || data;
+  const compData = await buscarTodasCompras();
   // Toda compra não encerrada permanece visível nas filas, inclusive registros antigos com status diferente.
   const comprasAtivas = compData.filter(c => !statusEhHistorico(c.status));
   const isAdmin = usuario && usuario.role === "admin";
@@ -1373,10 +1385,9 @@ async function confirmarAprovacaoNoApp() {
     mostrarSucesso(`✅ Compra aprovada por ${aprovador}! Admin notificado por email.`);
     window._cotacaoSelecionadaParaAprovar = null;
     fecharModalAprovarNoApp();
-    // Manter o filtro ativo após aprovar
-    const filtroAtivo = window._cotacoesFiltroAtivo || 'pendente-aprovacao';
+    // Após aprovar, levar diretamente à fila de Aprovados para o item não parecer que sumiu.
     await cotacoesGerais();
-    filtrarCotacoesPor(filtroAtivo);
+    filtrarCotacoesPor('aprovados');
   } catch(e) {
     mostrarErro(e.message);
   }
@@ -1445,8 +1456,7 @@ function renderizarHistoricoCompacto(itens) {
 }
 
 async function historico(){
-  const data = await js(API + "/compras?limit=1000");
-  const compData = data.data || data;
+  const compData = await buscarTodasCompras();
   const historicoData = compData.filter(c => statusEhHistorico(c.status)).sort((a, b) => {
     const dataA = new Date(a.received_at || a.updated_at || a.created_at || 0);
     const dataB = new Date(b.received_at || b.updated_at || b.created_at || 0);
@@ -1531,7 +1541,7 @@ function filtrarHistorico() {
 
 async function cotacoesGerais(){
   // Uma única requisição substitui várias buscas individuais de cotações.
-  const data = await js(API + "/cotacoes/abertas");
+  const data = await js(API + "/cotacoes/abertas?incluir_aprovadas=1");
   const comCotacao = data.compras || [];
   const cotacoesTodas = data.cotacoes || [];
   
@@ -1541,14 +1551,15 @@ async function cotacoesGerais(){
   
   content.innerHTML = `
     <div class="panel">
-      <h3>Cotações em aberto</h3>
+      <h3>Cotações e aprovações</h3>
       <div style="margin-bottom: 12px;">
         <input type="text" id="cotacoesBusca" placeholder="🔍 Buscar por produto, solicitante ou destino..." oninput="filtrarCotacoesPor(window._cotacoesFiltroAtivo||'todas')" style="width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;">
       </div>
-      <div class="grid" style="margin-bottom: 5px; gap: 8px; grid-template-columns: repeat(3, 1fr);">
+      <div class="grid" style="margin-bottom: 5px; gap: 8px; grid-template-columns: repeat(4, 1fr);">
         <button class="secondary" onclick="filtrarCotacoesPor('todas')" id="filtro-todas" style="background-color: #052e16; color: white; font-size: 13px;">Todas</button>
         <button class="secondary" onclick="filtrarCotacoesPor('pendente-cotacao')" id="filtro-pendente-cotacao" style="font-size: 13px;">Pendente Cotação</button>
         <button class="secondary" onclick="filtrarCotacoesPor('pendente-aprovacao')" id="filtro-pendente-aprovacao" style="font-size: 13px;">Pendente Aprovação</button>
+        <button class="secondary" onclick="filtrarCotacoesPor('aprovados')" id="filtro-aprovados" style="font-size: 13px;">Aprovados</button>
       </div>
     </div>
     <div id="cotacoesContainer"></div>`;
@@ -1585,9 +1596,13 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
     const compra = item.compra;
     const cotacoes = item.cotacoes;
     
-    // Aplicar filtro de status
-    if (filtro === 'pendente-cotacao' && (compra.status === 'Pendente_aprovacao' || compra.status === 'aprovado' || compra.fornecedor_escolhido)) continue;
-    if (filtro === 'pendente-aprovacao' && compra.status !== 'Pendente_aprovacao') continue;
+    // Aplicar filtro de status sem depender de maiúsculas, acentos ou registros antigos.
+    const statusCompra = normalizarStatus(compra.status);
+    const estaPendenteAprovacao = ['pendente_aprovacao', 'pendente aprovaçao', 'aguardando aprovação'].includes(statusCompra);
+    const estaAprovada = ['aprovado', 'aprovada'].includes(statusCompra);
+    if (filtro === 'pendente-cotacao' && (estaPendenteAprovacao || estaAprovada || compra.fornecedor_escolhido)) continue;
+    if (filtro === 'pendente-aprovacao' && !estaPendenteAprovacao) continue;
+    if (filtro === 'aprovados' && !estaAprovada) continue;
     
     // Aplicar filtro de busca por texto
     if (busca) {
@@ -1714,6 +1729,8 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
   document.getElementById('filtro-pendente-cotacao').style.color = filtro === 'pendente-cotacao' ? 'white' : 'black';
   document.getElementById('filtro-pendente-aprovacao').style.backgroundColor = filtro === 'pendente-aprovacao' ? '#052e16' : '#e5e7eb';
   document.getElementById('filtro-pendente-aprovacao').style.color = filtro === 'pendente-aprovacao' ? 'white' : 'black';
+  document.getElementById('filtro-aprovados').style.backgroundColor = filtro === 'aprovados' ? '#052e16' : '#e5e7eb';
+  document.getElementById('filtro-aprovados').style.color = filtro === 'aprovados' ? 'white' : 'black';
 }
 
 function filtrarCotacoesPor(filtro) {

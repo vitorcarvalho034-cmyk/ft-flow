@@ -568,9 +568,11 @@ app.get("/compras/:id/cotacoes",async(req,res)=>{
 // Carrega em uma única resposta todas as compras que ainda exigem cotação ou aprovação.
 app.get('/cotacoes/abertas', async (req, res) => {
   try {
-    // Considera aberta qualquer compra que ainda não chegou a uma etapa final.
-    // Assim, registros antigos com variações de texto continuam visíveis para cotação.
-    const statusEncerrados = ['aprovado', 'aprovada', 'comprado', 'recebido', 'entregue', 'concluído', 'concluido', 'rejeitado', 'cancelado', 'negada', 'negado'];
+    // Aprovadas ainda precisam permanecer consultáveis: elas saem apenas quando são marcadas como Compradas.
+    // O parâmetro preserva compatibilidade para eventuais consumidores antigos da rota.
+    const incluirAprovadas = ['1', 'true'].includes(String(req.query.incluir_aprovadas || '').toLowerCase());
+    const statusEncerrados = ['comprado', 'recebido', 'entregue', 'concluído', 'concluido', 'rejeitado', 'cancelado', 'negada', 'negado'];
+    if (!incluirAprovadas) statusEncerrados.push('aprovado', 'aprovada');
     const compras = await q(`SELECT * FROM compras WHERE COALESCE(LOWER(TRIM(status)), 'em cotação') <> ALL($1::text[]) ORDER BY id DESC`, [statusEncerrados]);
     const ids = compras.rows.map(c => c.id);
     if (!ids.length) return res.json({ compras: [], cotacoes: [] });
