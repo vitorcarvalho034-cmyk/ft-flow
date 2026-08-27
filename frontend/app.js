@@ -1687,22 +1687,25 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
                 <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f)}&quot;, ${totais[f]})" style="background:#2e7d32;padding:7px 16px;font-size:13px">✅ Aprovar ${htmlEsc(f)} &mdash; R$ ${totais[f].toFixed(2)}</button>
               `).join('')}
             </div>` : ''}
+            ${estaAprovada ? '' : `<div style="margin-top:12px;text-align:center"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compra.id})">+ Adicionar fornecedor</button></div>`}
           </div>`;
       } else {
         // Compra regular: mostrar cada cotação individualmente
         cardHtml += `<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 10px;">`;
         cotacoes.forEach(cot => {
-          const selecionado = compra.fornecedor_escolhido === cot.fornecedor;
+          // Nome e valor identificam a cotação escolhida: o mesmo fornecedor pode ter mais de um preço.
+          const selecionado = compra.fornecedor_escolhido === cot.fornecedor
+            && Math.abs(Number(compra.valor_escolhido || 0) - Number(cot.valor || 0)) < 0.005;
           const bgColor = selecionado ? '#e8f5e9' : '#f9f9f9';
-          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+          const borderStyle = selecionado ? '2px solid #1b8f3a' : '1px solid #ddd';
           cardHtml += `<div style="border: ${borderStyle}; background-color: ${bgColor}; padding: 12px; border-radius: 6px; text-align: center; display: flex; flex-direction: column;">
             <div style="font-weight: bold; margin-bottom: 8px; word-wrap: break-word; overflow-wrap: break-word;">${htmlEsc(cot.fornecedor)}</div>
             <div style="font-size: 18px; color: green; font-weight: bold; margin-bottom: 8px;">R$ ${Number(cot.valor).toFixed(2)}</div>
             <div style="font-size: 12px; color: #666; margin-bottom: 10px; word-wrap: break-word; overflow-wrap: break-word; max-height: 60px; overflow-y: auto;">${cot.observacao || '-'}</div>
             ${compra.status === 'Pendente_aprovacao' ? `
             <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(cot.fornecedor)}&quot;, ${cot.valor})" style="width: 100%; margin-bottom: 6px; background: ${selecionado ? '#1b5e20' : '#2e7d32'}">
-              ${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}
-            </button>` : selecionado ? `<div style="color:#2e7d32;font-weight:bold;font-size:12px;margin-bottom:6px">✓ Fornecedor selecionado</div>` : ''}
+              ${selecionado ? '✓ FORNECEDOR ESCOLHIDO' : '✅ Aprovar'}
+            </button>` : selecionado ? `<div style="color:#1b8f3a;font-weight:700;font-size:13px;margin-bottom:6px">✓ FORNECEDOR ESCOLHIDO</div>` : ''}
             <div style="display: flex; gap: 4px; justify-content: center;">
               <button class="secondary small" onclick="editarCotacao(${cot.id})" style="flex: 1; font-size: 12px;">✏️ Editar</button>
               <button class="danger small" onclick="deletarCotacao(${compra.id}, ${cot.id})" style="flex: 1; font-size: 12px;">🗑️ Deletar</button>
@@ -2026,12 +2029,16 @@ function abrirModalCotacaoComparacao(compraId) {
         });
         
         html += '</tbody></table></div>';
-        // Para lista pronta, mostrar apenas botão de enviar para aprovação
+        // Enquanto a lista não foi enviada para decisão, ainda é possível acrescentar fornecedores.
+        const statusListaCompra = normalizarStatus(compra.status);
+        const listaEmDecisaoOuConcluida = ['pendente_aprovacao', 'pendente aprovaçao', 'aguardando aprovação', 'aprovado', 'aprovada', 'comprado', 'recebido'].includes(statusListaCompra);
         if (compra.status_lista === 'pronta') {
-          html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="enviarParaAprovacao(${compraId})">✓ Enviar para Aprovação</button></div>`;
+          html += `<div style="margin-top:15px;text-align:center;display:flex;justify-content:center;gap:10px;flex-wrap:wrap">
+            ${listaEmDecisaoOuConcluida ? '' : `<button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar fornecedor</button>`}
+            ${listaEmDecisaoOuConcluida ? '' : `<button class="secondary" onclick="enviarParaAprovacao(${compraId})">✓ Enviar para aprovação</button>`}
+          </div>`;
         } else {
-          // Para rascunho, mostrar botão de adicionar fornecedor
-          html += `<div style="margin-top: 15px; text-align: center;"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar Fornecedor</button></div>`;
+          html += `<div style="margin-top:15px;text-align:center"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compraId})">+ Adicionar fornecedor</button></div>`;
         }
         container.innerHTML = html;
       } else {
@@ -2042,13 +2049,14 @@ function abrirModalCotacaoComparacao(compraId) {
         
         fornecedoresUnicos.forEach((fornecedor) => {
           const cot = cotacoes.find(c => c.fornecedor === fornecedor);
-          const selecionado = fornecedorSelecionado?.nome === fornecedor && fornecedorSelecionado?.compraId === compraId;
+          const selecionado = compra.fornecedor_escolhido === fornecedor
+            && Math.abs(Number(compra.valor_escolhido || 0) - Number(cot?.valor || 0)) < 0.005;
           const bgColor = selecionado ? '#e8f5e9' : 'white';
-          const borderStyle = selecionado ? '2px solid green' : '1px solid #ddd';
+          const borderStyle = selecionado ? '2px solid #1b8f3a' : '1px solid #ddd';
           
           const btnAcao = compra.status === 'Pendente_aprovacao'
-            ? `<button class="small primary" onclick="selecionarFornecedorCotacao(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right:4px;background:#2e7d32">${selecionado ? '✓ SELECIONADO' : '✅ Aprovar'}</button>`
-            : `<button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right:4px">${selecionado ? '✓ SELECIONADO' : 'Selecionar'}</button>`;
+            ? `<button class="small primary" onclick="selecionarFornecedorCotacao(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right:4px;background:#2e7d32">${selecionado ? '✓ FORNECEDOR ESCOLHIDO' : '✅ Aprovar'}</button>`
+            : `<button class="small ${selecionado ? 'primary' : 'secondary'}" onclick="selecionarFornecedor(${compraId}, '${htmlEsc(fornecedor)}', ${cot.valor})" style="margin-right:4px">${selecionado ? '✓ FORNECEDOR ESCOLHIDO' : 'Selecionar'}</button>`;
           html += `<tr style="background-color: ${bgColor};"><td style="padding: 12px; border: ${borderStyle};"><strong>${htmlEsc(fornecedor)}</strong></td><td style="padding: 12px; text-align: center; border: ${borderStyle}; color: green; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</td><td style="padding: 12px; border: ${borderStyle};"><small>${cot.observacao || '-'}</small></td><td style="padding: 12px; text-align: center; border: ${borderStyle};">${btnAcao}<button class="small danger" onclick="deletarFornecedor(${compraId}, '${htmlEsc(fornecedor)}')">🗑️</button></td></tr>`;
         });
         
