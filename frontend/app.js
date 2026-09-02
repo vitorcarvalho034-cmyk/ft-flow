@@ -2315,14 +2315,20 @@ async function rejeitarCotacao(cotacaoId, motivo = "") {
 
 // ===== ADICIONAR FORNECEDOR E PREÇO =====
 let cotacaoIdAtual = null;
+let cotacaoEdicaoId = null;
+let cotacaoItemIdAtual = null;
 
 async function abrirModalAdicionarFornecedor(cotacaoId) {
   console.log('Abrindo modal para compra:', cotacaoId);
   cotacaoIdAtual = cotacaoId;
+  cotacaoEdicaoId = null;
+  cotacaoItemIdAtual = null;
   document.getElementById("novoFornecedorCotacaoId").value = cotacaoId;
+  document.getElementById("novoFornecedorEdicaoId").value = "";
   document.getElementById("novoFornecedorNome").value = "";
   document.getElementById("novoFornecedorValor").value = "";
   document.getElementById("novoFornecedorObs").value = "";
+  document.getElementById("btnSalvarFornecedor").textContent = "Adicionar Fornecedor";
   
   try {
     const [compra, fornecedoresCadastrados] = await Promise.all([
@@ -2358,7 +2364,7 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
       
       let itemsHtml = refHtml + '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
       for (const item of itens) {
-        itemsHtml += `<option value="${item.id}">${item.produto} (${item.quantidade} ${item.unidade})</option>`;
+        itemsHtml += `<option value="${item.id}">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</option>`;
       }
       itemsHtml += '</select></div>';
       document.getElementById("fornecedoresItemContainer").innerHTML = itemsHtml;
@@ -2379,6 +2385,7 @@ async function mostrarFornecedoresItem(itemId) {
   
   try {
     const compraId = document.getElementById("novoFornecedorCotacaoId").value;
+    cotacaoItemIdAtual = itemId;
     const cotacoes = await js(`${API}/compras/${compraId}/cotacoes`);
     
     // Filtrar cotações para este item
@@ -2391,9 +2398,9 @@ async function mostrarFornecedoresItem(itemId) {
       html += '<p style="margin: 5px 0; color: #999; font-size: 13px;">Nenhuma cotação ainda para este produto</p>';
     } else {
       for (const cot of cotacoesItem) {
-        html += `<div style="padding: 8px; margin: 5px 0; background: white; border-radius: 4px; border-left: 3px solid #1b5e20;">
-          <strong>${cot.fornecedor}</strong> - <span style="color: #2e7d32; font-weight: bold;">R$ ${Number(cot.valor).toFixed(2)}</span>
-          <small style="color: #999;">${cot.observacao ? '(' + cot.observacao + ')' : ''}</small>
+        html += `<div style="padding:8px;margin:5px 0;background:white;border-radius:4px;border-left:3px solid #1b5e20;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="flex:1;min-width:180px"><strong>${htmlEsc(cot.fornecedor)}</strong> - <span style="color:#2e7d32;font-weight:bold">R$ ${Number(cot.valor).toFixed(2)}</span><small style="color:#999;margin-left:6px">${cot.observacao ? '(' + htmlEsc(cot.observacao) + ')' : ''}</small></span>
+          <button type="button" class="secondary" onclick="editarFornecedorExistente(${cot.id})" style="padding:5px 10px;font-size:12px">✏️ Editar</button>
         </div>`;
       }
     }
@@ -2410,25 +2417,47 @@ async function mostrarFornecedoresItem(itemId) {
 function fecharModalAdicionarFornecedor() {
   document.getElementById("modalAdicionarFornecedor").classList.add("hidden");
   cotacaoIdAtual = null;
+  cotacaoEdicaoId = null;
+  cotacaoItemIdAtual = null;
+}
+
+async function editarFornecedorExistente(cotacaoId) {
+  try {
+    const cot = await js(`${API}/cotacoes/${cotacaoId}`);
+    cotacaoEdicaoId = cotacaoId;
+    document.getElementById("novoFornecedorEdicaoId").value = cotacaoId;
+    document.getElementById("novoFornecedorNome").value = cot.fornecedor || "";
+    document.getElementById("novoFornecedorValor").value = cot.valor ?? "";
+    document.getElementById("novoFornecedorObs").value = cot.observacao || "";
+    document.getElementById("btnSalvarFornecedor").textContent = "Salvar alteração";
+    document.getElementById("novoFornecedorNome").focus();
+  } catch (e) {
+    mostrarErro(e.message);
+  }
 }
 
 async function salvarNovoFornecedor(event) {
   event.preventDefault();
   
   const cotacaoId = document.getElementById("novoFornecedorCotacaoId").value;
-  const itemId = document.getElementById("novoFornecedorItem")?.value;
+  const itemId = document.getElementById("novoFornecedorItem")?.value || cotacaoItemIdAtual;
+  const edicaoId = document.getElementById("novoFornecedorEdicaoId").value;
   const fornecedor = document.getElementById("novoFornecedorNome").value;
   const valor = parseFloat(document.getElementById("novoFornecedorValor").value);
   const observacao = document.getElementById("novoFornecedorObs").value;
   
   try {
-    const resultado = await js(`${API}/compras/${cotacaoId}/cotacoes`, {
-      method: 'POST',
+    const url = edicaoId ? `${API}/cotacoes/${edicaoId}` : `${API}/compras/${cotacaoId}/cotacoes`;
+    const resultado = await js(url, {
+      method: edicaoId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fornecedor, valor, observacao, item_id: itemId })
     });
     
-    mostrarSucesso("Fornecedor adicionado com sucesso!");
+    mostrarSucesso(edicaoId ? "Fornecedor atualizado com sucesso!" : "Fornecedor adicionado com sucesso!");
+    document.getElementById("novoFornecedorEdicaoId").value = "";
+    cotacaoEdicaoId = null;
+    document.getElementById("btnSalvarFornecedor").textContent = "Adicionar Fornecedor";
     
     // Limpar campos para adicionar outro fornecedor
     document.getElementById("novoFornecedorNome").value = "";

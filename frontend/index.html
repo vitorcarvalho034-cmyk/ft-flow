@@ -436,12 +436,13 @@
     <div class="modal-head"><h3>Adicionar Fornecedor e Preço</h3><button onclick="fecharModalAdicionarFornecedor()">×</button></div>
     <form id="formAdicionarFornecedor" onsubmit="salvarNovoFornecedor(event)">
       <input type="hidden" id="novoFornecedorCotacaoId">
+      <input type="hidden" id="novoFornecedorEdicaoId">
       <div id="fornecedoresItemContainer"></div>
       <label>Fornecedor<input id="novoFornecedorNome" type="text" list="listaFornecedoresCadastrados" placeholder="Digite ou selecione um fornecedor..." required></label>
       <datalist id="listaFornecedoresCadastrados"></datalist>
       <label>Preço (R$)<input id="novoFornecedorValor" type="number" step="0.01" placeholder="0.00" required></label>
       <label>Observação (opcional)<textarea id="novoFornecedorObs" placeholder="Ex: Frete grátis, prazo 5 dias..."></textarea></label>
-      <button class="primary full">Adicionar Fornecedor</button>
+      <button id="btnSalvarFornecedor" class="primary full">Adicionar Fornecedor</button>
     </form>
   </div>
 </div>
@@ -532,7 +533,7 @@
   </div>
 </div>
 
-<script src="app.js?v=61"></script>
+<script src="app.js?v=62"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {
