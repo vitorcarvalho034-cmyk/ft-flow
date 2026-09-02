@@ -459,7 +459,7 @@ app.post("/compras",async(req,res)=>{
       // Salvar pedido principal sem item específico
       const r = await q(
         `INSERT INTO compras (item,quantidade,unidade,categoria,destino,solicitante,status,tipo_solicitacao,descricao,link_produto,foto_url,status_lista) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
-        ['Lista de Compra', 0, '', 'Lista de Compra', 'Lista de Compra', b.solicitante || 'Não informado', b.status_lista === 'pronta' ? 'Em cotação' : 'Rascunho', 'lista', 'Lista de compra', null, null, b.status_lista || 'rascunho']
+        [b.item || 'Lista de Compra', 0, '', b.categoria || 'Lista de Compra', b.destino || 'Lista de Compra', b.solicitante || 'Não informado', b.status_lista === 'pronta' ? 'Em cotação' : 'Rascunho', 'lista', b.descricao || 'Lista de compra', b.link_produto || null, b.foto_url || null, b.status_lista || 'rascunho']
       );
       const compraId = r.rows[0].id;
       
