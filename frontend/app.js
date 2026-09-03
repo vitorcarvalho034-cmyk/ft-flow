@@ -1687,7 +1687,10 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
                 <button class="primary small" onclick="selecionarFornecedorCotacao(${compra.id}, &quot;${htmlEsc(f)}&quot;, ${totais[f]})" style="background:#2e7d32;padding:7px 16px;font-size:13px">✅ Aprovar ${htmlEsc(f)} &mdash; R$ ${totais[f].toFixed(2)}</button>
               `).join('')}
             </div>` : ''}
-            ${estaAprovada ? '' : `<div style="margin-top:12px;text-align:center"><button class="primary" onclick="abrirModalAdicionarFornecedor(${compra.id})">+ Adicionar fornecedor</button></div>`}
+            ${estaAprovada ? '' : `<div style="margin-top:12px;text-align:center;display:flex;justify-content:center;gap:10px;flex-wrap:wrap">
+              <button class="primary" onclick="abrirModalAdicionarFornecedor(${compra.id})">+ Adicionar fornecedor</button>
+              ${statusCompra === 'em cotação' ? `<button class="secondary" onclick="enviarParaAprovacao(${compra.id})">✓ Enviar para aprovação</button>` : ''}
+            </div>`}
           </div>`;
       } else {
         // Compra regular: mostrar cada cotação individualmente
