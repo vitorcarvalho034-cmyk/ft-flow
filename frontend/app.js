@@ -2183,10 +2183,17 @@ async function excluirCotacao(id) {
 // ===== APROVAÇÃO DE COTAÇÕES =====
 let cotacaoAtualId = null;
 
-function enviarParaAprovacao(cotacaoId) {
-  cotacaoAtualId = cotacaoId;
+function enviarParaAprovacao(compraId) {
+  // Listas e compras usam a rota /compras/:id/enviar-aprovacao.
+  // O fluxo antigo /cotacoes/:id/enviar-aprovacao não envia uma lista e fazia o botão falhar.
+  if (compraId) {
+    fecharModalCotacaoComparacao();
+    return abrirModalAprovacaoCompra(compraId);
+  }
+  // Compatibilidade com o botão legado, caso algum registro antigo ainda o utilize.
+  cotacaoAtualId = compraId;
   const modal = document.getElementById("modalAprovacaoCotacao");
-  document.getElementById("aprovacaoCotacaoId").value = cotacaoId;
+  document.getElementById("aprovacaoCotacaoId").value = compraId || "";
   document.getElementById("aprovacaoEmail").value = localStorage.getItem("patroa_email") || "dorian@floresdaterra.com.br";
   modal.classList.remove("hidden");
 }
@@ -2205,9 +2212,10 @@ async function abrirModalAprovacaoCompra(compraId) {
     const compra = await js(`${API}/compras/${compraId}`);
     
     const modal = document.getElementById("modalEnviarAprovacao");
+    const ehLista = compra.tipo_solicitacao === 'lista';
     document.getElementById("envioAprovacaoCompra").value = compraId;
-    document.getElementById("envioAprovacaoFornecedor").value = compra.fornecedor_escolhido || "";
-    document.getElementById("envioAprovacaoValor").value = compra.valor_escolhido ? compra.valor_escolhido.toFixed(2) : "";
+    document.getElementById("envioAprovacaoFornecedor").value = ehLista ? "Seleção por item da lista" : (compra.fornecedor_escolhido || "");
+    document.getElementById("envioAprovacaoValor").value = ehLista ? "Definido por item na aprovação" : (compra.valor_escolhido ? compra.valor_escolhido.toFixed(2) : "");
     document.getElementById("envioAprovacaoDestinatario").value = compra.destinatario || "";
     modal.classList.remove("hidden");
   } catch (e) {
