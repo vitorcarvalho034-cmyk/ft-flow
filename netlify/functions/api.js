@@ -642,6 +642,24 @@ app.post('/compras/:id/confirmar-compra', async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 
+// Confirmar várias compras aprovadas de uma vez.
+app.post('/compras/confirmar-compra-lote', async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas o administrador pode confirmar compras' });
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger))];
+    if (!ids.length) return res.status(400).json({ error: 'Selecione ao menos uma compra' });
+    const r = await q('SELECT id, item, status, destino FROM compras WHERE id = ANY($1::int[])', [ids]);
+    if (r.rows.length !== ids.length) return res.status(404).json({ error: 'Uma ou mais compras não foram encontradas' });
+    const invalidas = r.rows.filter(c => !['aprovado', 'aprovada'].includes(String(c.status || '').trim().toLowerCase()));
+    if (invalidas.length) return res.status(409).json({ error: `Somente compras aprovadas podem ser marcadas como compradas. Verifique: ${invalidas.map(c => '#' + c.id).join(', ')}` });
+    await q("UPDATE compras SET status='Comprado', purchased_at=NOW() WHERE id = ANY($1::int[])", [ids]);
+    for (const c of r.rows) {
+      await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)', [req.user.id || 0, 'confirmar_compra', 'compras', c.id, JSON.stringify({ item: c.item, destino: c.destino || null, confirmado_por: req.user.username || req.user.nome || 'Administrador', lote: true })]);
+    }
+    res.json({ ok: true, atualizadas: ids.length, status: 'Comprado' });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
 app.put("/compras/:id/escolher-fornecedor",async(req,res)=>{try{await q(`UPDATE compras SET fornecedor_escolhido=$1,valor_escolhido=$2,status='Aprovado' WHERE id=$3`,[req.body.fornecedor,req.body.valor,req.params.id]);res.json({ok:true});}catch(e){res.status(500).json({error:e.message});}});
 
 // Approve received (admin only)
@@ -654,6 +672,24 @@ app.post('/compras/:id/approve-received', async (req, res) => {
     await q('UPDATE compras SET status=$1, received_at=NOW(), received_by=$2 WHERE id=$3', ['recebido', req.user.id, id]);
     await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)', [req.user.id, 'approve_received', 'compras', id, JSON.stringify({ by: req.user.username })]);
     res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
+});
+
+// Confirmar vários recebimentos de uma vez.
+app.post('/compras/confirmar-recebimento-lote', async (req, res) => {
+  try {
+    if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Apenas o administrador pode confirmar recebimentos' });
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger))];
+    if (!ids.length) return res.status(400).json({ error: 'Selecione ao menos uma compra' });
+    const r = await q('SELECT id, item, status FROM compras WHERE id = ANY($1::int[])', [ids]);
+    if (r.rows.length !== ids.length) return res.status(404).json({ error: 'Uma ou mais compras não foram encontradas' });
+    const invalidas = r.rows.filter(c => String(c.status || '').trim().toLowerCase() !== 'comprado');
+    if (invalidas.length) return res.status(409).json({ error: `Somente compras com status Comprado podem ser recebidas. Verifique: ${invalidas.map(c => '#' + c.id).join(', ')}` });
+    await q("UPDATE compras SET status='Recebido', received_at=NOW(), received_by=$1 WHERE id = ANY($2::int[])", [req.user.id, ids]);
+    for (const c of r.rows) {
+      await q('INSERT INTO audit_log (actor_id, action, target_table, target_id, meta) VALUES ($1,$2,$3,$4,$5)', [req.user.id || 0, 'approve_received', 'compras', c.id, JSON.stringify({ by: req.user.username || req.user.nome || 'Administrador', lote: true })]);
+    }
+    res.json({ ok: true, atualizadas: ids.length, status: 'Recebido' });
   } catch (e) { console.error(e); res.status(500).json({ error: e.message }); }
 });
 

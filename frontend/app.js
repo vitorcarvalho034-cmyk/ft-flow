@@ -187,8 +187,11 @@ function cardPedidoCompra(c, options = {}) {
     const etapa = filaCompra(c.status);
     const btnCotacao = `<button class="secondary" onclick="abrirModalCotacaoComparacao(${c.id})">Cotação</button>`;
     const btnExcluir = `<button class="danger" onclick="excluirCompra(${c.id})">🗑️ Excluir</button>`;
-    const btnComprado = `<button class="primary" style="background:#1565c0" onclick="confirmarCompra(${c.id})">🛒 Marcar como comprado</button>`;
-    const btnRecebido = `<button class="primary" style="background:#2e7d32" onclick="confirmarRecebimentoCompra(${c.id})">📦 Confirmar recebimento</button>`;
+    const checkboxLote = (etapaAtual) => ['aprovado', 'comprado'].includes(etapaAtual)
+      ? `<label style="display:inline-flex;align-items:center;gap:6px;margin-right:6px;padding:7px 10px;background:#fff;border:1px solid #cbd5cf;border-radius:6px;font-size:12px;cursor:pointer"><input type="checkbox" class="compra-selecao-lote" data-id="${c.id}" data-etapa="${etapaAtual}" onchange="atualizarBarraLote()"> Selecionar</label>`
+      : '';
+    const btnComprado = `${checkboxLote('aprovado')}<button class="primary" style="background:#1565c0" onclick="confirmarCompra(${c.id})">🛒 Marcar como comprado</button>`;
+    const btnRecebido = `${checkboxLote('comprado')}<button class="primary" style="background:#2e7d32" onclick="confirmarRecebimentoCompra(${c.id})">📦 Confirmar recebimento</button>`;
 
     if (c.tipo_solicitacao === 'lista') {
       const etapaLista = etapa === 'cotacao'
@@ -1062,7 +1065,8 @@ async function compras(){
 
   content.innerHTML = `<div class="panel"><h3>${isAdmin ? 'Compras e solicitações' : 'Nova solicitação de compra'}</h3>
     <p style="color:#647066">${isAdmin ? 'Trabalhe por etapa: cotar, aprovar, comprar e confirmar o recebimento.' : 'Use quando precisar solicitar compra sem abrir manutenção.'}</p>
-    <div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirModalListaCompra()">📋 Nova Lista de Compra</button>${isAdmin ? '<button class="primary" onclick="abrirCompraRapida()">Compra Rápida (&lt;R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button>' : ''}<button class="secondary" onclick="carregar()">Atualizar</button></div></div>
+    <div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirModalListaCompra()">📋 Nova Lista de Compra</button>${isAdmin ? '<button class="primary" onclick="abrirCompraRapida()">Compra Rápida (&lt;R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button>' : ''}<button class="secondary" onclick="carregar()">Atualizar</button></div>
+    ${isAdmin ? `<div id="barraAcoesLote" class="actions" style="margin-top:12px;display:none;padding:10px;background:#eef7f0;border:1px solid #c8e6c9;border-radius:8px"><strong id="contadorSelecaoLote">0 selecionados</strong><button class="primary" style="background:#1565c0" onclick="confirmarComprasSelecionadas()">🛒 Confirmar comprados</button><button class="primary" style="background:#2e7d32" onclick="confirmarRecebimentosSelecionados()">📦 Confirmar recebidos</button><button class="secondary" onclick="limparSelecaoLote()">Limpar seleção</button></div>` : ''}</div>
     <div style="margin-top:14px">${filasHtml}</div>`;
 }
 function abrirModalCompra() {
@@ -1179,6 +1183,52 @@ async function statusCompra(id,status){
   }
 }
 
+async function atualizarComprasSemPerderPosicao() {
+  const y = window.scrollY;
+  await compras();
+  requestAnimationFrame(() => window.scrollTo({ top: y, behavior: 'auto' }));
+}
+
+function obterSelecoesLote(etapa) {
+  return Array.from(document.querySelectorAll(`.compra-selecao-lote[data-etapa="${etapa}"]:checked`)).map(el => Number(el.dataset.id));
+}
+
+function atualizarBarraLote() {
+  const checks = Array.from(document.querySelectorAll('.compra-selecao-lote:checked'));
+  const barra = document.getElementById('barraAcoesLote');
+  const contador = document.getElementById('contadorSelecaoLote');
+  if (!barra || !contador) return;
+  contador.textContent = `${checks.length} selecionado${checks.length === 1 ? '' : 's'}`;
+  barra.style.display = checks.length ? 'flex' : 'none';
+}
+
+function limparSelecaoLote() {
+  document.querySelectorAll('.compra-selecao-lote:checked').forEach(el => { el.checked = false; });
+  atualizarBarraLote();
+}
+
+async function confirmarComprasSelecionadas() {
+  const ids = obterSelecoesLote('aprovado');
+  if (!ids.length) return mostrarErro('Selecione ao menos uma compra aprovada.');
+  if (!confirm(`Confirmar ${ids.length} compra(s) como Comprado?`)) return;
+  try {
+    await js(API + '/compras/confirmar-compra-lote', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ids }) });
+    mostrarSucesso(`🛒 ${ids.length} compra(s) confirmada(s) como comprada(s)!`);
+    await atualizarComprasSemPerderPosicao();
+  } catch (e) { mostrarErro(e.message || 'Não foi possível confirmar as compras.'); }
+}
+
+async function confirmarRecebimentosSelecionados() {
+  const ids = obterSelecoesLote('comprado');
+  if (!ids.length) return mostrarErro('Selecione ao menos uma compra aguardando recebimento.');
+  if (!confirm(`Confirmar o recebimento de ${ids.length} compra(s)?`)) return;
+  try {
+    await js(API + '/compras/confirmar-recebimento-lote', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ ids }) });
+    mostrarSucesso(`📦 ${ids.length} recebimento(s) confirmado(s)!`);
+    await atualizarComprasSemPerderPosicao();
+  } catch (e) { mostrarErro(e.message || 'Não foi possível confirmar os recebimentos.'); }
+}
+
 async function confirmarCompra(id) {
   let compra = window._historicoData?.find(c => Number(c.id) === Number(id)) || window._comprasAtivas?.find(c => Number(c.id) === Number(id));
   try {
@@ -1192,7 +1242,7 @@ async function confirmarCompra(id) {
       body: JSON.stringify({})
     });
     mostrarSucesso(`🛒 Compra confirmada! O produto segue para: ${destino}.`);
-    await carregar();
+    await atualizarComprasSemPerderPosicao();
   } catch (e) {
     mostrarErro(e.message || 'Não foi possível confirmar a compra.');
   }
@@ -1211,7 +1261,7 @@ async function confirmarRecebimentoCompra(id) {
       body: JSON.stringify({})
     });
     mostrarSucesso(`📦 Recebimento confirmado no destino: ${destino}.`);
-    await carregar();
+    await atualizarComprasSemPerderPosicao();
   } catch (e) {
     mostrarErro(e.message || 'Não foi possível confirmar o recebimento.');
   }
