@@ -774,3 +774,44 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .estoque-grid { grid-template-columns: 1fr; }
   .detalhe-acoes { grid-template-columns: 1fr; }
 }
+
+/* Correções de leitura mobile: nomes de produtos sempre em LTR e conteúdo protegido das bordas do aparelho. */
+.texto-produto-ltr {
+  direction: ltr;
+  unicode-bidi: plaintext;
+  text-align: left;
+  writing-mode: horizontal-tb;
+  transform: none;
+}
+
+@media (max-width: 900px) {
+  html, body {
+    max-width: 100%;
+    overflow-x: clip;
+  }
+  .main {
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    padding-right: calc(14px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+  .topbar {
+    margin-left: calc(-14px - env(safe-area-inset-left, 0px));
+    margin-right: calc(-14px - env(safe-area-inset-right, 0px));
+    padding-left: calc(14px + env(safe-area-inset-left, 0px));
+    padding-right: calc(14px + env(safe-area-inset-right, 0px));
+  }
+  .modal-card {
+    padding-left: calc(18px + env(safe-area-inset-left, 0px));
+    padding-right: calc(18px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .drawer-content {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .pedido-lista-items,
+  .pedido-lista-items table {
+    direction: ltr;
+    text-align: left;
+  }
+}

@@ -1668,7 +1668,7 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
     
     let cardHtml = `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">
-        <b style="font-size: 16px;">#${compra.id} — ${htmlEsc(compra.item)}</b>
+        <b class="texto-produto-ltr" style="font-size: 16px;">#${compra.id} — ${htmlEsc(compra.item)}</b>
         <span class="pedido-status-wrap" style="margin-left: 10px;">${st(compra.status)}</span>
       </div>
       <div style="margin-bottom: 10px; color: #666; font-size: 14px;">
@@ -1697,7 +1697,7 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
             <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:400px">
               <thead>
                 <tr style="background:#052e16;color:white">
-                  <th style="padding:10px 12px;text-align:left;min-width:140px">Produto</th>
+                  <th class="texto-produto-ltr" style="padding:10px 12px;text-align:left;min-width:140px">Produto</th>
                   ${fornecedoresUnicos.map(f => `<th style="padding:10px 12px;text-align:center;white-space:nowrap">${htmlEsc(f)}</th>`).join('')}
                 </tr>
               </thead>
@@ -1708,7 +1708,7 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
                   const menorItem = valoresItem.length ? Math.min(...valoresItem) : null;
                   return `<tr style="background:${bg}">
                     <td style="padding:9px 12px;border-bottom:1px solid #eee">
-                      <div style="font-weight:600;color:#222">${htmlEsc(it.nome || '-')}</div>
+                      <div class="texto-produto-ltr" style="font-weight:600;color:#222">${htmlEsc(it.nome || '-')}</div>
                       ${it.qtd ? `<div style="font-size:11px;color:#888">${it.qtd} ${it.unidade || ''}</div>` : ''}
                     </td>
                     ${fornecedoresUnicos.map(f => {
