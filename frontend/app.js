@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v37";
+const APP_VERSION = "v38";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
@@ -231,7 +231,7 @@ function cardPedidoCompra(c, options = {}) {
           <tbody>
             ${c.itens.map(item => `
               <tr style="border-bottom: 1px solid #ddd;">
-                <td style="padding: 8px;">${htmlEsc(item.produto)}</td>
+                <td style="padding: 8px;"><bdi dir="ltr" class="texto-produto-ltr">${htmlEsc(item.produto)}</bdi></td>
                 <td style="padding: 8px; text-align: center;">${item.quantidade}</td>
                 <td style="padding: 8px; text-align: center;">${htmlEsc(item.unidade)}</td>
               </tr>
@@ -244,7 +244,7 @@ function cardPedidoCompra(c, options = {}) {
 
   return `<div class="card pedido-card">
     <div class="pedido-top">
-      <b class="pedido-titulo">#${c.id} — ${htmlEsc(c.item)}</b>
+      <b class="pedido-titulo texto-produto-ltr" dir="ltr">#${c.id} — ${htmlEsc(c.item)}</b>
       <div style="display: flex; gap: 8px; align-items: center;">
         <span class="pedido-status-wrap">${st(c.status)}</span>
         ${statusBadge}
@@ -1284,7 +1284,7 @@ async function abrirModalAprovarLista(compraId, modoReparo = false) {
     ]);
     
     document.getElementById('modalAprovarListaInfo').innerHTML =
-      `<strong>#${compraId} — ${htmlEsc(compra.item || 'Lista de Compra')}</strong><br>
+      `<strong class="texto-produto-ltr" dir="ltr">#${compraId} — ${htmlEsc(compra.item || 'Lista de Compra')}</strong><br>
        <span style="color:#555">Solicitante: ${htmlEsc(compra.solicitante || '-')} &bull; ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}</span>`;
     
     let itensHtml = '';
@@ -1295,7 +1295,7 @@ async function abrirModalAprovarLista(compraId, modoReparo = false) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
             <span style="background:#1b5e20;color:white;border-radius:50%;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;flex-shrink:0">${itens.indexOf(item)+1}</span>
             <div>
-              <div style="font-weight:bold;color:#1b5e20;font-size:15px">${htmlEsc(item.produto)}</div>
+              <div class="texto-produto-ltr" dir="ltr" style="font-weight:bold;color:#1b5e20;font-size:15px">${htmlEsc(item.produto)}</div>
               <div style="font-size:12px;color:#888">${item.quantidade} ${htmlEsc(item.unidade)}</div>
             </div>
           </div>
@@ -1545,8 +1545,8 @@ async function verDetalhesListaHistorico(compraId) {
       const naoComprar = a.decisao === 'nao_comprar';
       total += naoComprar ? 0 : Number(a.valor || 0);
       html += naoComprar
-        ? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px"><span><strong>${htmlEsc(a.produto || 'Item')}</strong></span><span style="color:#9b1c1c;font-weight:bold">Não comprar</span></div>`
-        : `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px"><span><strong>${htmlEsc(a.produto || 'Item')}</strong> — ${htmlEsc(a.fornecedor)}</span><span style="color:#2e7d32;font-weight:bold">R$ ${Number(a.valor).toFixed(2)}</span></div>`;
+        ? `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px"><span class="texto-produto-ltr" dir="ltr"><strong>${htmlEsc(a.produto || 'Item')}</strong></span><span style="color:#9b1c1c;font-weight:bold">Não comprar</span></div>`
+        : `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #ddd;font-size:13px"><span class="texto-produto-ltr" dir="ltr"><strong>${htmlEsc(a.produto || 'Item')}</strong> — ${htmlEsc(a.fornecedor)}</span><span style="color:#2e7d32;font-weight:bold">R$ ${Number(a.valor).toFixed(2)}</span></div>`;
     });
     html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:14px;font-weight:bold;color:#1b5e20"><span>Total aprovado</span><span>R$ ${total.toFixed(2)}</span></div>`;
     html += '</div>';
@@ -1668,7 +1668,7 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
     
     let cardHtml = `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">
-        <b class="texto-produto-ltr" style="font-size: 16px;">#${compra.id} — ${htmlEsc(compra.item)}</b>
+        <b class="texto-produto-ltr" dir="ltr" style="font-size: 16px;">#${compra.id} — ${htmlEsc(compra.item)}</b>
         <span class="pedido-status-wrap" style="margin-left: 10px;">${st(compra.status)}</span>
       </div>
       <div style="margin-bottom: 10px; color: #666; font-size: 14px;">
@@ -1708,7 +1708,7 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
                   const menorItem = valoresItem.length ? Math.min(...valoresItem) : null;
                   return `<tr style="background:${bg}">
                     <td style="padding:9px 12px;border-bottom:1px solid #eee">
-                      <div class="texto-produto-ltr" style="font-weight:600;color:#222">${htmlEsc(it.nome || '-')}</div>
+                      <div class="texto-produto-ltr" dir="ltr" style="font-weight:600;color:#222">${htmlEsc(it.nome || '-')}</div>
                       ${it.qtd ? `<div style="font-size:11px;color:#888">${it.qtd} ${it.unidade || ''}</div>` : ''}
                     </td>
                     ${fornecedoresUnicos.map(f => {
@@ -2069,7 +2069,7 @@ function abrirModalCotacaoComparacao(compraId) {
         // Linhas com produtos
         itens.forEach((item) => {
           html += `<tr style="border-bottom: 1px solid #ddd;">`;
-          html += `<td style="padding: 12px; border: 1px solid #ddd; font-weight: bold; color: #1b5e20;">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</td>`;
+          html += `<td class="texto-produto-ltr" dir="ltr" style="padding: 12px; border: 1px solid #ddd; font-weight: bold; color: #1b5e20;">${htmlEsc(item.produto)} (${item.quantidade} ${htmlEsc(item.unidade)})</td>`;
           
           fornecedoresUnicos.forEach((fornecedor) => {
             const cot = cotacoes.find(c => c.item_id === item.id && c.fornecedor === fornecedor);
@@ -2411,7 +2411,7 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
         refHtml += `<img src="${compra.foto_url}" onclick="abrirLightbox('${compra.foto_url}')" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;border:1px solid #ddd" title="Clique para ampliar">`;
       }
       refHtml += `<div style="flex:1;min-width:0">`;
-      refHtml += `<div style="font-weight:bold;color:#1b5e20;font-size:14px;margin-bottom:4px">${htmlEsc(compra.item || '')}</div>`;
+      refHtml += `<div class="texto-produto-ltr" dir="ltr" style="font-weight:bold;color:#1b5e20;font-size:14px;margin-bottom:4px">${htmlEsc(compra.item || '')}</div>`;
       if (compra.descricao) refHtml += `<div style="font-size:12px;color:#555;line-height:1.5;word-break:break-word">${htmlEsc(compra.descricao)}</div>`;
       if (compra.destino) refHtml += `<div style="font-size:12px;color:#888;margin-top:4px">📍 ${htmlEsc(compra.destino)}</div>`;
       if (compra.quantidade) refHtml += `<div style="font-size:12px;color:#888">📦 ${compra.quantidade} ${compra.unidade || ''}</div>`;
@@ -2909,55 +2909,55 @@ function renderizarListaItensRows() {
   const container = document.getElementById("listaItensRows");
   if (!container) return;
   if (listaCompraItensModal.length === 0) {
-    container.innerHTML = '<div style="padding: 12px 10px; color: #999; font-style: italic; font-size: 13px;">Nenhum item adicionado ainda. Use a linha abaixo para adicionar.</div>';
+    container.innerHTML = '<div class="lista-itens-vazia">Nenhum item adicionado ainda. Use os campos abaixo para adicionar.</div>';
     return;
   }
   container.innerHTML = listaCompraItensModal.map(item => {
     const fornecedores = item.fornecedores || [];
     const menorPreco = fornecedores.length > 0 ? Math.min(...fornecedores.map(f => f.preco)) : null;
     const resumoForn = fornecedores.length === 0
-      ? '<span style="color:#999; font-size:12px;">Sem fornecedor</span>'
-      : `<span style="color:#2e7d32; font-size:12px; font-weight:bold;">${fornecedores.length} fornecedor${fornecedores.length > 1 ? 'es' : ''}</span><br><span style="font-size:11px; color:#555;">Menor: R$ ${menorPreco.toFixed(2)}</span>`;
+      ? '<span class="lista-item-sem-fornecedor">Sem fornecedor</span>'
+      : `<span class="lista-item-total-fornecedores">${fornecedores.length} fornecedor${fornecedores.length > 1 ? 'es' : ''}</span><span class="lista-item-menor-preco">Menor: R$ ${menorPreco.toFixed(2)}</span>`;
     const expandido = item.expandido;
     return `
-      <div style="border-bottom: 1px solid #eee;">
+      <div class="lista-item-card ${expandido ? 'expandido' : ''}">
         <!-- Linha principal do item -->
-        <div style="display: grid; grid-template-columns: 32px 1fr 80px 70px 1fr 60px; padding: 8px 10px; align-items: center; background: ${expandido ? '#f1f8e9' : 'white'}; cursor: pointer;" onclick="toggleExpandirItem(${item.id})">
-          <span style="text-align:center; color:#1b5e20; font-weight:bold; font-size:14px;">${expandido ? '▼' : '▶'}</span>
-          <span style="font-size:13px; font-weight: ${expandido ? 'bold' : 'normal'}; color:#1b5e20;">${htmlEsc(item.produto)}</span>
-          <span style="text-align:center; font-size:13px;">${item.quantidade}</span>
-          <span style="text-align:center; font-size:13px;">${htmlEsc(item.unidade)}</span>
-          <span>${resumoForn}</span>
-          <span style="text-align:center;">
-            <button type="button" onclick="event.stopPropagation(); removerItemListaModal(${item.id})" style="background:#ffebee; color:#d32f2f; border:none; border-radius:4px; padding:4px 8px; cursor:pointer; font-size:13px;">🗑️</button>
+        <div class="lista-item-linha" onclick="toggleExpandirItem(${item.id})">
+          <span class="lista-item-toggle">${expandido ? '▼' : '▶'}</span>
+          <bdi dir="ltr" class="lista-item-produto texto-produto-ltr">${htmlEsc(item.produto)}</bdi>
+          <span class="lista-item-qtd">${item.quantidade}</span>
+          <span class="lista-item-unidade">${htmlEsc(item.unidade)}</span>
+          <span class="lista-item-resumo">${resumoForn}</span>
+          <span class="lista-item-acao">
+            <button type="button" aria-label="Remover ${htmlEsc(item.produto)}" onclick="event.stopPropagation(); removerItemListaModal(${item.id})">🗑️</button>
           </span>
         </div>
         <!-- Painel expandido com fornecedores -->
         ${expandido ? `
-        <div style="background:#f9fbe7; border-top: 1px dashed #c5e1a5; padding: 10px 16px 10px 42px;">
+        <div class="lista-item-fornecedores">
           ${fornecedores.length > 0 ? `
-          <table style="width:100%; font-size:12px; border-collapse:collapse; margin-bottom:8px;">
-            <thead><tr style="background:#e8f5e9;">
-              <th style="padding:5px 8px; text-align:left; color:#1b5e20;">Fornecedor</th>
-              <th style="padding:5px 8px; text-align:right; color:#1b5e20; width:120px;">Preço (R$)</th>
-              <th style="padding:5px 8px; width:40px;"></th>
+          <table class="lista-fornecedores-tabela">
+            <thead><tr>
+              <th>Fornecedor</th>
+              <th>Preço (R$)</th>
+              <th></th>
             </tr></thead>
             <tbody>
               ${fornecedores.map(f => `
-              <tr style="border-bottom:1px solid #ddd; ${f.preco === menorPreco ? 'background:#e8f5e9;' : ''}">
-                <td style="padding:5px 8px; ${f.preco === menorPreco ? 'font-weight:bold; color:#1b5e20;' : ''}">${htmlEsc(f.fornecedor)} ${f.preco === menorPreco ? '✅' : ''}</td>
-                <td style="padding:5px 8px; text-align:right; font-weight:bold; color:${f.preco === menorPreco ? '#2e7d32' : '#333'};">R$ ${Number(f.preco).toFixed(2)}</td>
-                <td style="padding:5px 8px; text-align:center;">
-                  <button type="button" onclick="removerFornecedorItem(${item.id}, ${f.id})" style="background:#ffebee; color:#d32f2f; border:none; border-radius:3px; padding:2px 6px; cursor:pointer; font-size:11px;">✕</button>
+              <tr class="${f.preco === menorPreco ? 'menor-preco' : ''}">
+                <td>${htmlEsc(f.fornecedor)} ${f.preco === menorPreco ? '✅' : ''}</td>
+                <td>R$ ${Number(f.preco).toFixed(2)}</td>
+                <td>
+                  <button type="button" aria-label="Remover fornecedor ${htmlEsc(f.fornecedor)}" onclick="removerFornecedorItem(${item.id}, ${f.id})">✕</button>
                 </td>
               </tr>`).join('')}
             </tbody>
-          </table>` : '<p style="font-size:12px; color:#999; margin:0 0 8px;">Nenhum fornecedor adicionado ainda.</p>'}
+          </table>` : '<p class="lista-fornecedores-vazia">Nenhum fornecedor adicionado ainda.</p>'}
           <!-- Linha para adicionar fornecedor -->
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="forn_nome_${item.id}" placeholder="Nome do fornecedor" onclick="event.stopPropagation()" style="flex:1; padding:5px 8px; border:1px solid #c5e1a5; border-radius:4px; font-size:12px;">
-            <input id="forn_preco_${item.id}" type="number" placeholder="Preço" step="0.01" min="0" onclick="event.stopPropagation()" style="width:90px; padding:5px 8px; border:1px solid #c5e1a5; border-radius:4px; font-size:12px;">
-            <button type="button" onclick="event.stopPropagation(); adicionarFornecedorItem(${item.id})" style="background:#1b5e20; color:white; border:none; border-radius:4px; padding:5px 10px; cursor:pointer; font-size:12px; white-space:nowrap;">+ Fornecedor</button>
+          <div class="lista-adicionar-fornecedor">
+            <input id="forn_nome_${item.id}" placeholder="Nome do fornecedor" onclick="event.stopPropagation()">
+            <input id="forn_preco_${item.id}" type="number" inputmode="decimal" placeholder="Preço (R$)" step="0.01" min="0" onclick="event.stopPropagation()">
+            <button type="button" class="primary" onclick="event.stopPropagation(); adicionarFornecedorItem(${item.id})">+ Adicionar fornecedor</button>
           </div>
         </div>` : ''}
       </div>`;

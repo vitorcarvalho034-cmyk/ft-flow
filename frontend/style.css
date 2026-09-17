@@ -269,6 +269,101 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 .cotacao-box.hidden { display: none !important; }
 .quote-panel h4 { margin: 0 0 12px; }
 
+/* ── Modal de Lista de Compra ── */
+.lista-compra-modal-card { width: min(980px, 96vw); }
+.lista-compra-campos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.lista-compra-itens-container {
+  border: 1px solid #d7e2da;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 15px;
+  direction: ltr;
+}
+.lista-compra-cabecalho,
+.lista-item-linha,
+.lista-novo-item-linha {
+  display: grid;
+  grid-template-columns: 32px minmax(180px, 1.4fr) 80px 70px minmax(170px, 1fr) 60px;
+  gap: 6px;
+  align-items: center;
+}
+.lista-compra-cabecalho {
+  background: #e8f5e9;
+  border-bottom: 2px solid #1b5e20;
+  padding: 8px 10px;
+  color: #1b5e20;
+  font-size: 13px;
+  font-weight: 800;
+}
+.lista-compra-cabecalho span:nth-child(3),
+.lista-compra-cabecalho span:nth-child(4),
+.lista-compra-cabecalho span:nth-child(6) { text-align: center; }
+.lista-itens-vazia { padding: 14px 10px; color: #738078; font-style: italic; font-size: 13px; }
+.lista-item-card { border-bottom: 1px solid #e6eee8; background: white; color: #172016; }
+.lista-item-card.expandido { background: #f1f8e9; }
+.lista-item-linha { padding: 10px; cursor: pointer; }
+.lista-item-toggle { text-align: center; color: #1b5e20; font-weight: 900; font-size: 14px; }
+.lista-item-produto {
+  display: block;
+  min-width: 0;
+  color: #1b5e20;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.lista-item-qtd,
+.lista-item-unidade { text-align: center; font-size: 13px; }
+.lista-item-resumo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.lista-item-sem-fornecedor { color: #738078; font-size: 12px; }
+.lista-item-total-fornecedores { color: #2e7d32; font-size: 12px; font-weight: 800; }
+.lista-item-menor-preco { color: #555; font-size: 11px; }
+.lista-item-acao { text-align: center; }
+.lista-item-acao button,
+.lista-fornecedores-tabela button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: #ffebee;
+  color: #d32f2f;
+}
+.lista-item-fornecedores { background: #f9fbe7; border-top: 1px dashed #c5e1a5; padding: 12px 16px 12px 42px; }
+.lista-fornecedores-tabela { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 12px; }
+.lista-fornecedores-tabela th { padding: 7px 8px; background: #e8f5e9; color: #1b5e20; text-align: left; }
+.lista-fornecedores-tabela th:nth-child(2),
+.lista-fornecedores-tabela td:nth-child(2) { width: 120px; text-align: right; }
+.lista-fornecedores-tabela th:last-child,
+.lista-fornecedores-tabela td:last-child { width: 48px; text-align: center; }
+.lista-fornecedores-tabela td { padding: 7px 8px; border-bottom: 1px solid #d9e2db; }
+.lista-fornecedores-tabela td:nth-child(2) { color: #333; font-weight: 800; white-space: nowrap; }
+.lista-fornecedores-tabela tr.menor-preco { background: #e8f5e9; color: #1b5e20; font-weight: 800; }
+.lista-fornecedores-tabela tr.menor-preco td:nth-child(2) { color: #2e7d32; }
+.lista-fornecedores-vazia { margin: 0 0 10px; color: #738078; font-size: 12px; }
+.lista-adicionar-fornecedor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px auto;
+  gap: 8px;
+  align-items: center;
+}
+.lista-adicionar-fornecedor input,
+.lista-novo-item-linha input,
+.lista-novo-item-linha select { min-height: 42px; margin-top: 0; padding: 8px 10px; border-radius: 10px; font-size: 14px; }
+.lista-adicionar-fornecedor button { min-height: 42px; white-space: nowrap; }
+.lista-novo-item-linha { padding: 10px; background: #fafafa; border-top: 1px dashed #cbd5cf; }
+.lista-novo-item-icone { color: #1b5e20; text-align: center; font-size: 20px; font-weight: 900; }
+.lista-novo-item-ajuda { color: #738078; font-size: 12px; line-height: 1.3; }
+.lista-novo-item-botao { padding: 8px; font-size: 12px; }
+.lista-compra-acoes { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.lista-compra-acoes button { min-height: 52px; }
+
 /* ── Adubação / Relatórios ── */
 .dist-input { background: #fff; }
 
@@ -711,6 +806,85 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .summary-card b { color: #4ade80; }
   .cotacao-box { margin-top: 12px; }
 
+  /* ── Lista de compra: formulário em cards, sem tabela espremida ── */
+  #modalListaCompra { justify-content: flex-start; z-index: 80; }
+  #modalListaCompra .lista-compra-modal-card {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+  #modalListaCompra .modal-head {
+    margin-top: calc(-12px - env(safe-area-inset-top, 0px));
+    padding-top: calc(12px + env(safe-area-inset-top, 0px));
+  }
+  .lista-compra-campos { grid-template-columns: 1fr; gap: 2px; }
+  .lista-compra-cabecalho { display: none; }
+  .lista-compra-itens-container { border: 0; overflow: visible; }
+  #listaItensRows { display: grid; gap: 12px; }
+  .lista-itens-vazia { padding: 14px; border: 1px dashed rgba(74,222,128,.24); border-radius: 14px; color: #9ab6a3; }
+  .lista-item-card {
+    overflow: hidden;
+    border: 1px solid #d7e2da;
+    border-radius: 16px;
+    box-shadow: 0 5px 16px rgba(0,0,0,.16);
+  }
+  .lista-item-linha {
+    grid-template-columns: 30px minmax(0, 1fr) auto;
+    grid-template-areas:
+      "toggle produto acao"
+      "toggle qtd unidade"
+      "toggle fornecedor fornecedor";
+    row-gap: 7px;
+    padding: 12px;
+  }
+  .lista-item-toggle { grid-area: toggle; align-self: start; padding-top: 3px; }
+  .lista-item-produto { grid-area: produto; font-size: 16px; }
+  .lista-item-qtd { grid-area: qtd; text-align: left; color: #445048; }
+  .lista-item-qtd::before { content: "Qtd: "; color: #738078; font-weight: 700; }
+  .lista-item-unidade { grid-area: unidade; justify-self: start; color: #445048; }
+  .lista-item-unidade::before { content: "Un.: "; color: #738078; font-weight: 700; }
+  .lista-item-resumo { grid-area: fornecedor; padding-top: 3px; border-top: 1px solid #e6eee8; }
+  .lista-item-acao { grid-area: acao; }
+  .lista-item-acao button { min-width: 42px; min-height: 42px; }
+  .lista-item-fornecedores { padding: 12px; }
+  .lista-fornecedores-tabela { table-layout: fixed; }
+  .lista-fornecedores-tabela th,
+  .lista-fornecedores-tabela td { padding: 8px 6px !important; white-space: normal; overflow-wrap: break-word; }
+  .lista-fornecedores-tabela th:nth-child(2),
+  .lista-fornecedores-tabela td:nth-child(2) { width: 104px; }
+  .lista-fornecedores-tabela th:last-child,
+  .lista-fornecedores-tabela td:last-child { width: 48px; }
+  .lista-adicionar-fornecedor {
+    grid-template-columns: minmax(0, 1fr) minmax(110px, .65fr);
+  }
+  .lista-adicionar-fornecedor button { grid-column: 1 / -1; width: 100%; }
+  .lista-novo-item-linha {
+    grid-template-columns: minmax(0, 1fr) minmax(112px, .65fr);
+    grid-template-areas:
+      "icone icone"
+      "produto produto"
+      "qtd unidade"
+      "ajuda ajuda"
+      "botao botao";
+    gap: 8px;
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid rgba(74,222,128,.18);
+    border-radius: 16px;
+    background: rgba(34,197,94,.07);
+  }
+  .lista-novo-item-icone { grid-area: icone; text-align: left; color: #86efac; font-size: 14px; }
+  .lista-novo-item-icone::after { content: " Adicionar produto"; }
+  #novoItemProduto { grid-area: produto; }
+  #novoItemQtd { grid-area: qtd; }
+  #novoItemUnidade { grid-area: unidade; }
+  .lista-novo-item-ajuda { grid-area: ajuda; color: #9ab6a3; }
+  .lista-novo-item-botao { grid-area: botao; width: 100%; min-height: 48px; font-size: 14px; }
+  .lista-compra-acoes { position: static; padding-top: 10px; background: #0b1810; }
+  .lista-compra-acoes button { padding: 10px 8px; font-size: 14px; }
+
   /* ── Toasts ── */
   .success-toast, .error-toast { left: 16px; right: 16px; bottom: 90px; }
 
@@ -777,11 +951,12 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 
 /* Correções de leitura mobile: nomes de produtos sempre em LTR e conteúdo protegido das bordas do aparelho. */
 .texto-produto-ltr {
-  direction: ltr;
-  unicode-bidi: plaintext;
-  text-align: left;
-  writing-mode: horizontal-tb;
-  transform: none;
+  direction: ltr !important;
+  unicode-bidi: isolate !important;
+  text-align: left !important;
+  writing-mode: horizontal-tb !important;
+  transform: none !important;
+  letter-spacing: normal !important;
 }
 
 @media (max-width: 900px) {
