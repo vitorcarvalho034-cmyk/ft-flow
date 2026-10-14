@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>FT FLOW</title>
 <link rel="icon" href="logo.png">
-<link rel="stylesheet" href="style.css?v=45">
+<link rel="stylesheet" href="style.css?v=46">
 
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#052e16">
@@ -34,6 +34,7 @@
     <button class="nav" onclick="trocarTela('estoque',this)">Estoque</button>
     <button class="nav" onclick="trocarTela('compras',this)">Compras</button>
     <button class="nav admin-only" onclick="trocarTela('cotacoes',this)">Cotações</button>
+    <button class="nav admin-only" onclick="trocarTela('whatsapp',this)">Pedidos pelo WhatsApp</button>
 
     <button class="nav admin-only" onclick="trocarTela('relatorios',this)">Relatórios</button>
     <button class="nav admin-only" onclick="trocarTela('fornecedores',this)">Fornecedores</button>
@@ -59,6 +60,7 @@
       <button class="drawer-nav-item" data-tela="estoque" onclick="trocarTelaDrawer('estoque')"><span class="nav-icon">📦</span>Estoque</button>
       <button class="drawer-nav-item" data-tela="compras" onclick="trocarTelaDrawer('compras')"><span class="nav-icon">🛒</span>Compras</button>
       <button class="drawer-nav-item admin-only" data-tela="cotacoes" onclick="trocarTelaDrawer('cotacoes')"><span class="nav-icon">📋</span>Cotações</button>
+      <button class="drawer-nav-item admin-only" data-tela="whatsapp" onclick="trocarTelaDrawer('whatsapp')"><span class="nav-icon">W</span>Pedidos pelo WhatsApp</button>
 
       <button class="drawer-nav-item admin-only" data-tela="relatorios" onclick="trocarTelaDrawer('relatorios')"><span class="nav-icon">📈</span>Relatórios</button>
       <button class="drawer-nav-item admin-only" data-tela="fornecedores" onclick="trocarTelaDrawer('fornecedores')"><span class="nav-icon">🏭</span>Fornecedores</button>
@@ -232,7 +234,7 @@
           <input id="novoItemQtd" type="number" inputmode="decimal" placeholder="Quantidade" step="any" min="0">
           <select id="novoItemUnidade">
             <option value="">Un.</option>
-            <option>un</option><option>kg</option><option>L</option><option>m</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>balde</option><option>galão</option><option>lata</option>
+            <option>un</option><option>kg</option><option>g</option><option>L</option><option>mL</option><option>m</option><option>cm</option><option>m²</option><option>m³</option><option>caixa</option><option>pacote</option><option>saco</option><option>fardo</option><option>rolo</option><option>tubo</option><option>kit</option><option>frasco</option><option>balde</option><option>galão</option><option>lata</option>
           </select>
           <span class="lista-novo-item-ajuda">Fornecedor e preço podem ser adicionados depois.</span>
           <button type="button" class="primary lista-novo-item-botao" onclick="adicionarNovoItemLista()">+ Adicionar item</button>
@@ -533,7 +535,18 @@
   </div>
 </div>
 
-<script src="app.js?v=67"></script>
+<!-- Modal de detalhes de compra recebida pelo WhatsApp -->
+<div id="modalPedidoWhatsApp" class="modal hidden" aria-hidden="true">
+  <div class="modal-card whatsapp-modal-card" role="dialog" aria-modal="true" aria-labelledby="modalPedidoWhatsAppTitulo">
+    <div class="modal-head">
+      <h3 id="modalPedidoWhatsAppTitulo">Pedido pelo WhatsApp</h3>
+      <button type="button" data-whatsapp-action="fechar-detalhe" aria-label="Fechar detalhes do pedido">×</button>
+    </div>
+    <div id="pedidoWhatsAppConteudo" class="whatsapp-detail-content"></div>
+  </div>
+</div>
+
+<script src="app.js?v=68"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {

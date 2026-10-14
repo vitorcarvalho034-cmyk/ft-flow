@@ -4,9 +4,16 @@ const { Pool } = require("pg");
 const nodemailer = require("nodemailer");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { createWhatsAppService } = require('../lib/whatsapp');
+const { createWorkerDispatcher, mountPublicWhatsAppRoutes, mountPrivateWhatsAppRoutes } = require('../lib/whatsapp-http');
 
 const app = express();
-app.use(express.json({ limit: "20mb" }));
+app.use(express.json({
+  limit: "20mb",
+  verify(req, _res, buffer) {
+    if (req.originalUrl.split('?')[0].endsWith('/whatsapp/webhook')) req.rawBody = Buffer.from(buffer);
+  }
+}));
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || "ft-flow-secret-key-change-in-production";
@@ -46,12 +53,18 @@ function autenticar(req, res, next) {
   }
   next();
 }
-app.use(autenticar);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
+
+const whatsappService = createWhatsAppService({ pool });
+const dispatchWhatsApp = createWorkerDispatcher();
+// These two routes use Meta's signature/challenge, NOT a user's JWT.
+// Register before generic authentication/DB middleware to reject unsigned traffic cheaply.
+mountPublicWhatsAppRoutes(app, { service: whatsappService, ensureBaseDb: ensureDb, dispatch: dispatchWhatsApp });
+app.use(autenticar);
 
 async function q(sql, params = []) {
   const c = await pool.connect();
@@ -115,6 +128,7 @@ async function ensureDb(){
 }
 
 app.use(async (req,res,next)=>{try{await ensureDb(); next();}catch(e){console.error(e); res.status(500).json({error:e.message});}});
+mountPrivateWhatsAppRoutes(app, { service: whatsappService, pool, dispatch: dispatchWhatsApp });
 
 async function email(titulo,dados={},destinatario=null,htmlCustomizado=null){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
@@ -268,6 +282,7 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
 }
 function normalizarTelefone(num) {
   let n = String(num || "").replace(/\D/g, "");
+  if (!n) return "";
   if (n.startsWith("0")) n = n.slice(1);
   if (!n.startsWith("55") && n.length <= 11) n = "55" + n;
   return n;
@@ -1824,4 +1839,11 @@ app.put('/compras/:id', async (req, res) => {
 });
 
 // Handler
-module.exports.handler = serverless(app);
+app.use((error, _req, res, next) => {
+  if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'JSON inválido' });
+  if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Conteúdo muito grande' });
+  next(error);
+});
+module.exports.handler = serverless(app, { binary: ['image/jpeg', 'image/png'] });
+// Explicit test-only access. Netlify continues to use handler as before.
+module.exports._test = { app, pool };
