@@ -268,6 +268,8 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
 /* ── Cotações ── */
 .cotacao-box.hidden { display: none !important; }
 .quote-panel h4 { margin: 0 0 12px; }
+.cotacoes-filtros { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cotacoes-filtros button { min-width: 0; overflow-wrap: break-word; }
 
 /* ── Modal de Lista de Compra ── */
 .lista-compra-modal-card { width: min(980px, 96vw); }
@@ -803,6 +805,7 @@ button { cursor: pointer; border: 0; border-radius: 14px; padding: 12px 16px; fo
   .quote-panel h4 { color: #eafff0; }
   .price-input { min-width: 120px; }
   .summary-card { background: rgba(34,197,94,.10); border-color: rgba(34,197,94,.22); }
+  .cotacoes-filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .summary-card b { color: #4ade80; }
   .cotacao-box { margin-top: 12px; }
 

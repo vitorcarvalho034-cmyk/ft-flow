@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v39";
+const APP_VERSION = "v40";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
@@ -122,23 +122,86 @@ function htmlEsc(s){
   return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 }
 
-function abrirModalDescricaoProduto(id, fotoUrl, descricao, nome) {
+let _descricaoCompraGeneration = 0;
+const _fotosCompra = new Map();
+const _fotosCompraPendentes = new Map();
+
+async function buscarFotoCompra(id) {
+  const chave = Number(id);
+  if (_fotosCompra.has(chave)) return _fotosCompra.get(chave);
+  if (_fotosCompraPendentes.has(chave)) return _fotosCompraPendentes.get(chave);
+  const tarefa = (async () => {
+    const resposta = await fetch(API + `/compras/${chave}/foto`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {}
+    });
+    if (!resposta.ok) throw new Error(resposta.status === 401 ? 'Sessão expirada. Entre novamente.' : 'Não foi possível carregar a foto.');
+    const blob = await resposta.blob();
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(blob.type)) throw new Error('Formato da foto indisponível.');
+    const url = URL.createObjectURL(blob);
+    _fotosCompra.set(chave, url);
+    // Cache curto, só em memória: nunca guardar fotos privadas no localStorage.
+    if (_fotosCompra.size > 8) {
+      const maisAntiga = _fotosCompra.keys().next().value;
+      URL.revokeObjectURL(_fotosCompra.get(maisAntiga));
+      _fotosCompra.delete(maisAntiga);
+    }
+    return url;
+  })();
+  _fotosCompraPendentes.set(chave, tarefa);
+  try { return await tarefa; }
+  finally { _fotosCompraPendentes.delete(chave); }
+}
+
+function compraCarregada(id) {
+  return window._comprasAtivas?.find(c => Number(c.id) === Number(id))
+    || window._historicoData?.find(c => Number(c.id) === Number(id))
+    || window._cotacoesData?.find(c => Number(c.id) === Number(id));
+}
+
+async function abrirDescricaoCompra(id) {
+  try {
+    const compra = compraCarregada(id) || await js(API + `/compras/${Number(id)}?leves=1`);
+    if (compra.origem === 'whatsapp') return abrirDetalhesPedidoWhatsApp(id);
+    abrirModalDescricaoProduto(id, compra.foto_url, compra.descricao, compra.item, compra.tem_foto);
+  } catch (erro) { mostrarErro(erro.message); }
+}
+
+function abrirModalDescricaoProduto(id, fotoUrl, descricao, nome, temFoto = false) {
   const modal = document.getElementById('modalDescricaoProduto');
   if (!modal) return;
+  const generation = ++_descricaoCompraGeneration;
   document.getElementById('modalDescricaoProdutoNome').textContent = nome || 'Produto';
   const fotoEl = document.getElementById('modalDescricaoProdutoFoto');
+  fotoEl.removeAttribute('src');
+  fotoEl.alt = 'Foto do produto';
+  fotoEl.onclick = () => abrirLightbox(fotoEl.src);
+  fotoEl.style.cursor = 'zoom-in';
+  fotoEl.onerror = () => { fotoEl.style.display = 'none'; };
   if (fotoUrl) {
     fotoEl.src = fotoUrl;
     fotoEl.style.display = 'block';
-    fotoEl.onerror = () => { fotoEl.style.display = 'none'; };
   } else {
     fotoEl.style.display = 'none';
   }
   document.getElementById('modalDescricaoProdutoTexto').textContent = descricao || 'Sem descrição.';
   modal.classList.remove('hidden');
+  if (!fotoUrl && temFoto) {
+    fotoEl.alt = 'Carregando foto...';
+    fotoEl.style.display = 'block';
+    buscarFotoCompra(id).then(url => {
+      if (generation !== _descricaoCompraGeneration || modal.classList.contains('hidden')) return;
+      fotoEl.alt = 'Foto do produto';
+      fotoEl.src = url;
+    }).catch(erro => {
+      if (generation !== _descricaoCompraGeneration || modal.classList.contains('hidden')) return;
+      fotoEl.style.display = 'none';
+      mostrarErro(erro.message);
+    });
+  }
 }
 
 function fecharModalDescricaoProduto() {
+  _descricaoCompraGeneration++;
   document.getElementById('modalDescricaoProduto')?.classList.add('hidden');
 }
 
@@ -156,8 +219,10 @@ function cardPedidoCompra(c, options = {}) {
   // Fotos do WhatsApp nunca são expostas pela listagem: são carregadas sob
   // demanda e autenticadas no modal próprio.
   const foto = !origemWhatsApp && c.foto_url
-    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" alt="Foto do produto" onclick="abrirLightbox('${htmlEsc(c.foto_url)}')" style="cursor:zoom-in" title="Clique para ampliar" onerror="this.style.display='none'">`
-    : "";
+    ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" loading="lazy" decoding="async" alt="Foto do produto" onclick="abrirLightbox(this.currentSrc || this.src)" style="cursor:zoom-in" title="Clique para ampliar" onerror="this.style.display='none'">`
+    : !origemWhatsApp && c.tem_foto
+      ? `<div class="actions" style="margin:10px 0"><button type="button" class="secondary" onclick="abrirDescricaoCompra(${Number(c.id)})">Ver foto do produto</button></div>`
+      : "";
   const valor = c.valor_total ? `<div class="pedido-linha"><span>Valor total</span><b>${dinheiro(c.valor_total)}</b></div>` : "";
   const fornecedor = c.fornecedor_escolhido
     ? `<div class="pedido-linha"><span>Fornecedor</span><b>${htmlEsc(c.fornecedor_escolhido)} • ${dinheiro(c.valor_escolhido)}</b></div>`
@@ -251,7 +316,7 @@ function cardPedidoCompra(c, options = {}) {
     : '';
   const descricaoPedido = origemWhatsApp
     ? `<div class="pedido-descricao-box whatsapp-resumo-pedido"><span class="pedido-label">Pedido recebido pelo WhatsApp</span><p class="pedido-descricao-texto">A transcrição e as fotos ficam disponíveis somente nos detalhes protegidos.</p></div>`
-    : `<div class="pedido-descricao-box" onclick="abrirModalDescricaoProduto(${c.id}, '${htmlEsc(c.foto_url||'')}', '${htmlEsc(c.descricao||'')}', '${htmlEsc(c.item||'')}')" style="cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background=''"><span class="pedido-label" style="display:flex;align-items:center;gap:6px">Descrição do produto <span style="font-size:11px;color:#2e7d32;font-weight:normal">🔍 clique para ampliar</span></span><p class="pedido-descricao-texto" style="margin:0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${descricaoTxt}</p></div>`;
+    : `<div class="pedido-descricao-box" onclick="abrirDescricaoCompra(${Number(c.id)})" style="cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='' "><span class="pedido-label" style="display:flex;align-items:center;gap:6px">Descrição do produto <span style="font-size:11px;color:#2e7d32;font-weight:normal">🔍 clique para ampliar</span></span><p class="pedido-descricao-texto" style="margin:0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${descricaoTxt}</p></div>`;
 
   return `<div class="card pedido-card">
     <div class="pedido-top">
@@ -297,16 +362,21 @@ async function apiJson(url, options={}){
 async function js(u,o){ return apiJson(u,o); }
 
 // Busca todas as páginas para que registros antigos não desapareçam quando a base crescer.
-async function buscarTodasCompras() {
-  const primeira = await js(API + '/compras?page=1&limit=2000');
+async function buscarTodasCompras(escopo = 'todas') {
+  const base = API + `/compras?leves=1&escopo=${encodeURIComponent(escopo)}&limit=200`;
+  const primeira = await js(base + '&page=1');
   const primeiraPagina = Array.isArray(primeira) ? primeira : (primeira.data || []);
   const totalPaginas = Number(primeira.pages || 1);
   if (Array.isArray(primeira) || totalPaginas <= 1) return primeiraPagina;
 
-  const respostas = await Promise.all(
-    Array.from({ length: totalPaginas - 1 }, (_, i) => js(API + `/compras?page=${i + 2}&limit=2000`))
-  );
-  return primeiraPagina.concat(...respostas.map(resposta => resposta.data || []));
+  const compras = [...primeiraPagina];
+  // Concorrência limitada; não sobrecarregar o banco quando a base crescer.
+  for (let pagina = 2; pagina <= totalPaginas; pagina += 3) {
+    const paginas = Array.from({ length: Math.min(3, totalPaginas - pagina + 1) }, (_, i) => pagina + i);
+    const respostas = await Promise.all(paginas.map(p => js(base + `&page=${p}`)));
+    compras.push(...respostas.flatMap(resposta => resposta.data || []));
+  }
+  return compras;
 }
 
 // Funções de feedback visual
@@ -1286,7 +1356,7 @@ async function verComparativoCotacoes(cotacaoId) {
 }
 
 async function compras(){
-  const compData = await buscarTodasCompras();
+  const compData = await buscarTodasCompras('ativas');
   // Toda compra não encerrada permanece visível nas filas, inclusive registros antigos com status diferente.
   const comprasAtivas = compData.filter(c => !statusEhHistorico(c.status));
   const isAdmin = usuario && usuario.role === "admin";
@@ -1753,7 +1823,7 @@ function renderizarHistoricoCompacto(itens) {
 }
 
 async function historico(){
-  const compData = await buscarTodasCompras();
+  const compData = await buscarTodasCompras('historico');
   const historicoData = compData.filter(c => statusEhHistorico(c.status)).sort((a, b) => {
     const dataA = new Date(a.received_at || a.updated_at || a.created_at || 0);
     const dataB = new Date(b.received_at || b.updated_at || b.created_at || 0);
@@ -1838,7 +1908,7 @@ function filtrarHistorico() {
 
 async function cotacoesGerais(){
   // Uma única requisição substitui várias buscas individuais de cotações.
-  const data = await js(API + "/cotacoes/abertas?incluir_aprovadas=1");
+  const data = await js(API + "/cotacoes/abertas?incluir_aprovadas=1&leves=1");
   const comCotacao = data.compras || [];
   const cotacoesTodas = data.cotacoes || [];
   
@@ -1852,7 +1922,7 @@ async function cotacoesGerais(){
       <div style="margin-bottom: 12px;">
         <input type="text" id="cotacoesBusca" placeholder="🔍 Buscar por produto, solicitante ou destino..." oninput="filtrarCotacoesPor(window._cotacoesFiltroAtivo||'todas')" style="width: 100%; padding: 10px 14px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; box-sizing: border-box; outline: none;">
       </div>
-      <div class="grid" style="margin-bottom: 5px; gap: 8px; grid-template-columns: repeat(4, 1fr);">
+      <div class="grid cotacoes-filtros" style="margin-bottom: 5px; gap: 8px;">
         <button class="secondary" onclick="filtrarCotacoesPor('todas')" id="filtro-todas" style="background-color: #052e16; color: white; font-size: 13px;">Todas</button>
         <button class="secondary" onclick="filtrarCotacoesPor('pendente-cotacao')" id="filtro-pendente-cotacao" style="font-size: 13px;">Pendente Cotação</button>
         <button class="secondary" onclick="filtrarCotacoesPor('pendente-aprovacao')" id="filtro-pendente-aprovacao" style="font-size: 13px;">Pendente Aprovação</button>
@@ -1867,9 +1937,15 @@ async function cotacoesGerais(){
   }
   
   // Agrupar as cotações que já vieram na mesma resposta do servidor.
+  const cotacoesPorCompra = new Map();
+  for (const cotacao of cotacoesTodas) {
+    const chave = Number(cotacao.compra_id);
+    if (!cotacoesPorCompra.has(chave)) cotacoesPorCompra.set(chave, []);
+    cotacoesPorCompra.get(chave).push(cotacao);
+  }
   window._cotacoesDataFull = comCotacao.map(c => ({
     compra: c,
-    cotacoes: cotacoesTodas.filter(cot => Number(cot.compra_id) === Number(c.id))
+    cotacoes: cotacoesPorCompra.get(Number(c.id)) || []
   }));
   
   // Manter o filtro ativo se já havia um selecionado
@@ -2276,7 +2352,7 @@ let fornecedorSelecionado = null;
 function abrirModalCotacaoComparacao(compraId) {
   try {
     Promise.all([
-      js(`${API}/compras/${compraId}`),
+      js(`${API}/compras/${compraId}?leves=1`),
       js(`${API}/compras/${compraId}/cotacoes`)
     ]).then(async ([compra, cotacoes]) => {
       const modal = document.getElementById("modalCotacaoComparacao");
@@ -2642,7 +2718,7 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
   
   try {
     const [compra, fornecedoresCadastrados] = await Promise.all([
-      js(`${API}/compras/${cotacaoId}`),
+      js(`${API}/compras/${cotacaoId}?leves=1`),
       js(`${API}/fornecedores`).catch(() => [])
     ]);
     const listaFornecedores = document.getElementById('listaFornecedoresCadastrados');
@@ -2652,12 +2728,12 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
     
     // Montar card de referência do produto (foto + descrição)
     let refHtml = '';
-    const temFoto = compra.foto_url;
+    const temFoto = compra.origem !== 'whatsapp' && (compra.foto_url || compra.tem_foto);
     const temDesc = compra.descricao || compra.item;
     if (temFoto || temDesc) {
       refHtml = `<div style="background:#f0f8f5;border:1px solid #c8e6c9;border-radius:8px;padding:12px;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">`;
       if (temFoto) {
-        refHtml += `<img src="${compra.foto_url}" onclick="abrirLightbox('${compra.foto_url}')" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;border:1px solid #ddd" title="Clique para ampliar">`;
+        refHtml += `<img id="fornecedorCompraFoto_${Number(cotacaoId)}" ${compra.foto_url ? `src="${htmlEsc(compra.foto_url)}"` : ''} alt="${compra.foto_url ? 'Foto do produto' : 'Carregando foto...'}" onclick="if(this.getAttribute('src'))abrirLightbox(this.src)" onerror="this.style.display='none'" decoding="async" style="width:80px;height:80px;object-fit:cover;border-radius:6px;cursor:pointer;flex-shrink:0;border:1px solid #ddd" title="Clique para ampliar">`;
       }
       refHtml += `<div style="flex:1;min-width:0">`;
       refHtml += `<div class="texto-produto-ltr" dir="ltr" style="font-weight:bold;color:#1b5e20;font-size:14px;margin-bottom:4px">${htmlEsc(compra.item || '')}</div>`;
@@ -2670,7 +2746,6 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
     
     if (compra.tipo_solicitacao === 'lista') {
       const itens = await js(`${API}/compras/${cotacaoId}/itens`);
-      const cotacoes = await js(`${API}/compras/${cotacaoId}/cotacoes`);
       
       let itemsHtml = refHtml + '<div style="margin-bottom: 15px;"><label><strong>Selecione o produto:</strong></label><select id="novoFornecedorItem" onchange="mostrarFornecedoresItem(this.value)" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"><option value="">-- Selecione um produto --</option>';
       for (const item of itens) {
@@ -2678,6 +2753,14 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
       }
       itemsHtml += '</select></div>';
       document.getElementById("fornecedoresItemContainer").innerHTML = itemsHtml;
+    }
+    if (temFoto && !compra.foto_url) {
+      const imagem = document.getElementById(`fornecedorCompraFoto_${Number(cotacaoId)}`);
+      buscarFotoCompra(cotacaoId).then(url => {
+        if (!imagem?.isConnected || Number(cotacaoIdAtual) !== Number(cotacaoId)) return;
+        imagem.alt = 'Foto do produto';
+        imagem.src = url;
+      }).catch(() => { if (imagem?.isConnected) imagem.alt = 'Foto indisponível'; });
     }
   } catch (e) {
     console.log('Erro ao buscar compra:', e);

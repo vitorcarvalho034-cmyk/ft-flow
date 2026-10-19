@@ -73,13 +73,88 @@ async function q(sql, params = []) {
 }
 
 let ready = false;
+let readyPromise = null;
+let compraSchemaColumnsPromise = null;
 const UNIDADES_MEDIDA_VALIDAS = ["m", "cm", "kg", "g", "L", "mL", "un"];
+const STATUS_COMPRAS_ENCERRADOS = Object.freeze(['recebido', 'entregue', 'concluído', 'concluido', 'rejeitado', 'cancelado', 'negada', 'negado']);
+const COMPRA_SUMMARY_BASE_COLUMNS = Object.freeze([
+  'id', 'manutencao_id', 'item', 'quantidade', 'unidade', 'categoria', 'destino', 'status', 'solicitante',
+  'valor_unitario', 'valor_total', 'descricao', 'link_produto', 'fornecedor_escolhido', 'valor_escolhido',
+  'created_at', 'received_at', 'received_by', 'purchased_at', 'approved_at', 'questionamento', 'resposta_admin',
+  'status_questionamento', 'tipo_solicitacao', 'status_lista', 'uso', 'destinatario',
+]);
+const COMPRA_SUMMARY_OPTIONAL_COLUMNS = Object.freeze(['origem', 'whatsapp_lider_id', 'whatsapp_request_id']);
+const MAX_INLINE_IMAGE_BYTES = 4 * 1024 * 1024;
 function unidadeMedidaValida(u) {
   return UNIDADES_MEDIDA_VALIDAS.includes(String(u || "").trim());
 }
 
+function queryIsTrue(value) {
+  return ['1', 'true'].includes(String(value || '').trim().toLowerCase());
+}
+
+function positiveInteger(value, fallback, maximum) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, maximum);
+}
+
+function compraScopeFilter(scope, parameterIndex = 1) {
+  const normalized = String(scope || '').trim().toLowerCase();
+  const status = `COALESCE(LOWER(TRIM(status)), 'em cotação')`;
+  if (normalized === 'ativas') return { sql: `WHERE ${status} <> ALL($${parameterIndex}::text[])`, params: [STATUS_COMPRAS_ENCERRADOS] };
+  if (normalized === 'historico') return { sql: `WHERE ${status} = ANY($${parameterIndex}::text[])`, params: [STATUS_COMPRAS_ENCERRADOS] };
+  return { sql: '', params: [] };
+}
+
+// The WhatsApp migration is deliberately mounted separately. Discover its optional
+// columns instead of assuming every legacy database has already run that migration.
+async function compraSchemaColumns() {
+  if (!compraSchemaColumnsPromise) {
+    compraSchemaColumnsPromise = q(`SELECT column_name FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='compras'`)
+      .then((result) => new Set(result.rows.map((row) => row.column_name)))
+      .catch((error) => { compraSchemaColumnsPromise = null; throw error; });
+  }
+  return compraSchemaColumnsPromise;
+}
+
+// Never use SELECT * for the lightweight API: photo blobs and WhatsApp transcripts
+// stay in PostgreSQL until a protected, on-demand endpoint explicitly needs them.
+async function compraSummarySelect(alias = '') {
+  const columns = await compraSchemaColumns();
+  const prefix = alias ? `${alias}.` : '';
+  const selected = COMPRA_SUMMARY_BASE_COLUMNS.map((column) => `${prefix}${column}`);
+  for (const column of COMPRA_SUMMARY_OPTIONAL_COLUMNS) {
+    if (columns.has(column)) selected.push(`${prefix}${column}`);
+  }
+  const photo = `${prefix}foto_url`;
+  selected.push(`CASE WHEN ${photo} ~* '^[[:space:]]*data:' THEN NULL ELSE ${photo} END AS foto_url`);
+  selected.push(`CASE WHEN NULLIF(BTRIM(${photo}), '') IS NULL THEN FALSE ELSE TRUE END AS tem_foto`);
+  return selected.join(', ');
+}
+
+function decodeInlineImage(value) {
+  // 32 bytes covers the longest accepted data: image/webp header plus base64 padding.
+  if (typeof value !== 'string' || value.length > (MAX_INLINE_IMAGE_BYTES * 4 / 3) + 32) return null;
+  const match = /^data:(image\/(jpeg|png|webp|gif));base64,([A-Za-z0-9+/]*={0,2})$/i.exec(value);
+  if (!match) return null;
+  const mimeType = match[1].toLowerCase();
+  const encoded = match[3];
+  if (!encoded || encoded.length % 4 !== 0 || /=/.test(encoded.slice(0, -2))) return null;
+  const buffer = Buffer.from(encoded, 'base64');
+  if (!buffer.length || buffer.length > MAX_INLINE_IMAGE_BYTES || buffer.toString('base64') !== encoded) return null;
+  const jpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const png = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const gif = buffer.length >= 6 && (buffer.subarray(0, 6).equals(Buffer.from('GIF87a')) || buffer.subarray(0, 6).equals(Buffer.from('GIF89a')));
+  const webp = buffer.length >= 12 && buffer.subarray(0, 4).equals(Buffer.from('RIFF')) && buffer.subarray(8, 12).equals(Buffer.from('WEBP'));
+  if (!((mimeType === 'image/jpeg' && jpeg) || (mimeType === 'image/png' && png) || (mimeType === 'image/gif' && gif) || (mimeType === 'image/webp' && webp))) return null;
+  return { mimeType, buffer };
+}
+
 async function ensureDb(){
   if(ready) return;
+  if (readyPromise) return readyPromise;
+  readyPromise = (async () => {
   // Create tables used by the app
   await q(`CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, nome TEXT, role TEXT DEFAULT 'funcionario')`);
   await q(`CREATE TABLE IF NOT EXISTS compras (id SERIAL PRIMARY KEY, manutencao_id INTEGER, item TEXT, quantidade REAL, unidade TEXT, categoria TEXT, destino TEXT, status TEXT DEFAULT 'Em cotação', solicitante TEXT, valor_unitario REAL DEFAULT 0, valor_total REAL DEFAULT 0, descricao TEXT, link_produto TEXT, foto_url TEXT, fornecedor_escolhido TEXT, valor_escolhido REAL, created_at TIMESTAMP DEFAULT NOW(), received_at TIMESTAMP, received_by INTEGER)`);
@@ -125,6 +200,13 @@ async function ensureDb(){
     );
   }
   ready = true;
+  })();
+  try {
+    await readyPromise;
+  } catch (error) {
+    readyPromise = null;
+    throw error;
+  }
 }
 
 app.use(async (req,res,next)=>{try{await ensureDb(); next();}catch(e){console.error(e); res.status(500).json({error:e.message});}});
@@ -456,11 +538,18 @@ app.post('/admin/change-password', async (req, res) => {
 // COMPRAS
 app.get("/compras",async(req,res)=>{
   try{
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(2000, Number(req.query.limit) || 20);
+    const page = positiveInteger(req.query.page, 1, 1000000);
+    const limit = positiveInteger(req.query.limit, 20, 2000);
     const offset = (page - 1) * limit;
-    const total = await q(`SELECT COUNT(*)::int total FROM compras`);
-    const data = await q(`SELECT * FROM compras ORDER BY id DESC LIMIT $1 OFFSET $2`, [limit, offset]);
+    const scope = compraScopeFilter(req.query.escopo);
+    const total = await q(`SELECT COUNT(*)::int total FROM compras ${scope.sql}`, scope.params);
+    const leves = queryIsTrue(req.query.leves);
+    const projection = leves ? await compraSummarySelect() : '*';
+    const limitIndex = scope.params.length + 1;
+    const data = await q(
+      `SELECT ${projection} FROM compras ${scope.sql} ORDER BY id DESC LIMIT $${limitIndex} OFFSET $${limitIndex + 1}`,
+      [...scope.params, limit, offset],
+    );
     res.json({data:data.rows, total:total.rows[0].total, page, limit, pages:Math.ceil(total.rows[0].total/limit)});
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
@@ -543,9 +632,31 @@ app.post("/compras",async(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
 
+app.get("/compras/:id/foto",async(req,res)=>{
+  try{
+    // This assertion is intentional even though the generic auth middleware already
+    // protects the route: a future public-route exception must not expose uploads.
+    if (!req.user) return res.status(401).json({ error: 'Token não fornecido' });
+    res.set('Cache-Control', 'private, no-store');
+    const columns = await compraSchemaColumns();
+    const origin = columns.has('origem') ? 'origem' : 'NULL::text AS origem';
+    const result = await q(`SELECT foto_url, ${origin} FROM compras WHERE id=$1`, [req.params.id]);
+    const compra = result.rows[0];
+    // WhatsApp media is stored and authorized separately; never proxy a URL or a
+    // WhatsApp attachment through this legacy inline-image endpoint.
+    if (!compra || String(compra.origem || '').trim().toLowerCase() === 'whatsapp') return res.status(404).json({ error: 'Foto não encontrada' });
+    const image = decodeInlineImage(compra.foto_url);
+    if (!image) return res.status(404).json({ error: 'Foto não encontrada' });
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.set('Content-Disposition', 'inline');
+    res.type(image.mimeType).send(image.buffer);
+  }catch(e){console.error(e);res.status(500).json({error:e.message});}
+});
+
 app.get("/compras/:id",async(req,res)=>{
   try{
-    const r = await q(`SELECT * FROM compras WHERE id=$1`,[req.params.id]);
+    const projection = queryIsTrue(req.query.leves) ? await compraSummarySelect() : '*';
+    const r = await q(`SELECT ${projection} FROM compras WHERE id=$1`,[req.params.id]);
     res.json(r.rows[0] || {});
   }catch(e){console.error(e);res.status(500).json({error:e.message});}
 });
@@ -588,7 +699,8 @@ app.get('/cotacoes/abertas', async (req, res) => {
     const incluirAprovadas = ['1', 'true'].includes(String(req.query.incluir_aprovadas || '').toLowerCase());
     const statusEncerrados = ['comprado', 'recebido', 'entregue', 'concluído', 'concluido', 'rejeitado', 'cancelado', 'negada', 'negado'];
     if (!incluirAprovadas) statusEncerrados.push('aprovado', 'aprovada');
-    const compras = await q(`SELECT * FROM compras WHERE COALESCE(LOWER(TRIM(status)), 'em cotação') <> ALL($1::text[]) ORDER BY id DESC`, [statusEncerrados]);
+    const projection = queryIsTrue(req.query.leves) ? await compraSummarySelect() : '*';
+    const compras = await q(`SELECT ${projection} FROM compras WHERE COALESCE(LOWER(TRIM(status)), 'em cotação') <> ALL($1::text[]) ORDER BY id DESC`, [statusEncerrados]);
     const ids = compras.rows.map(c => c.id);
     if (!ids.length) return res.json({ compras: [], cotacoes: [] });
     const cotacoes = await q(`SELECT c.*, lci.produto as item_nome, lci.quantidade as item_qtd, lci.unidade as item_unidade FROM cotacoes c LEFT JOIN lista_compras_itens lci ON c.item_id=lci.id WHERE c.compra_id = ANY($1::int[]) ORDER BY c.compra_id DESC, c.item_id ASC, c.valor ASC`, [ids]);
@@ -1844,6 +1956,6 @@ app.use((error, _req, res, next) => {
   if (error.type === 'entity.too.large') return res.status(413).json({ error: 'Conteúdo muito grande' });
   next(error);
 });
-module.exports.handler = serverless(app, { binary: ['image/jpeg', 'image/png'] });
+module.exports.handler = serverless(app, { binary: ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] });
 // Explicit test-only access. Netlify continues to use handler as before.
 module.exports._test = { app, pool };
