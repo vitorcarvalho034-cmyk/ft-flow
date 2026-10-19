@@ -147,8 +147,11 @@ function decodeInlineImage(value) {
   const png = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
   const gif = buffer.length >= 6 && (buffer.subarray(0, 6).equals(Buffer.from('GIF87a')) || buffer.subarray(0, 6).equals(Buffer.from('GIF89a')));
   const webp = buffer.length >= 12 && buffer.subarray(0, 4).equals(Buffer.from('RIFF')) && buffer.subarray(8, 12).equals(Buffer.from('WEBP'));
-  if (!((mimeType === 'image/jpeg' && jpeg) || (mimeType === 'image/png' && png) || (mimeType === 'image/gif' && gif) || (mimeType === 'image/webp' && webp))) return null;
-  return { mimeType, buffer };
+  // Uploads antigos rotulavam alguns PNGs como JPEG. Validar os bytes reais,
+  // sem confiar no rótulo e sem aceitar SVG ou conteúdo não reconhecido.
+  const detectedMime = jpeg ? 'image/jpeg' : png ? 'image/png' : gif ? 'image/gif' : webp ? 'image/webp' : null;
+  if (!detectedMime) return null;
+  return { mimeType: detectedMime, buffer };
 }
 
 async function ensureDb(){

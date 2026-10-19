@@ -70,8 +70,9 @@ test('compras leves: payload sem blobs, escopos, cotações e foto inline proteg
         ('Comprado aguardando recebimento',1,'un','Teste','Oficina',' Comprado ','Teste','a caminho',NULL,'compra','app',NULL),
         ('Aprovado para comprar',1,'un','Teste','Oficina','Aprovado','Teste','autorizado',NULL,'compra','app',NULL),
         ('Origem WhatsApp',1,'un','Teste','Estufa','Em cotação','Líder','whatsapp',$2,'compra','whatsapp','transcrição confidencial'),
+        ('Foto legada com rótulo incorreto',1,'un','Teste','Estufa','Em cotação','Teste','png com rótulo jpeg',$3,'compra','app',NULL),
         ('Inline inválido',1,'un','Teste','Estufa','Em cotação','Teste','inválida','data:image/jpeg;base64,SGVsbG8=','compra','app',NULL)
-      RETURNING id,item`, [inlineJpeg, inlinePng]);
+      RETURNING id,item`, [inlineJpeg, inlinePng, `data:image/jpeg;base64,${png}`]);
     const ids = Object.fromEntries(inserted.rows.map((row) => [row.item, row.id]));
     await query(`INSERT INTO cotacoes (compra_id,fornecedor,valor,observacao) VALUES ($1,'Fornecedor teste',42.5,'proposta')`, [ids['Inline seguro']]);
 
@@ -128,6 +129,10 @@ test('compras leves: payload sem blobs, escopos, cotações e foto inline proteg
     assert.match(photo.headers.get('cache-control'), /private.*no-store/);
     assert.equal(photo.headers.get('x-content-type-options'), 'nosniff');
     assert.deepEqual(Buffer.from(await photo.arrayBuffer()), Buffer.from([0xff, 0xd8, 0xff, 0x00]));
+    photo = await fetch(base + `/compras/${ids['Foto legada com rótulo incorreto']}/foto`, { headers: { Authorization: `Bearer ${token}` } });
+    assert.equal(photo.status, 200, 'legacy image with wrong MIME label remains viewable');
+    assert.equal(photo.headers.get('content-type'), 'image/png', 'real bytes determine the safe content type');
+    assert.deepEqual(Buffer.from(await photo.arrayBuffer()), Buffer.from(png, 'base64'));
     photo = await fetch(base + `/compras/${ids['URL externa']}/foto`, { headers: { Authorization: `Bearer ${token}` } });
     assert.equal(photo.status, 404, 'external URLs are never fetched/proxied');
     photo = await fetch(base + `/compras/${ids['Origem WhatsApp']}/foto`, { headers: { Authorization: `Bearer ${token}` } });
