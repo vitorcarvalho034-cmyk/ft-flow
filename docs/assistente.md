@@ -45,6 +45,8 @@ Resposta autenticada, exclusivamente booleana:
 
 Os primeiros três valores passam a `true` apenas quando existe uma chave Assistente não vazia. Isso sinaliza configuração, não prova chave válida, crédito, disponibilidade de modelo, acesso ou funcionamento real. `conexao_testada` permanece sempre `false`; `manual_habilitado` sempre `true`; `fotos_enviadas_ia` sempre `false`. Nunca retorna a chave ou parte dela. Todas as respostas usam `Cache-Control: private, no-store`.
 
+`getStatus()` não faz consulta de saldo, billing, catálogo de modelos ou health check. Mesmo com `audio_habilitado:true` e `texto_habilitado:true`, uma interpretação pode falhar por ausência de créditos ou limite de conta; ter chave válida ou texto funcionando anteriormente não comprova disponibilidade na próxima chamada. O frontend deve tratar o erro específico da interpretação, conservar o rascunho e oferecer preenchimento manual, sem encerrar a sessão do usuário por autenticação do provedor.
+
 ## Rascunho compartilhado
 
 ```json
@@ -104,7 +106,25 @@ Resposta de sucesso:
 
 Sem chave exclusiva retorna 503 com `code:'IA_NAO_CONFIGURADA'` e mensagem de preenchimento manual. A IA tem cotas duráveis, compartilhadas entre instâncias: 12 chamadas em janela fixa de 10 minutos e 60 em janela diária UTC por username autenticado. Texto custa uma chamada; áudio reserva duas (transcrição + extração). Tentativas que chegam à IA, inclusive falhas, consomem a reserva. Uma reserva recusada por qualquer cota é inteiramente desfeita. 429 informa `Retry-After:600`. Não armazena texto, áudio, transcrição intermediária ou fotos nessa rota; apenas contadores de uso sem conteúdo.
 
-Cada operação remota, incluindo leitura da resposta, tem timeout máximo de 20 segundos: no máximo 40 segundos de espera remota para áudio + extração, sem retry automático. Um deadline de 45 segundos começa antes da reserva de cota e reduz o orçamento de cada chamada ao tempo restante; se o banco consumir esse orçamento, não se inicia outra chamada remota. Timeout retorna 504; falhas de rede/provedor retornam 502. Há aborto com `AbortController`, limite de resposta remota de 128 KiB e limite de saída de 6000 tokens. `timeoutMs` só permite reduzir o limite por chamada em testes. Há margem para overhead no limite síncrono Netlify de 60 segundos [5]; banco/migração pode falhar separadamente com mensagem genérica. A reserva de IA exige as tabelas do módulo, mas não cria compras, pedidos confirmados ou mídias.
+Cada operação remota, incluindo leitura de respostas de sucesso e de erro, tem timeout máximo de 20 segundos: no máximo 40 segundos de espera remota para áudio + extração, sem retry automático. Um deadline de 45 segundos começa antes da reserva de cota e reduz o orçamento de cada chamada ao tempo restante; se o banco consumir esse orçamento, não se inicia outra chamada remota. Timeout retorna 504 `TEMPO_IA_EXCEDIDO`; falhas de rede e demais falhas do provedor retornam 502 `IA_INDISPONIVEL`, exceto os casos reconhecidos abaixo. Há aborto com `AbortController`, limite de resposta remota de 128 KiB (inclusive não-2xx) e limite de saída de 6000 tokens. `timeoutMs` só permite reduzir o limite por chamada em testes. Há margem para overhead no limite síncrono Netlify de 60 segundos [5]; banco/migração pode falhar separadamente com mensagem genérica. A reserva de IA exige as tabelas do módulo, mas não cria compras, pedidos confirmados ou mídias.
+
+### Erros seguros do provedor
+
+O contrato de erro permanece **`{error,code}`**, sem campo de etapa ou corpo bruto do provedor. A classificação usa o status HTTP e os campos exatos `error.code`/`error.param`, nunca palavras na mensagem ou inferência pelo formato do áudio:
+
+| Resposta do provedor | HTTP do app | `code` do app |
+| --- | --- | --- |
+| 429 + `credit_balance_exhausted` ou `insufficient_quota` | 503 | `IA_SEM_CREDITOS` |
+| 429 + `organization_spend_limit_exceeded`, `project_spend_limit_exceeded` ou `organization_usage_limit_exceeded` | 503 | `IA_LIMITE_CONTA` |
+| Demais 429 | 429 | `IA_MUITAS_REQUISICOES` |
+| 401 ou 403 | 503 | `IA_ACESSO_NEGADO` |
+| 400 durante transcrição + `invalid_value` com `param:'file'`, ou `invalid_file` com `param:'file'`/ausente/nulo | 422 | `AUDIO_NAO_PROCESSADO` |
+| Demais 400 ou qualquer 404 | 503 | `IA_CONFIGURACAO_INVALIDA` |
+| Demais falhas HTTP, inclusive 5xx | 502 | `IA_INDISPONIVEL` |
+
+`IA_ACESSO_NEGADO` não vira 401/403 no app: a credencial do provedor é distinta do JWT do usuário, portanto não deve provocar logout. Erro de modelo, `response_format`, outro parâmetro ou código de arquivo desconhecido não é classificado como culpa do áudio. Mesmo um código `invalid_file` no endpoint textual recebe `IA_CONFIGURACAO_INVALIDA`. Os limites locais do FT FLOW continuam retornando 429 `LIMITE_IA`, distintos do 429 remoto `IA_MUITAS_REQUISICOES`; ambos têm `Retry-After:600`.
+
+A leitura do erro também é limitada a 128 KiB e ao orçamento da chamada. Corpo acima do limite preserva 502 `RESPOSTA_IA_INVALIDA`; corpo pendente preserva 504 `TEMPO_IA_EXCEDIDO`. JSON de erro malformado ou sem campos reconhecidos usa somente o fallback do status (429 genérico, acesso, configuração ou indisponibilidade). Nunca repassa mensagem, token, headers, base64, transcrição, SQL ou detalhes de cobrança. Falha de transcrição encerra a interpretação antes de chamar a extração; nenhuma falha retorna rascunho/transcrição parcial nem cria compra, pedido confirmado ou mídia. O rascunho anterior deve permanecer revisável no cliente.
 
 ## POST `/assistente/confirmar`
 
@@ -170,7 +190,11 @@ ASSISTENTE_TEST_DB=1 ASSISTENTE_TEST_PGHOST=127.0.0.1 \
 
 A configuração é fixada em banco **`ft_flow_assistente_test`**, usuário **`ubuntu`**, SSL desabilitado e host permitido somente `/var/run/postgresql` ou `127.0.0.1`. Antes do reset afirma `current_database()`, `current_user` e `inet_server_addr()`: banco distinto, usuário distinto ou IP externo é proibido. Não usa `DATABASE_URL`, senhas de produção nem chaves da sessão. Remove variáveis herdadas de SMTP/mail/WA/YCloud/OpenAI e `FT_ASSISTENTE_*`, usa chave sintética exclusiva, `fetchImpl` fake e endpoints permitidos explicitamente. O reset só toca tabelas nomeadas nesse banco dedicado; não toca bancos/suites de WhatsApp/EPI. Integração é opt-in.
 
-Execução efetiva local em 18/11/2026: **22 testes aprovados, 0 falhas**, incluindo 16 cenários PostgreSQL e 5 testes independentes de banco (o contador inclui o agrupador da integração). Cobertura: autenticação, ausência de chave, essenciais/foto bloqueados antes do banco, nomes genéricos, extração/revisão/correção/null/apagar pessoa por texto/áudio, opcionais preservados, perguntas IA opcionais ignoradas, defaults somente na persistência, migração aditiva/fallback de histórico, itens atuais, multi-itens/cópia completa de 30, texto adversarial, erros/refusal/incompletos/excesso da IA, áudio multipart, transcrição vazia/longa/combinada, timeout, cotas concorrentes/duráveis, confirmação manual, limites/fotos, privacidade owner/ADM, oito clicks concorrentes, replay entre instâncias, conflitos de pessoa/áudio/fotos, auditoria por conta e rollback/retry. A execução usou socket local em `ft_flow_assistente_test`, usuário ubuntu. Sem PostgreSQL: **5 aprovados, 1 integração pulada, 0 falhas**. Não houve acesso a produção, chaves reais ou rede de IA, nem commit/push. Frontend e demais suites são de responsabilidade da integração host.
+Execução efetiva local em 18/11/2026 após o tratamento de erros do provedor: **25 testes aprovados, 0 falhas**, incluindo 17 cenários PostgreSQL e 7 testes independentes de banco (o contador inclui o agrupador da integração). Sem PostgreSQL: **7 aprovados, 1 integração pulada, 0 falhas**. Também passaram `node --check` nos dois arquivos JavaScript e `git diff --check`.
+
+Cobertura: autenticação, ausência de chave, essenciais/foto bloqueados antes do banco, nomes genéricos, extração/revisão/correção/null/apagar pessoa por texto/áudio, opcionais preservados, perguntas IA opcionais ignoradas, defaults somente na persistência, migração aditiva/fallback de histórico, itens atuais, multi-itens/cópia completa de 30, texto adversarial, erros/refusal/incompletos/excesso da IA, áudio multipart, transcrição vazia/longa/combinada, timeout, cotas concorrentes/duráveis, confirmação manual, limites/fotos, privacidade owner/ADM, oito clicks concorrentes, replay entre instâncias, conflitos de pessoa/áudio/fotos, auditoria por conta e rollback/retry. Os novos testes exercitam crédito e limite de conta por código exato, 429 genérico, 401/403 do provedor sem 401 do app, 400 de arquivo versus configuração/modelo/parâmetro, falhas em texto e áudio WAV/OGG, erro de extração depois de transcrição bem-sucedida, nenhuma extração após falha de transcrição, nenhum pedido/mídia criado, mensagens com segredo/base64/SQL não expostas, corpo malformado, limite de 128 KiB com/sem `content-length` e corpo pendente que ignora aborto.
+
+A execução usou socket local em `ft_flow_assistente_test`, usuário ubuntu, ambiente limpo e respostas sintéticas explícitas. Não houve acesso a produção, chaves reais ou rede de IA, nem commit/push. Frontend e demais suites são de responsabilidade da integração host.
 
 ## Referências
 

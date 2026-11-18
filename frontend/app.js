@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v43";
+const APP_VERSION = "v44";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
@@ -356,15 +356,22 @@ function cardPedidoCompra(c, options = {}) {
 
 
 async function apiJson(url, options={}){
+  const { keepOnUnauthorized = false, ...fetchOptions } = options;
   const headers = options.headers || {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  options.headers = headers;
-  const r = await fetch(url, options);
+  fetchOptions.headers = headers;
+  const r = await fetch(url, fetchOptions);
   const txt = await r.text();
   let data = {};
   try { data = txt ? JSON.parse(txt) : {}; } catch { data = { raw: txt }; }
-  if(r.status === 401){ localStorage.removeItem('ft_flow_token'); location.reload(); }
-  if(!r.ok){ throw new Error(data.error || data.message || txt || "Erro na API"); }
+  if(r.status === 401){ localStorage.removeItem('ft_flow_token'); if (!keepOnUnauthorized) location.reload(); }
+  if(!r.ok){
+    const detail = typeof data.error === 'string' ? data.error : typeof data.message === 'string' ? data.message : typeof data.error?.message === 'string' ? data.error.message : txt || "Erro na API";
+    const error = new Error(detail);
+    error.status = r.status;
+    if (typeof data.code === 'string') error.code = data.code;
+    throw error;
+  }
   return data;
 }
 async function js(u,o){ return apiJson(u,o); }

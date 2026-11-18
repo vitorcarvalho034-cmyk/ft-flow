@@ -84,14 +84,34 @@
   }
   function responseError(error, fallback) {
     if (error?.name === 'AbortError') return '';
-    // Não mostrar configurações, credenciais ou mensagens técnicas devolvidas pelo serviço.
-    return /sessão|sessao|401/i.test(String(error?.message || '')) ? 'Sua sessão expirou. Entre novamente para continuar.' : fallback;
+    // Traduzir apenas códigos conhecidos, nunca exibir a mensagem bruta do provedor.
+    const safe = {
+      IA_SEM_CREDITOS: 'A conta da API OpenAI está sem créditos. O ADM precisa adicionar créditos para liberar a transcrição e a IA. Você pode preencher sem IA por enquanto.',
+      IA_LIMITE_CONTA: 'A conta da API OpenAI atingiu um limite de uso ou gasto. O ADM precisa verificar esse limite. Você pode preencher sem IA por enquanto.',
+      IA_MUITAS_REQUISICOES: 'A IA está recebendo muitas solicitações. Aguarde um pouco antes de tentar novamente ou preencha sem IA.',
+      LIMITE_IA: 'O limite de uso da IA nesta conta do app foi atingido. Aguarde antes de tentar novamente ou preencha sem IA.',
+      IA_ACESSO_NEGADO: 'A conta da IA não autorizou esta operação. O ADM precisa verificar o acesso. Você pode preencher sem IA por enquanto.',
+      IA_CONFIGURACAO_INVALIDA: 'A configuração do serviço de IA precisa ser verificada pelo ADM. Você pode preencher sem IA por enquanto.',
+      IA_NAO_CONFIGURADA: 'A IA ainda não está configurada. Você pode preencher sem IA e enviar o pedido completo.',
+      AUDIO_NAO_PROCESSADO: 'O serviço não conseguiu ler este áudio. Ouça a gravação e tente um trecho menor ou continue por texto.',
+      TRANSCRICAO_VAZIA: 'Não foi possível reconhecer fala no áudio. Ouça a gravação e tente novamente, ou escreva o pedido.',
+      MIDIA_INVALIDA: 'O formato do arquivo não pôde ser validado. Escolha um áudio compatível ou grave outro trecho.',
+      LIMITE_MIDIA: 'O arquivo é grande demais para enviar. Use um áudio menor ou uma foto menor, conforme a etapa.',
+      LIMITE_TRANSCRICAO: 'A transcrição é longa demais. Use um trecho menor; nenhum texto foi cortado.',
+      LIMITE_TEXTO: 'O texto e a transcrição juntos são longos demais. Divida em pedidos menores.',
+      TEMPO_IA_EXCEDIDO: 'A IA demorou demais para responder. Tente novamente com um áudio mais curto ou preencha sem IA.',
+      RESPOSTA_IA_INVALIDA: 'A IA não devolveu um pedido completo e válido. Tente novamente ou preencha sem IA.',
+      IA_INDISPONIVEL: 'A IA está indisponível no momento. Aguarde e tente novamente ou preencha sem IA.'
+    };
+    if (error?.status === 401 || (!error?.status && !error?.code && /sessão|sessao|401/i.test(String(error?.message || '')))) return 'Sua sessão expirou. O pedido continua nesta tela; guarde os dados antes de entrar novamente.';
+    const detail = (Object.hasOwn(safe, error?.code) ? safe[error.code] : null) || (error?.status === 413 ? safe.LIMITE_MIDIA : error?.status === 429 ? safe.IA_MUITAS_REQUISICOES : null);
+    return detail ? `${detail} Seu texto, áudio e rascunho foram mantidos nesta tela.` : fallback;
   }
   async function request(path, payload, generation) {
     const controller = new AbortController(); state.controllers.add(controller);
     try {
       const result = await js(API + '/assistente' + path, {
-        signal: controller.signal,
+        signal: controller.signal, keepOnUnauthorized: true,
         ...(payload === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       });
       return current(generation) ? result : null;
@@ -523,7 +543,7 @@
     try {
       const response = await request('/status', undefined, generation); if (!response || !current(generation)) return;
       state.configured = response.configurado === true;
-      rootEl('[data-assistente-status]').textContent = state.configured ? 'Organização automática disponível. A autorização abaixo vale somente para usar a IA.' : 'A organização automática ainda não está disponível. Você pode montar e enviar o pedido normalmente em Preencher sem IA.';
+      rootEl('[data-assistente-status]').textContent = state.configured ? 'IA configurada. A disponibilidade e os créditos do serviço são verificados ao organizar. A autorização abaixo vale somente para usar a IA.' : 'A organização automática ainda não está disponível. Você pode montar e enviar o pedido normalmente em Preencher sem IA.';
     } catch (_) {
       if (current(generation)) { state.configured = null; rootEl('[data-assistente-status]').textContent = 'Não foi possível verificar a organização automática agora. Você pode preencher sem IA e enviar o pedido.'; }
     } finally { if (current(generation)) updateButtons(); }

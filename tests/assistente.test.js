@@ -94,6 +94,19 @@ async function server(t, pool, options = {}) {
 }
 async function count(pool, table) { return (await pool.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n; }
 
+function quotaOnlyPool() {
+  const statements = [];
+  return { statements, connect: async () => ({
+    query: async sql => {
+      // Unit HTTP tests allow only migrations and quota reservation, never a
+      // purchase/media write or arbitrary SQL, and never contact PostgreSQL.
+      assert.match(sql.trim(), /^(BEGIN$|COMMIT$|ROLLBACK$|SET LOCAL (?:lock_timeout|statement_timeout)=|SELECT pg_advisory_xact_lock\(hashtextextended\('ft_flow_assistente_migration_v1'|CREATE TABLE IF NOT EXISTS ft_assistente_pedidos \(|INSERT INTO ft_assistente_ai_limites\()/);
+      statements.push(sql);
+      return { rows: [{ chamadas: 1 }] };
+    }, release() {},
+  }) };
+}
+
 // These tests run without PostgreSQL and without network calls.
 test('draft nulls, complete copied list, canonical packaging and positive quantities without business defaults', () => {
   const empty = normalizeDraft({ itens: [{ produto: 'Tinta', quantidade: null, unidade: null }] });
@@ -190,6 +203,98 @@ test('essential person/item data and at least one photo are required before any 
   assert.equal(combined.body.code, 'PEDIDO_INCOMPLETO');
   assert.match(combined.body.error, /nome_pessoa, destino, itens, fotos/);
   assert.doesNotMatch(combined.body.error, /nome_lista|categoria|uso|link|descri|observa/);
+});
+
+test('safe provider HTTP codes distinguish quota/access/configuration from rejected audio, never return provider messages', async t => {
+  const pool = quotaOnlyPool();
+  const fake = fakeTransport();
+  const { request } = await server(t, pool, { env: ENV, fetchImpl: fake.fetchImpl });
+  const cases = [
+    [429, { code: 'credit_balance_exhausted', type: 'insufficient_quota' }, 503, 'IA_SEM_CREDITOS'],
+    [429, { code: 'insufficient_quota' }, 503, 'IA_SEM_CREDITOS'],
+    [429, { code: 'organization_spend_limit_exceeded' }, 503, 'IA_LIMITE_CONTA'],
+    [429, { code: 'project_spend_limit_exceeded' }, 503, 'IA_LIMITE_CONTA'],
+    [429, { code: 'organization_usage_limit_exceeded' }, 503, 'IA_LIMITE_CONTA'],
+    [429, { code: 'rate_limit_exceeded' }, 429, 'IA_MUITAS_REQUISICOES'],
+    [429, { code: null }, 429, 'IA_MUITAS_REQUISICOES'],
+    [429, { code: 'rate_limit_exceeded', type: 'insufficient_quota' }, 429, 'IA_MUITAS_REQUISICOES'],
+    [429, { code: 'organization_spend_limit_exceeded', type: 'insufficient_quota' }, 503, 'IA_LIMITE_CONTA'],
+    [401, { code: 'invalid_api_key' }, 503, 'IA_ACESSO_NEGADO'],
+    [403, { code: 'insufficient_permissions' }, 503, 'IA_ACESSO_NEGADO'],
+    [400, { code: 'invalid_value', param: 'file' }, 422, 'AUDIO_NAO_PROCESSADO', 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: 'invalid_file', param: 'file' }, 422, 'AUDIO_NAO_PROCESSADO', 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: 'invalid_file' }, 422, 'AUDIO_NAO_PROCESSADO', 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: 'invalid_value', param: 'model' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: 'invalid_value', param: 'response_format' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: 'invalid_file', param: 'model' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: null, param: 'file' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [400, { code: 'unrecognized', param: 'file' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [404, { code: 'model_not_found' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [500, { code: 'credit_balance_exhausted' }, 502, 'IA_INDISPONIVEL'],
+    [503, { code: 'invalid_file', param: 'file' }, 502, 'IA_INDISPONIVEL'],
+    [422, { code: 'invalid_value', param: 'file' }, 502, 'IA_INDISPONIVEL'],
+  ];
+  const original = draft();
+  const body = { texto: 'Pedido privado', rascunho: original, consentimento_ia: true };
+  for (const [status, error, audioStatus, audioCode, textStatus = audioStatus, textCode = audioCode] of cases) {
+    for (const audio of [false, true]) {
+      const callsBefore = fake.calls.length;
+      fake.queue.push(json({ error: { ...error, message: `Bearer SECRET-PAYLOAD invalid file credit_balance_exhausted ${OGG.toString('base64')} DELETE FROM compras` } }, status));
+      const result = await request('/interpretar', { method: 'POST', body: { ...body, ...(audio ? { audio: media(OGG, 'audio/ogg') } : {}) } });
+      assert.equal(result.status, audio ? audioStatus : textStatus, `${status}/${error.code}/${error.param || '-'} in ${audio ? 'audio' : 'text'}`);
+      assert.equal(result.body.code, audio ? audioCode : textCode);
+      assert.notEqual(result.status, 401, 'provider authentication must never log the app user out');
+      assert.deepEqual(Object.keys(result.body).sort(), ['code', 'error']);
+      assert.doesNotMatch(JSON.stringify(result.body), /SECRET-PAYLOAD|Bearer|synthetic-test-key|DELETE|credit_balance_exhausted/);
+      assert.equal(JSON.stringify(result.body).includes(OGG.toString('base64')), false);
+      assert.equal(fake.calls.length, callsBefore + 1, 'failed transcription must not start extraction');
+      assert.equal(fake.calls.at(-1).url.endsWith(audio ? '/audio/transcriptions' : '/chat/completions'), true);
+      assert.equal(result.headers.get('cache-control'), 'private, no-store');
+      assert.equal(result.headers.get('retry-after'), result.status === 429 ? '600' : null);
+      assert.deepEqual(original, draft(), 'provider failure must not modify the previous draft');
+    }
+  }
+  // A successful transcription followed by an extraction quota error must also
+  // return no partial transcript/draft and still never create a purchase.
+  fake.queue.push(json({ text: 'Transcrição privada' }), json({ error: { code: 'credit_balance_exhausted', message: 'Bearer SECRET-PAYLOAD' } }, 429));
+  const extractionFailure = await request('/interpretar', { method: 'POST', body: { ...body, audio: media(OGG, 'audio/ogg') } });
+  assert.equal(extractionFailure.status, 503);
+  assert.equal(extractionFailure.body.code, 'IA_SEM_CREDITOS');
+  assert.deepEqual(Object.keys(extractionFailure.body).sort(), ['code', 'error']);
+  assert.equal(fake.queue.length, 0);
+  assert.ok(pool.statements.every(sql => !/INSERT INTO (?:compras|ft_assistente_pedidos|ft_assistente_midias)/.test(sql)));
+});
+
+test('non-2xx bodies remain byte-bounded, malformed bodies use safe status fallback and hanging bodies time out', async t => {
+  const pool = quotaOnlyPool();
+  const fake = fakeTransport();
+  const { request } = await server(t, pool, { env: ENV, fetchImpl: fake.fetchImpl, timeoutMs: 30 });
+  const cases = [
+    [() => new Response('Bearer SECRET-PAYLOAD {broken', { status: 429 }), 429, 'IA_MUITAS_REQUISICOES'],
+    [() => new Response('Bearer SECRET-PAYLOAD {broken', { status: 400 }), 503, 'IA_CONFIGURACAO_INVALIDA'],
+    [() => new Response('Bearer SECRET-PAYLOAD {broken', { status: 401 }), 503, 'IA_ACESSO_NEGADO'],
+    [() => new Response('Bearer SECRET-PAYLOAD {broken', { status: 500 }), 502, 'IA_INDISPONIVEL'],
+    [() => json({ error: 'Bearer SECRET-PAYLOAD credit_balance_exhausted' }, 429), 429, 'IA_MUITAS_REQUISICOES'],
+    [() => json({ error: { code: { value: 'credit_balance_exhausted' }, type: ['insufficient_quota'] } }, 429), 429, 'IA_MUITAS_REQUISICOES'],
+    [() => new Response('x'.repeat(128 * 1024 + 1), { status: 429 }), 502, 'RESPOSTA_IA_INVALIDA'],
+    [() => new Response('{}', { status: 401, headers: { 'content-length': String(128 * 1024 + 1) } }), 502, 'RESPOSTA_IA_INVALIDA'],
+    [() => new Response('{}' + ' '.repeat(128 * 1024 - 2), { status: 429 }), 429, 'IA_MUITAS_REQUISICOES'],
+    [() => new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('{"error":{"message":"Bearer SECRET-PAYLOAD"')); } }), { status: 429 }), 504, 'TEMPO_IA_EXCEDIDO'],
+    [() => new Response(new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode('{"text":"private"')); } })), 504, 'TEMPO_IA_EXCEDIDO'],
+  ];
+  for (const [response, status, code] of cases) {
+    const before = fake.calls.length;
+    fake.queue.push(response());
+    const start = Date.now();
+    const result = await request('/interpretar', { method: 'POST', body: { audio: media(OGG, 'audio/ogg'), consentimento_ia: true } });
+    assert.equal(result.status, status);
+    assert.equal(result.body.code, code);
+    assert.doesNotMatch(JSON.stringify(result.body), /SECRET-PAYLOAD|Bearer|synthetic-test-key/);
+    assert.deepEqual(Object.keys(result.body).sort(), ['code', 'error']);
+    assert.equal(fake.calls.length, before + 1, 'no extraction after failure');
+    assert.ok(Date.now() - start < 2000, 'body timeout remains finite even if transport ignores abort');
+  }
+  assert.equal(fake.queue.length, 0);
 });
 
 test('dedicated local PostgreSQL: AI parsing, review, limits, durable confirmation, privacy and rollback', { skip: !RUN_DB }, async t => {
@@ -322,6 +427,40 @@ test('dedicated local PostgreSQL: AI parsing, review, limits, durable confirmati
     assert.equal(await count(pool, 'ft_assistente_pedidos'), 0);
   });
 
+  await t.test('provider credit/audio/access errors in text and WAV are safe HTTP failures with no durable order or media writes', async () => {
+    const fake = fakeTransport();
+    const { request: failedRequest } = await server(t, pool, { env: ENV, fetchImpl: fake.fetchImpl });
+    const wav = media(Buffer.from('RIFFxxxxWAVEsynthetic-private-audio'), 'audio/wav');
+    const cases = [
+      [429, { code: 'credit_balance_exhausted', type: 'insufficient_quota' }, 503, 'IA_SEM_CREDITOS'],
+      [429, { code: 'insufficient_quota' }, 503, 'IA_SEM_CREDITOS'],
+      [401, { code: 'invalid_api_key' }, 503, 'IA_ACESSO_NEGADO'],
+      [403, {}, 503, 'IA_ACESSO_NEGADO'],
+      [400, { code: 'invalid_value', param: 'file' }, 422, 'AUDIO_NAO_PROCESSADO'],
+      [400, { code: 'invalid_value', param: 'model' }, 503, 'IA_CONFIGURACAO_INVALIDA'],
+    ];
+    let i = 0;
+    for (const [upstreamStatus, error, status, code] of cases) {
+      for (const audio of [false, true]) {
+        const token = jwt.sign({ username: `provider-failure-${i++}`, role: 'funcionario' }, JWT_SECRET);
+        const before = fake.calls.length;
+        fake.queue.push(json({ error: { ...error, message: `Bearer SECRET-PAYLOAD ${wav.base64}` } }, upstreamStatus));
+        const result = await failedRequest('/interpretar', { method: 'POST', token, body: { texto: 'Rascunho privado', rascunho: draft(), consentimento_ia: true, ...(audio ? { audio: wav } : {}) } });
+        assert.equal(result.status, !audio && code === 'AUDIO_NAO_PROCESSADO' ? 503 : status);
+        assert.equal(result.body.code, !audio && code === 'AUDIO_NAO_PROCESSADO' ? 'IA_CONFIGURACAO_INVALIDA' : code);
+        assert.notEqual(result.status, 401);
+        assert.doesNotMatch(JSON.stringify(result.body), /SECRET-PAYLOAD|Bearer|synthetic-test-key/);
+        assert.equal(JSON.stringify(result.body).includes(wav.base64), false);
+        assert.deepEqual(Object.keys(result.body).sort(), ['code', 'error']);
+        assert.equal(fake.calls.length, before + 1, 'no extraction request after transcription rejection');
+        assert.equal(fake.calls.at(-1).url.endsWith(audio ? '/audio/transcriptions' : '/chat/completions'), true);
+      }
+    }
+    assert.equal(fake.queue.length, 0);
+    for (const table of ['ft_assistente_pedidos', 'ft_assistente_midias', 'lista_compras_itens', 'notificacoes', 'audit_log']) assert.equal(await count(pool, table), 0);
+    assert.equal(await count(pool, 'compras'), 1, 'only the historical local test purchase remains');
+  });
+
   await t.test('malformed, refusal, partial, HTTP and overlong AI results are safe and never truncate or create purchases', async () => {
     const responses = [
       completion(extraction({ itens: Array.from({ length: 31 }, () => ({ produto: 'Item', quantidade: 1, unidade: 'un' })) })),
@@ -338,7 +477,8 @@ test('dedicated local PostgreSQL: AI parsing, review, limits, durable confirmati
     for (let i = 0; i < responses.length; i++) {
       transport.queue.push(responses[i]);
       const result = await request('/interpretar', { method: 'POST', user: 'admin', body: { texto: 'pedido', consentimento_ia: true } });
-      assert.equal(result.status, i === 0 ? 422 : 502);
+      assert.equal(result.status, i === 0 ? 422 : i === 8 ? 503 : 502);
+      if (i === 8) assert.equal(result.body.code, 'IA_ACESSO_NEGADO');
       assert.equal(JSON.stringify(result.body).includes('SECRET-PAYLOAD'), false);
       assert.equal(Object.hasOwn(result.body, 'rascunho'), false, 'do not return partial extracted draft');
     }

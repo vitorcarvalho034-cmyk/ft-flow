@@ -21,6 +21,28 @@ class AssistenteError extends Error {
 }
 function fail(status, code, message) { throw new AssistenteError(status, code, message); }
 function isObject(value) { return !!value && typeof value === 'object' && !Array.isArray(value); }
+function providerFailure(status, body, stage) {
+  // Read only exact, known fields. Provider messages (even on a valid JSON body)
+  // are never copied, logged, or used to guess whether the user's audio is bad.
+  const error = isObject(body?.error) ? body.error : {};
+  if (status === 429) {
+    if (['credit_balance_exhausted', 'insufficient_quota'].includes(error.code)) {
+      fail(503, 'IA_SEM_CREDITOS', 'A IA está sem créditos disponíveis. Preencha o pedido manualmente.');
+    }
+    if (['organization_spend_limit_exceeded', 'project_spend_limit_exceeded', 'organization_usage_limit_exceeded'].includes(error.code)) {
+      fail(503, 'IA_LIMITE_CONTA', 'A IA atingiu o limite da conta. Preencha o pedido manualmente.');
+    }
+    fail(429, 'IA_MUITAS_REQUISICOES', 'A IA recebeu muitas requisições. Aguarde ou preencha manualmente.');
+  }
+  // Upstream authentication is not the FT FLOW session: never trigger a logout.
+  if (status === 401 || status === 403) fail(503, 'IA_ACESSO_NEGADO', 'A IA não está autorizada para esta configuração. Preencha o pedido manualmente.');
+  if (status === 400 && stage === 'audio' && (
+    (error.code === 'invalid_value' && error.param === 'file') ||
+    (error.code === 'invalid_file' && (error.param === 'file' || error.param == null))
+  )) fail(422, 'AUDIO_NAO_PROCESSADO', 'Não foi possível processar este arquivo de áudio. Grave outro áudio ou escreva o pedido.');
+  if (status === 400 || status === 404) fail(503, 'IA_CONFIGURACAO_INVALIDA', 'A configuração da IA não é compatível com esta operação. Preencha o pedido manualmente.');
+  fail(502, 'IA_INDISPONIVEL', 'Não foi possível usar a IA agora. Tente novamente ou preencha manualmente.');
+}
 function text(value, label, max) {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'string' || value.length > max) fail(400, 'DADOS_INVALIDOS', `${label} deve ser texto de até ${max} caracteres; nada foi truncado.`);
@@ -230,7 +252,7 @@ function createAssistenteService({ pool, ensureBaseDb = async () => {}, env = pr
     } catch (error) { await client.query('ROLLBACK').catch(() => {}); throw error; }
     finally { client.release(); }
   }
-  async function remote(url, options, deadline) {
+  async function remote(url, options, deadline, stage = 'texto') {
     const controller = new AbortController();
     const remaining = deadline - Date.now();
     if (remaining <= 0) fail(504, 'TEMPO_IA_EXCEDIDO', 'A IA demorou demais. Tente novamente ou preencha manualmente.');
@@ -240,11 +262,14 @@ function createAssistenteService({ pool, ensureBaseDb = async () => {}, env = pr
       return await Promise.race([
         (async () => {
           const response = await fetchImpl(url, { ...options, signal: controller.signal, redirect: 'error' });
-          if (!response.ok) fail(502, 'IA_INDISPONIVEL', 'Não foi possível usar a IA agora. Tente novamente ou preencha manualmente.');
+          // The same byte limit and deadline apply to success AND error bodies.
           const declared = Number(response.headers?.get?.('content-length') || 0);
           if (declared > 128 * 1024) fail(502, 'RESPOSTA_IA_INVALIDA', 'Resposta da IA excede o limite.');
           const reader = response.body?.getReader?.();
-          if (!reader) fail(502, 'RESPOSTA_IA_INVALIDA', 'Resposta da IA inválida.');
+          if (!reader) {
+            if (!response.ok) providerFailure(response.status, null, stage);
+            fail(502, 'RESPOSTA_IA_INVALIDA', 'Resposta da IA inválida.');
+          }
           const chunks = []; let size = 0;
           try {
             while (true) {
@@ -255,8 +280,11 @@ function createAssistenteService({ pool, ensureBaseDb = async () => {}, env = pr
               chunks.push(Buffer.from(value));
             }
           } finally { reader.releaseLock(); }
-          try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); }
-          catch { fail(502, 'RESPOSTA_IA_INVALIDA', 'Resposta da IA inválida.'); }
+          let parsed;
+          try { parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+          catch { if (response.ok) fail(502, 'RESPOSTA_IA_INVALIDA', 'Resposta da IA inválida.'); }
+          if (!response.ok) providerFailure(response.status, parsed, stage);
+          return parsed;
         })(),
         new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new AssistenteError(504, 'TEMPO_IA_EXCEDIDO', 'A IA demorou demais. Tente novamente ou preencha manualmente.')); }, budget); }),
       ]);
@@ -285,7 +313,7 @@ function createAssistenteService({ pool, ensureBaseDb = async () => {}, env = pr
       form.append('response_format', 'json');
       const extension = { 'audio/ogg': 'ogg', 'audio/webm': 'webm', 'audio/mp4': 'mp4', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' }[audio.mime_type];
       form.append('file', new Blob([audio.buffer], { type: audio.mime_type }), `audio.${extension}`);
-      const response = await remote('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${current.key}` }, body: form }, deadline);
+      const response = await remote('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${current.key}` }, body: form }, deadline, 'audio');
       try { transcript = text(response?.text, 'Transcrição', MAX_TEXT); }
       catch { fail(422, 'LIMITE_TRANSCRICAO', 'Transcrição excedeu 6000 caracteres. Grave um áudio menor; nada foi truncado.'); }
       if (!transcript) fail(502, 'TRANSCRICAO_VAZIA', 'Não foi possível entender o áudio. Escreva o pedido ou tente outro áudio.');
