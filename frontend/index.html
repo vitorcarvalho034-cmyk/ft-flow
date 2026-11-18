@@ -6,6 +6,7 @@
 <title>FT FLOW</title>
 <link rel="icon" href="logo.png">
 <link rel="stylesheet" href="style.css?v=47">
+<link rel="stylesheet" href="assistente.css?v=1">
 <link rel="stylesheet" href="epis.css?v=1">
 
 <link rel="manifest" href="manifest.json">
@@ -36,7 +37,7 @@
     <button class="nav" onclick="trocarTela('epis',this)">EPIs</button>
     <button class="nav" onclick="trocarTela('compras',this)">Compras</button>
     <button class="nav admin-only" onclick="trocarTela('cotacoes',this)">Cotações</button>
-    <button class="nav admin-only" onclick="trocarTela('whatsapp',this)">Pedidos pelo WhatsApp</button>
+    <button class="nav" onclick="trocarTela('assistente',this)">Assistente de pedidos</button>
 
     <button class="nav admin-only" onclick="trocarTela('relatorios',this)">Relatórios</button>
     <button class="nav admin-only" onclick="trocarTela('fornecedores',this)">Fornecedores</button>
@@ -44,7 +45,7 @@
     <div class="userbox">
       <div id="userNameDesktop"></div>
       <small id="userRoleDesktop"></small>
-      <button class="logout" onclick="location.reload()">Sair</button>
+      <button class="logout" onclick="sairApp()">Sair</button>
     </div>
   </aside>
 
@@ -63,7 +64,7 @@
       <button class="drawer-nav-item" data-tela="epis" onclick="trocarTelaDrawer('epis')"><span class="nav-icon epi-nav-icon">EPI</span>EPIs</button>
       <button class="drawer-nav-item" data-tela="compras" onclick="trocarTelaDrawer('compras')"><span class="nav-icon">🛒</span>Compras</button>
       <button class="drawer-nav-item admin-only" data-tela="cotacoes" onclick="trocarTelaDrawer('cotacoes')"><span class="nav-icon">📋</span>Cotações</button>
-      <button class="drawer-nav-item admin-only" data-tela="whatsapp" onclick="trocarTelaDrawer('whatsapp')"><span class="nav-icon">W</span>Pedidos pelo WhatsApp</button>
+      <button class="drawer-nav-item" data-tela="assistente" onclick="trocarTelaDrawer('assistente')"><span class="nav-icon">+</span>Assistente de pedidos</button>
 
       <button class="drawer-nav-item admin-only" data-tela="relatorios" onclick="trocarTelaDrawer('relatorios')"><span class="nav-icon">📈</span>Relatórios</button>
       <button class="drawer-nav-item admin-only" data-tela="fornecedores" onclick="trocarTelaDrawer('fornecedores')"><span class="nav-icon">🏭</span>Fornecedores</button>
@@ -72,7 +73,7 @@
     <div class="drawer-footer">
       <div id="userNameMobile"></div>
       <small id="userRoleMobile"></small>
-      <button class="logout" onclick="location.reload()">Sair</button>
+      <button class="logout" onclick="sairApp()">Sair</button>
     </div>
   </div>
 </div>
@@ -549,8 +550,25 @@
   </div>
 </div>
 
-<script src="app.js?v=70"></script>
-<script src="epis.js?v=1"></script>
+<!-- Assistente: confirmação explícita e detalhes privados, acima da topbar. -->
+<div id="modalAssistenteConfirmacao" class="modal assistente-modal hidden" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="assistenteConfirmacaoTitulo">
+    <div class="modal-head"><h3 id="assistenteConfirmacaoTitulo">Confira antes de enviar</h3><button type="button" data-assistente-close="confirm" aria-label="Fechar confirmação">×</button></div>
+    <div id="assistenteConfirmacaoResumo"></div>
+    <p id="assistenteConfirmacaoErro" class="assistente-error" role="alert"></p>
+    <div class="assistente-actions"><button id="assistenteConfirmarEnvio" class="primary" type="button">Confirmar e enviar ao ADM</button><button class="secondary" type="button" data-assistente-close="confirm">Voltar para editar</button></div>
+  </div>
+</div>
+<div id="modalAssistentePedido" class="modal assistente-modal hidden" aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="assistentePedidoTitulo">
+    <div class="modal-head"><h3 id="assistentePedidoTitulo">Descrição e fotos do pedido</h3><button type="button" data-assistente-close="details" aria-label="Fechar detalhes do pedido">×</button></div>
+    <div id="assistentePedidoConteudo"></div>
+  </div>
+</div>
+
+<script defer src="app.js?v=71"></script>
+<script defer src="assistente.js?v=1"></script>
+<script defer src="epis.js?v=1"></script>
 <script>
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").then(() => navigator.serviceWorker.ready.then(() => {

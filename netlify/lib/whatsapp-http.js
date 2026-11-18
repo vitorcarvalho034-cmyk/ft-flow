@@ -153,4 +153,33 @@ function mountPrivateWhatsAppRoutes(app, { service, pool, dispatch, env = proces
   });
 }
 
-module.exports = { createWorkerDispatcher, mountPublicWhatsAppRoutes, mountPrivateWhatsAppRoutes, _private: { workerToken, trustedBaseUrl } };
+// Preserve attachments belonging to existing purchases without enabling a channel.
+// The active app mounts only this read-only subset after JWT authentication.
+function mountLegacyWhatsAppReadRoutes(app, { service }) {
+  app.use('/whatsapp', privateResponse);
+  app.get('/whatsapp/compras/:id', requireLogin, async (req, res) => {
+    try {
+      const details = await service.getPurchaseDetails(req.params.id);
+      if (!details) return res.status(404).json({ error: 'Pedido antigo não encontrado' });
+      res.json(details);
+    } catch (_error) {
+      res.status(503).json({ error: 'Não foi possível carregar os detalhes do pedido antigo' });
+    }
+  });
+  app.get('/whatsapp/midias/:id', requireLogin, async (req, res) => {
+    try {
+      const media = await service.getMedia(req.params.id);
+      if (!media) return res.status(404).json({ error: 'Foto não encontrada' });
+      res.set('X-Content-Type-Options', 'nosniff');
+      res.set('Content-Disposition', 'inline');
+      res.type(media.mime_type).send(media.buffer);
+    } catch (_error) {
+      res.status(503).json({ error: 'Não foi possível carregar a foto' });
+    }
+  });
+  app.use('/whatsapp', requireLogin, (_req, res) => {
+    res.status(410).json({ error: 'Integração WhatsApp removida. Use o assistente dentro do aplicativo.' });
+  });
+}
+
+module.exports = { createWorkerDispatcher, mountPublicWhatsAppRoutes, mountPrivateWhatsAppRoutes, mountLegacyWhatsAppReadRoutes, _private: { workerToken, trustedBaseUrl } };

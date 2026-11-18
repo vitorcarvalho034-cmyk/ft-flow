@@ -2,16 +2,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const { createWhatsAppService } = require('../netlify/lib/whatsapp');
 
-// This suite is opt-in and can only use the dedicated local sandbox test database.
+// Opt-in, dedicated local sandbox database only. Never use production credentials.
 const enabled = process.env.WHATSAPP_TEST_DB === '1';
-test('Express app + PostgreSQL: login, leaders, private media and unchanged purchase flow', { skip: !enabled }, async () => {
-  delete process.env.DATABASE_URL;
-  delete process.env.SMTP_USER;
-  delete process.env.SMTP_PASS;
-  delete process.env.ADMIN_WHATSAPP;
-  delete process.env.ADMIN_WHATSAPP_NUMBERS;
-  delete process.env.CALLMEBOT_API_KEY;
+test('Express app + PostgreSQL: WhatsApp retired, historical media protected, regular purchases unchanged', { skip: !enabled }, async () => {
+  for (const key of Object.keys(process.env)) {
+    if (/^(DATABASE_URL|SMTP_|ADMIN_WHATSAPP|CALLMEBOT|FT_ASSISTENTE_)/.test(key)) delete process.env[key];
+  }
   process.env.PGHOST = '/var/run/postgresql';
   process.env.PGUSER = 'ubuntu';
   process.env.PGDATABASE = 'ft_flow_whatsapp_http_test';
@@ -37,44 +35,47 @@ test('Express app + PostgreSQL: login, leaders, private media and unchanged purc
     assert.equal(admin.status, 200); assert.equal(operator.status, 200);
     const token = admin.data.token;
     assert.equal((await call('/whatsapp/status')).status, 401);
-    assert.equal((await call('/whatsapp/status', 'GET', undefined, operator.data.token)).status, 403);
-    const status = await call('/whatsapp/status', 'GET', undefined, token);
-    assert.equal(status.status, 200); assert.equal(status.data.enabled, false);
-    assert.ok(status.data.missing.includes('WHATSAPP_ACCESS_TOKEN'));
-    assert.equal(JSON.stringify(status.data).includes('local-test-meta-secret'), false);
-    const body = { nome: 'Líder de teste HTTP', telefone: '+55 (11) 99666-2222', setor: 'Estufa', destino_padrao: 'Estufa 3', ativo: true };
-    // Re-runnable suite, isolated local data only.
-    await query('DELETE FROM ft_whatsapp_lideres WHERE telefone=$1', ['5511996662222']);
-    const leader = await call('/whatsapp/lideres', 'POST', body, token);
-    assert.equal(leader.status, 201); assert.equal(leader.data.telefone, '5511996662222');
-    assert.equal((await call('/whatsapp/lideres', 'POST', body, token)).status, 400);
-    const paused = await call(`/whatsapp/lideres/${leader.data.id}`, 'PUT', { ...body, ativo: false }, token);
-    assert.equal(paused.status, 200); assert.equal(paused.data.ativo, false);
-    assert.equal((await call('/whatsapp/lideres', 'POST', body, operator.data.token)).status, 403);
-    assert.equal((await call('/whatsapp/reprocessar', 'POST', undefined, token)).status, 409);
-    const purchase = await call('/compras', 'POST', { item: 'Peça do teste regular', quantidade: 2, unidade: 'un', categoria: 'Outros', destino: 'Oficina', solicitante: 'Teste' }, operator.data.token);
-    assert.equal(purchase.status, 200); assert.ok(purchase.data.id);
-    const readPurchase = await call(`/compras/${purchase.data.id}`, 'GET', undefined, token);
+    for (const actor of [token, operator.data.token]) {
+      assert.equal((await call('/whatsapp/status', 'GET', undefined, actor)).status, 410);
+      assert.equal((await call('/whatsapp/lideres', 'POST', { nome: 'Não criar', telefone: '5511996662222' }, actor)).status, 410);
+      assert.equal((await call('/whatsapp/conversas', 'GET', undefined, actor)).status, 410);
+      assert.equal((await call('/whatsapp/reprocessar', 'POST', {}, actor)).status, 410);
+    }
+    const regular = await call('/compras', 'POST', { item: 'Peça do teste regular', quantidade: 2, unidade: 'un', categoria: 'Outros', destino: 'Oficina', solicitante: 'Teste' }, operator.data.token);
+    assert.equal(regular.status, 200); assert.ok(regular.data.id);
+    const readPurchase = await call(`/compras/${regular.data.id}`, 'GET', undefined, token);
     assert.equal(readPurchase.data.status, 'Em cotação'); assert.equal(readPurchase.data.origem, 'app');
+
+    // Create only historical fixtures through the local database, never a retired API.
+    const legacy = createWhatsAppService({ pool: _test.pool, env: { FT_WHATSAPP_ENABLED: 'false' } });
+    await legacy.ensureDb();
+    const leader = await query(`INSERT INTO ft_whatsapp_lideres(nome,telefone,setor,ativo) VALUES('Líder antigo','5511996662222','Estufa',TRUE) ON CONFLICT(telefone) DO UPDATE SET nome=EXCLUDED.nome RETURNING id`);
     const requestId = crypto.randomUUID(), photoId = crypto.randomUUID();
-    await query(`INSERT INTO ft_whatsapp_media (id,telefone,request_id,mime_type,conteudo) VALUES ($1,$2,$3,'image/jpeg',$4)`, [photoId, '5511996662222', requestId, Buffer.from([255,216,255,0])]);
+    await query(`INSERT INTO ft_whatsapp_media(id,telefone,request_id,mime_type,conteudo) VALUES($1,$2,$3,'image/jpeg',$4)`, [photoId, '5511996662222', requestId, Buffer.from([255,216,255,0])]);
     assert.equal((await call(`/whatsapp/midias/${photoId}`, 'GET', undefined, token)).status, 404, 'unconfirmed draft images are not exposed');
-    const created = await query(`INSERT INTO compras(item,quantidade,unidade,destino,status,solicitante,origem,whatsapp_lider_id,whatsapp_request_id,whatsapp_transcricao) VALUES ('Válvula',2,'un','Estufa','Em cotação','Teste','whatsapp',$1,$2,'Preciso de duas válvulas') RETURNING id`, [leader.data.id, requestId]);
-    const details = await call(`/whatsapp/compras/${created.rows[0].id}`, 'GET', undefined, operator.data.token);
+    const historical = await query(`INSERT INTO compras(item,quantidade,unidade,destino,status,solicitante,origem,whatsapp_lider_id,whatsapp_request_id,whatsapp_transcricao) VALUES('Válvula',2,'un','Estufa','Em cotação','Teste','whatsapp',$1,$2,'Preciso de duas válvulas') RETURNING id`, [leader.rows[0].id, requestId]);
+    const details = await call(`/whatsapp/compras/${historical.rows[0].id}`, 'GET', undefined, operator.data.token);
     assert.equal(details.status, 200); assert.equal(details.data.fotos[0].id, photoId); assert.match(details.data.transcricao, /válvulas/);
     let response = await fetch(base + `/whatsapp/midias/${photoId}`);
     assert.equal(response.status, 401);
     response = await fetch(base + `/whatsapp/midias/${photoId}`, { headers: { Authorization: `Bearer ${operator.data.token}` } });
     assert.equal(response.status, 200); assert.equal(response.headers.get('content-type'), 'image/jpeg');
     assert.deepEqual(Buffer.from(await response.arrayBuffer()), Buffer.from([255,216,255,0]));
+
+    const before = (await query('SELECT COUNT(*)::int total FROM ft_whatsapp_inbox')).rows[0].total;
     response = await fetch(base + '/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=local-test-verify&hub.challenge=123');
-    assert.equal(response.status, 200); assert.equal(await response.text(), '123');
+    assert.equal(response.status, 410);
     const raw = JSON.stringify({ object: 'whatsapp_business_account', entry: [] });
     response = await fetch(base + '/whatsapp/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-hub-signature-256': 'sha256=' + crypto.createHmac('sha256', 'local-test-meta-secret').update(raw).digest('hex') }, body: raw });
-    assert.equal(response.status, 503, 'disabled channel cannot process or acknowledge live messages');
+    assert.equal(response.status, 410, 'retired webhook cannot ingest even correctly signed traffic');
+    assert.equal((await query('SELECT COUNT(*)::int total FROM ft_whatsapp_inbox')).rows[0].total, before);
     response = await fetch(base + '/whatsapp/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{invalid json' });
-    assert.equal(response.status, 400);
-    assert.deepEqual(await response.json(), { error: 'JSON inválido' });
+    assert.equal(response.status, 400); assert.deepEqual(await response.json(), { error: 'JSON inválido' });
+    const retiredWorker = require('../netlify/functions/whatsapp-process-background');
+    process.env.FT_WHATSAPP_ENABLED = 'true';
+    const stopped = await retiredWorker.handler({ headers: { authorization: 'Bearer old-token' }, body: JSON.stringify({ phones: ['5511996662222'] }) });
+    assert.equal(stopped.statusCode, 410, 'old worker is inert even if an obsolete enable flag survives');
+    process.env.FT_WHATSAPP_ENABLED = 'false';
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await _test.pool.end();

@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v41";
+const APP_VERSION = "v42";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
@@ -163,6 +163,7 @@ async function abrirDescricaoCompra(id) {
   try {
     const compra = compraCarregada(id) || await js(API + `/compras/${Number(id)}?leves=1`);
     if (compra.origem === 'whatsapp') return abrirDetalhesPedidoWhatsApp(id);
+    if (compra.origem === 'assistente') return window.abrirDetalhesAssistente?.(id);
     abrirModalDescricaoProduto(id, compra.foto_url, compra.descricao, compra.item, compra.tem_foto);
   } catch (erro) { mostrarErro(erro.message); }
 }
@@ -210,6 +211,8 @@ function cardPedidoCompra(c, options = {}) {
   const isAdmin = options.admin ?? false;
   const modo = options.modo || "full";
   const origemWhatsApp = c.origem === "whatsapp";
+  const origemAssistente = c.origem === "assistente";
+  const origemPrivada = origemWhatsApp || origemAssistente;
   const unidadeTxt = c.unidade ? htmlEsc(c.unidade) : "não informada";
   const descricaoTxt = c.descricao
     ? htmlEsc(c.descricao)
@@ -217,11 +220,11 @@ function cardPedidoCompra(c, options = {}) {
   const link = c.link_produto
     ? `<a href="${htmlEsc(c.link_produto)}" target="_blank" rel="noopener" class="pedido-link">🔗 Ver link do produto</a>`
     : "";
-  // Fotos do WhatsApp nunca são expostas pela listagem: são carregadas sob
+  // Fotos do Assistente e de antigos pedidos WhatsApp não são expostas pela listagem: são carregadas sob
   // demanda e autenticadas no modal próprio.
-  const foto = !origemWhatsApp && c.foto_url
+  const foto = !origemPrivada && c.foto_url
     ? `<img src="${htmlEsc(c.foto_url)}" class="pedido-foto" loading="lazy" decoding="async" alt="Foto do produto" onclick="abrirLightbox(this.currentSrc || this.src)" style="cursor:zoom-in" title="Clique para ampliar" onerror="this.style.display='none'">`
-    : !origemWhatsApp && c.tem_foto
+    : !origemPrivada && c.tem_foto
       ? `<div class="actions" style="margin:10px 0"><button type="button" class="secondary" onclick="abrirDescricaoCompra(${Number(c.id)})">Ver foto do produto</button></div>`
       : "";
   const valor = c.valor_total ? `<div class="pedido-linha"><span>Valor total</span><b>${dinheiro(c.valor_total)}</b></div>` : "";
@@ -311,11 +314,15 @@ function cardPedidoCompra(c, options = {}) {
     `;
   }
 
-  const badgeOrigem = origemWhatsApp ? '<span class="whatsapp-source-badge">WhatsApp</span>' : '';
-  const detalheWhatsApp = origemWhatsApp
+  const badgeOrigem = origemAssistente ? '<span class="assistente-source-badge">Assistente</span>' : origemWhatsApp ? '<span class="whatsapp-source-badge">WhatsApp</span>' : '';
+  const detalheOrigem = origemAssistente
+    ? `<div class="assistente-card-action"><button type="button" class="secondary" data-assistente-compra-id="${Number(c.id)}">Ver descrição e fotos</button></div>`
+    : origemWhatsApp
     ? `<div class="whatsapp-card-action"><button type="button" class="secondary" data-whatsapp-action="abrir-detalhe-compra" data-whatsapp-compra-id="${Number(c.id)}">Ver áudio transcrito e fotos</button></div>`
     : '';
-  const descricaoPedido = origemWhatsApp
+  const descricaoPedido = origemAssistente
+    ? `<div class="pedido-descricao-box"><span class="pedido-label">Pedido pelo Assistente</span><p class="pedido-descricao-texto">Descrição e fotos disponíveis nos detalhes protegidos.</p></div>`
+    : origemWhatsApp
     ? `<div class="pedido-descricao-box whatsapp-resumo-pedido"><span class="pedido-label">Pedido recebido pelo WhatsApp</span><p class="pedido-descricao-texto">A transcrição e as fotos ficam disponíveis somente nos detalhes protegidos.</p></div>`
     : `<div class="pedido-descricao-box" onclick="abrirDescricaoCompra(${Number(c.id)})" style="cursor:pointer;transition:background 0.15s" onmouseover="this.style.background='#e8f5e9'" onmouseout="this.style.background='' "><span class="pedido-label" style="display:flex;align-items:center;gap:6px">Descrição do produto <span style="font-size:11px;color:#2e7d32;font-weight:normal">🔍 clique para ampliar</span></span><p class="pedido-descricao-texto" style="margin:0;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${descricaoTxt}</p></div>`;
 
@@ -340,8 +347,8 @@ function cardPedidoCompra(c, options = {}) {
     </div>
     ${itemsHtml}
     ${c.tipo_solicitacao !== 'lista' ? descricaoPedido : ''}
-    ${c.tipo_solicitacao !== 'lista' ? link : ''}
-    ${detalheWhatsApp}
+    ${c.tipo_solicitacao !== 'lista' && !origemPrivada ? link : ''}
+    ${detalheOrigem}
     ${acoes}
     ${aprovacoesListaHtml}
   </div>`;
@@ -420,211 +427,63 @@ async function fazerLogin(){
   }catch(e){ mostrarErro("Erro ao conectar com servidor: "+e.message); }
 }
 
+function sairApp() {
+  window.cleanupAssistente?.(true);
+  fecharDetalhesPedidoWhatsApp();
+  _fotosCompra.forEach(url => URL.revokeObjectURL(url)); _fotosCompra.clear();
+  if (_autoRefreshInterval) clearInterval(_autoRefreshInterval);
+  token = null; usuario = null; localStorage.removeItem('ft_flow_token');
+  location.reload();
+}
+
 function trocarTela(n,b){
+  if (n === 'whatsapp') n = 'assistente'; // links antigos levam ao pedido no próprio app
+  if (tela === 'assistente' && n !== 'assistente') window.cleanupAssistente?.();
+  if (n !== tela) { fecharDetalhesPedidoWhatsApp(); window.fecharDetalhesAssistente?.(); }
   tela=n;
   // Sidebar desktop
   document.querySelectorAll(".nav").forEach(x=>x.classList.remove("active"));
   if(b) b.classList.add("active");
+  else document.querySelector(`.nav[onclick*="'${n}'"]`)?.classList.add("active");
   // Drawer mobile — marca item ativo
   document.querySelectorAll(".drawer-nav-item").forEach(x=>{
     x.classList.toggle("active", x.dataset.tela===n);
   });
-  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",epis:"EPIs",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",whatsapp:"Pedidos pelo WhatsApp",relatorios:"Relatórios",fornecedores:"Fornecedores"};
+  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",epis:"EPIs",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",assistente:"Assistente de pedidos",relatorios:"Relatórios",fornecedores:"Fornecedores"};
   pageTitle.innerText=titles[n]||"FT FLOW";
   carregar();
 }
 
 async function carregar(){
-  ++_navegacaoGeracao;
-  try{
+  const navegacao = ++_navegacaoGeracao;
+  try {
+    // Nunca desmontar formulário, gravação ou rascunho ao atualizar a tela dedicada.
+    if (tela === 'whatsapp') tela = 'assistente';
+    if (tela === 'assistente') return await window.assistente?.();
     content.innerHTML='<div class="panel"><div class="spinner"></div> Carregando...</div>';
-    if(tela==="dashboard") return dashboard();
-    if(tela==="manutencoes") return manutencoes();
-    if(tela==="estoque") return estoque();
-    if(tela==="epis") return epis();
-    if(tela==="compras") return compras();
-    if(tela==="historico") return historico();
-    if(tela==="cotacoes") return cotacoesGerais();
-    if(tela==="whatsapp") return whatsapp();
-
-    if(tela==="relatorios") return relatoriosMensais();
-    if(tela==="fornecedores") return fornecedores();
-  }catch(e){ content.innerHTML=`<div class="panel"><h3>Erro</h3><p>${htmlEsc(e.message)}</p></div>`; }
+    if(tela==="dashboard") return await dashboard();
+    if(tela==="manutencoes") return await manutencoes();
+    if(tela==="estoque") return await estoque();
+    if(tela==="epis") return await epis();
+    if(tela==="compras") return await compras();
+    if(tela==="historico") return await historico();
+    if(tela==="cotacoes") return await cotacoesGerais();
+    if(tela==="relatorios") return await relatoriosMensais();
+    if(tela==="fornecedores") return await fornecedores();
+  } catch(e) {
+    if (navegacao !== _navegacaoGeracao || tela === 'assistente') return;
+    content.innerHTML=`<div class="panel"><h3>Erro</h3><p>${htmlEsc(e.message)}</p></div>`;
+  }
 }
 
-// ===== PEDIDOS PELO WHATSAPP =====
-// Não há polling desta tela: formulários em edição permanecem intactos até ação manual.
-let _whatsappLideres = [];
+// ===== DETALHES PRIVADOS DE PEDIDOS ANTIGOS PELO WHATSAPP =====
+// Histórico preservado. Nenhuma configuração de líderes/conversas nesta aplicação.
 let _whatsappMediaUrls = new Set();
 let _whatsappMediaByKey = new Map();
 let _whatsappDetailGeneration = 0;
-
+let _whatsappDetailController = null;
 function valorSeguroWhatsApp(valor, fallback = "Não informado") {
-  const texto = String(valor ?? "").trim();
-  return texto || fallback;
-}
-
-function statusConversaWhatsApp(status) {
-  const normalizado = normalizarStatus(status).replace(/[_-]/g, " ");
-  if (normalizado === 'confirmed') return { texto: "Registrado", classe: "registrado" };
-  if (normalizado === 'cancelled') return { texto: "Cancelado", classe: "cancelado" };
-  if (normalizado === 'awaiting confirmation') return { texto: "Aguardando confirmação", classe: "aguardando" };
-  if (/(registrad|confirmad|comprad|criad)/.test(normalizado)) return { texto: "Registrado", classe: "registrado" };
-  if (/(cancel|recus|negad)/.test(normalizado)) return { texto: "Cancelado", classe: "cancelado" };
-  if (/(confirm|aguard)/.test(normalizado)) return { texto: "Aguardando confirmação", classe: "aguardando" };
-  return { texto: "Coletando dados", classe: "coletando" };
-}
-
-function dataWhatsApp(valor) {
-  if (!valor) return "Atualização não informada";
-  const data = new Date(valor);
-  return Number.isNaN(data.getTime()) ? "Atualização não informada" : data.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
-}
-
-function linkComercialWhatsApp(status) {
-  const telefone = String(status?.business_phone || "").replace(/\D/g, "");
-  if (!telefone || !status?.enabled || !status?.ready) return "";
-  return `<a class="whatsapp-commercial-link" target="_blank" rel="noopener" href="https://wa.me/${telefone}">Abrir número comercial no WhatsApp</a>`;
-}
-
-function painelStatusWhatsApp(status) {
-  const ativo = Boolean(status?.enabled && status?.ready);
-  const faltantes = Array.isArray(status?.missing) ? status.missing.filter(Boolean) : [];
-  const contagem = (campo) => Number.isFinite(Number(status?.[campo])) ? Number(status[campo]) : 0;
-  const aviso = ativo
-    ? "Integração pronta para receber pedidos conforme a configuração do backend."
-    : "Integração inativa ou incompleta. Este painel não confirma envio nem recebimento de mensagens.";
-  const detalhes = faltantes.length ? `<p class="whatsapp-status-missing">Configurações ausentes: ${faltantes.map(htmlEsc).join(", ")}</p>` : "";
-  const webhook = status?.webhook_url ? `<p class="whatsapp-readonly-line"><b>Webhook:</b> ${htmlEsc(status.webhook_url)}</p>` : '<p class="whatsapp-readonly-line">Webhook não informado pelo backend.</p>';
-  return `<section class="panel whatsapp-status-panel">
-    <div class="whatsapp-panel-heading"><div><h3>Configuração</h3><p class="whatsapp-readonly">Status somente leitura — credenciais não são exibidas nem editadas aqui.</p></div><span class="whatsapp-status-pill ${ativo ? "ready" : "inactive"}">${ativo ? "Pronto" : "Inativo"}</span></div>
-    <p class="whatsapp-status-message">${aviso}</p>${detalhes}${webhook}${linkComercialWhatsApp(status)}
-    <div class="whatsapp-metrics" aria-label="Resumo de processamento"><span><b>${contagem("leader_count")}</b> líderes</span><span><b>${contagem("pending_count")}</b> pendentes</span><span><b>${contagem("failed_count")}</b> falhas</span></div>
-  </section>`;
-}
-
-function formularioLiderWhatsApp() {
-  return `<section class="panel whatsapp-leader-panel">
-    <div class="whatsapp-panel-heading"><div><h3 id="whatsappLiderFormTitulo">Cadastrar líder</h3><p>O número é do líder, não o número comercial do robô. Cada líder usa seu próprio celular em um cadastro separado.</p></div></div>
-    <form id="formWhatsAppLider" class="whatsapp-leader-form">
-      <input id="whatsappLiderId" type="hidden">
-      <div class="grid whatsapp-form-grid">
-        <label>Nome<input id="whatsappLiderNome" autocomplete="name" required></label>
-        <label>Telefone<input id="whatsappLiderTelefone" type="tel" inputmode="tel" autocomplete="tel" placeholder="+55 DDD número" required></label>
-        <label>Setor<input id="whatsappLiderSetor" autocomplete="organization-title"></label>
-        <label>Destino padrão<input id="whatsappLiderDestino"></label>
-        <label>Categoria padrão<input id="whatsappLiderCategoria"></label>
-      </div>
-      <label class="check whatsapp-check"><input id="whatsappLiderAtivo" type="checkbox" checked> Líder ativo</label>
-      <div class="actions whatsapp-form-actions"><button id="whatsappLiderSalvar" class="primary" type="submit">Salvar líder</button><button class="secondary" type="button" data-whatsapp-action="limpar-lider">Limpar</button></div>
-    </form>
-  </section>`;
-}
-
-function listaLideresWhatsApp(lideres) {
-  const cards = lideres.map((lider, indice) => {
-    const ativo = lider.ativo !== false && lider.ativo !== 0 && lider.ativo !== "false";
-    return `<article class="whatsapp-leader-card">
-      <div><b>${htmlEsc(valorSeguroWhatsApp(lider.nome, "Sem nome"))}</b><span class="whatsapp-leader-state ${ativo ? "active" : "paused"}">${ativo ? "Ativo" : "Pausado"}</span></div>
-      <p>${htmlEsc(valorSeguroWhatsApp(lider.telefone))}${lider.setor ? ` · ${htmlEsc(lider.setor)}` : ""}</p>
-      <p class="whatsapp-leader-defaults">Destino: ${htmlEsc(valorSeguroWhatsApp(lider.destino_padrao))} · Categoria: ${htmlEsc(valorSeguroWhatsApp(lider.categoria_padrao))}</p>
-      <div class="actions"><button class="secondary" type="button" data-whatsapp-action="editar-lider" data-whatsapp-lider-index="${indice}">Editar</button><button class="secondary" type="button" data-whatsapp-action="alternar-lider" data-whatsapp-lider-index="${indice}">${ativo ? "Pausar" : "Retomar"}</button></div>
-    </article>`;
-  }).join("");
-  return `<section class="panel whatsapp-leaders-list"><div class="whatsapp-panel-heading"><div><h3>Líderes cadastrados</h3><p>Não há exclusão nesta tela.</p></div></div><div class="whatsapp-leader-grid">${cards || '<p class="whatsapp-empty">Nenhum líder cadastrado.</p>'}</div></section>`;
-}
-
-function listaConversasWhatsApp(conversas) {
-  const cards = conversas.map(conversa => {
-    const estado = statusConversaWhatsApp(conversa.status);
-    const erro = conversa.last_error ? '<p class="whatsapp-conversation-error">Houve uma falha no processamento. Tente reprocessar ou verifique a configuração.</p>' : '';
-    return `<article class="whatsapp-conversation-card"><div class="whatsapp-conversation-heading"><b>${htmlEsc(valorSeguroWhatsApp(conversa.lider_nome, "Líder não identificado"))}</b><span class="whatsapp-conversation-status ${estado.classe}">${estado.texto}</span></div><p>${htmlEsc(valorSeguroWhatsApp(conversa.setor, "Setor não informado"))}</p><small>${dataWhatsApp(conversa.updated_at)}</small>${erro}</article>`;
-  }).join("");
-  return `<section class="panel whatsapp-conversations-panel"><div class="whatsapp-panel-heading"><div><h3>Conversas recentes</h3><p>Acompanhe o estado sem expor mensagens, números ou identificadores internos.</p></div><button type="button" class="secondary" data-whatsapp-action="reprocessar">Reprocessar falhas</button></div><p class="whatsapp-reprocessar-help">O reprocessamento tenta somente falhas pendentes e não cria compras duplicadas.</p><div class="whatsapp-conversation-grid">${cards || '<p class="whatsapp-empty">Nenhuma conversa para exibir.</p>'}</div></section>`;
-}
-
-async function whatsapp() {
-  if (!usuario || usuario.role !== "admin") {
-    content.innerHTML = '<div class="panel"><h3>Acesso restrito</h3><p>Somente administradores podem configurar líderes e acompanhar conversas do WhatsApp.</p></div>';
-    return;
-  }
-  const [statusResult, lideresResult, conversasResult] = await Promise.allSettled([js(API + "/whatsapp/status"), js(API + "/whatsapp/lideres"), js(API + "/whatsapp/conversas")]);
-  const status = statusResult.status === "fulfilled" && statusResult.value && typeof statusResult.value === "object" ? statusResult.value : null;
-  _whatsappLideres = lideresResult.status === "fulfilled" && Array.isArray(lideresResult.value) ? lideresResult.value : [];
-  const conversas = conversasResult.status === "fulfilled" && Array.isArray(conversasResult.value) ? conversasResult.value : [];
-  const falhas = [statusResult, lideresResult, conversasResult].filter(r => r.status === "rejected").length;
-  const avisoFalha = falhas ? '<section class="panel whatsapp-load-warning"><p>Parte das informações não pôde ser carregada agora. Você pode atualizar manualmente.</p></section>' : '';
-  content.innerHTML = `<div class="whatsapp-page"><section class="panel whatsapp-intro"><div><h3>Pedidos pelo WhatsApp</h3><p>Assistente para texto, áudio e foto: o pedido só segue para Compras após confirmação.</p></div><button type="button" class="secondary" data-whatsapp-action="atualizar">Atualizar painel</button></section>${avisoFalha}${painelStatusWhatsApp(status)}${formularioLiderWhatsApp()}${listaLideresWhatsApp(_whatsappLideres)}${listaConversasWhatsApp(conversas)}</div>`;
-  document.getElementById("formWhatsAppLider")?.addEventListener("submit", salvarLiderWhatsApp);
-}
-
-function dadosLiderWhatsApp() {
-  return { nome: document.getElementById("whatsappLiderNome")?.value.trim() || "", telefone: document.getElementById("whatsappLiderTelefone")?.value.trim() || "", setor: document.getElementById("whatsappLiderSetor")?.value.trim() || "", destino_padrao: document.getElementById("whatsappLiderDestino")?.value.trim() || "", categoria_padrao: document.getElementById("whatsappLiderCategoria")?.value.trim() || "", ativo: Boolean(document.getElementById("whatsappLiderAtivo")?.checked) };
-}
-
-function preencherLiderWhatsApp(lider = null) {
-  const form = document.getElementById("formWhatsAppLider");
-  if (!form) return;
-  document.getElementById("whatsappLiderId").value = lider?.id ?? "";
-  document.getElementById("whatsappLiderNome").value = lider?.nome || "";
-  document.getElementById("whatsappLiderTelefone").value = lider?.telefone || "";
-  document.getElementById("whatsappLiderSetor").value = lider?.setor || "";
-  document.getElementById("whatsappLiderDestino").value = lider?.destino_padrao || "";
-  document.getElementById("whatsappLiderCategoria").value = lider?.categoria_padrao || "";
-  document.getElementById("whatsappLiderAtivo").checked = lider ? lider.ativo !== false && lider.ativo !== 0 && lider.ativo !== "false" : true;
-  document.getElementById("whatsappLiderFormTitulo").textContent = lider ? "Editar líder" : "Cadastrar líder";
-  document.getElementById("whatsappLiderSalvar").textContent = lider ? "Salvar alterações" : "Salvar líder";
-  if (lider) document.getElementById("whatsappLiderNome").focus();
-}
-
-async function salvarLiderWhatsApp(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  if (!form || form.dataset.saving === "1") return;
-  const dados = dadosLiderWhatsApp();
-  if (!dados.nome || !dados.telefone) return mostrarErro("Informe nome e telefone do líder.");
-  const id = document.getElementById("whatsappLiderId")?.value;
-  const botao = document.getElementById("whatsappLiderSalvar");
-  form.dataset.saving = "1";
-  if (botao) { botao.disabled = true; botao.textContent = "Salvando..."; }
-  try {
-    const resultado = await js(API + (id ? `/whatsapp/lideres/${encodeURIComponent(id)}` : "/whatsapp/lideres"), { method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
-    const liderSalvo = resultado && typeof resultado === "object" ? resultado : { ...dados, id };
-    const indice = _whatsappLideres.findIndex(l => String(l.id) === String(id || liderSalvo.id));
-    if (id && indice >= 0) _whatsappLideres[indice] = { ..._whatsappLideres[indice], ...liderSalvo, ...dados };
-    else _whatsappLideres.push({ ...liderSalvo, ...dados });
-    atualizarListaLideresWhatsApp(); preencherLiderWhatsApp(); mostrarSucesso(id ? "Líder atualizado." : "Líder cadastrado.");
-  } catch (erro) { mostrarErro(erro.message || "Não foi possível salvar o líder.");
-  } finally { delete form.dataset.saving; if (botao) { botao.disabled = false; botao.textContent = id ? "Salvar alterações" : "Salvar líder"; } }
-}
-
-function atualizarListaLideresWhatsApp() {
-  const existente = document.querySelector(".whatsapp-leaders-list");
-  if (existente) existente.outerHTML = listaLideresWhatsApp(_whatsappLideres);
-}
-
-async function alternarLiderWhatsApp(indice, botao) {
-  if (botao?.dataset.saving === "1") return;
-  const lider = _whatsappLideres[Number(indice)];
-  if (!lider || lider.id === undefined || lider.id === null) return mostrarErro("Líder não encontrado.");
-  const dados = { nome: lider.nome || "", telefone: lider.telefone || "", setor: lider.setor || "", destino_padrao: lider.destino_padrao || "", categoria_padrao: lider.categoria_padrao || "", ativo: !(lider.ativo !== false && lider.ativo !== 0 && lider.ativo !== "false") };
-  if (botao) { botao.dataset.saving = "1"; botao.disabled = true; botao.textContent = "Salvando..."; }
-  try {
-    const resultado = await js(API + `/whatsapp/lideres/${encodeURIComponent(lider.id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(dados) });
-    _whatsappLideres[Number(indice)] = { ...lider, ...(resultado || {}), ...dados }; atualizarListaLideresWhatsApp(); mostrarSucesso(dados.ativo ? "Líder retomado." : "Líder pausado.");
-  } catch (erro) { mostrarErro(erro.message || "Não foi possível atualizar o líder.");
-  } finally { if (botao) { delete botao.dataset.saving; botao.disabled = false; botao.textContent = dados.ativo ? "Pausar" : "Retomar"; } }
-}
-
-async function reprocessarFalhasWhatsApp(botao) {
-  if (botao?.dataset.saving === "1") return;
-  if (botao) { botao.dataset.saving = "1"; botao.disabled = true; botao.textContent = "Reprocessando..."; }
-  try {
-    const resposta = await js(API + "/whatsapp/reprocessar", { method: "POST" });
-    const quantidade = Number(resposta?.dispatched);
-    mostrarSucesso(Number.isFinite(quantidade) ? `${quantidade} falha(s) enviada(s) para reprocessamento sem criar duplicatas.` : "Falhas enviadas para reprocessamento sem criar duplicatas.");
-  } catch (erro) { mostrarErro(erro.message || "Não foi possível reprocessar as falhas.");
-  } finally { if (botao) { delete botao.dataset.saving; botao.disabled = false; botao.textContent = "Reprocessar falhas"; } }
+  return String(valor ?? "").trim() || fallback;
 }
 
 function limparMidiasWhatsApp() {
@@ -636,15 +495,16 @@ function limparMidiasWhatsApp() {
 
 function fecharDetalhesPedidoWhatsApp() {
   _whatsappDetailGeneration++;
+  _whatsappDetailController?.abort(); _whatsappDetailController = null;
   limparMidiasWhatsApp();
   const modal = document.getElementById("modalPedidoWhatsApp");
   modal?.classList.add("hidden"); modal?.setAttribute("aria-hidden", "true");
   document.getElementById("pedidoWhatsAppConteudo")?.replaceChildren();
 }
 
-async function buscarMidiaWhatsApp(id) {
+async function buscarMidiaWhatsApp(id, signal) {
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
-  const resposta = await fetch(API + `/whatsapp/midias/${encodeURIComponent(String(id))}`, { headers });
+  const resposta = await fetch(API + `/whatsapp/midias/${encodeURIComponent(String(id))}`, { headers, signal });
   if (resposta.status === 401) { localStorage.removeItem("ft_flow_token"); location.reload(); throw new Error("Sessão expirada"); }
   if (!resposta.ok) throw new Error("Mídia indisponível");
   return resposta.blob();
@@ -653,10 +513,12 @@ async function buscarMidiaWhatsApp(id) {
 async function abrirDetalhesPedidoWhatsApp(id) {
   const modal = document.getElementById("modalPedidoWhatsApp"), conteudo = document.getElementById("pedidoWhatsAppConteudo");
   if (!modal || !conteudo || !Number.isFinite(Number(id))) return;
+  window.fecharDetalhesAssistente?.();
   fecharDetalhesPedidoWhatsApp(); conteudo.textContent = "Carregando detalhes protegidos..."; modal.classList.remove("hidden"); modal.setAttribute("aria-hidden", "false");
   const generation = _whatsappDetailGeneration;
+  const controller = new AbortController(); _whatsappDetailController = controller;
   try {
-    const dados = await js(API + `/whatsapp/compras/${encodeURIComponent(String(id))}`);
+    const dados = await js(API + `/whatsapp/compras/${encodeURIComponent(String(id))}`, { signal: controller.signal });
     if (generation !== _whatsappDetailGeneration || modal.classList.contains('hidden')) return;
     if (dados?.origem !== "whatsapp") throw new Error("Detalhes indisponíveis para esta compra.");
     conteudo.replaceChildren();
@@ -674,7 +536,7 @@ async function abrirDetalhesPedidoWhatsApp(id) {
       const item = document.createElement("div"); item.className = "whatsapp-photo-loading"; item.textContent = "Carregando foto..."; fotosContainer.appendChild(item);
       if (!foto?.id || !String(foto.mime_type || "").toLowerCase().startsWith("image/")) { item.textContent = "Foto indisponível."; return; }
       try {
-        const blob = await buscarMidiaWhatsApp(foto.id);
+        const blob = await buscarMidiaWhatsApp(foto.id, controller.signal);
         if (generation !== _whatsappDetailGeneration || modal.classList.contains("hidden")) return;
         if (!['image/jpeg', 'image/png'].includes(blob.type)) throw new Error('Formato da foto inválido');
         const url = URL.createObjectURL(blob), chave = `foto-${indice}-${Date.now()}`; _whatsappMediaUrls.add(url); _whatsappMediaByKey.set(chave, url);
@@ -729,7 +591,9 @@ async function dashboard(){
 }
 
 async function manutencoes(){
+  const navegacao = _navegacaoGeracao;
   const data = await js(API + "/manutencoes?limit=1000");
+  if (tela !== 'manutencoes' || navegacao !== _navegacaoGeracao) return;
   const manData = data.data || data;
   window._manutencoesData = manData;
   content.innerHTML = `<div class="panel">
@@ -968,7 +832,9 @@ function statusEstoqueV6(item) {
 }
 
 async function estoque() {
+  const navegacao = _navegacaoGeracao;
   const data = await js(API + "/estoque");
+  if (tela !== 'estoque' || navegacao !== _navegacaoGeracao) return;
   const cats = [...new Set(data.map(i => i.categoria || "Sem categoria"))];
   const baixo = data.filter(i => i.baixo).length;
   content.innerHTML = `
@@ -1300,8 +1166,10 @@ async function abrirCompraRapida() {
 }
 
 async function verRelatorioSemanal() {
+  const navegacao = _navegacaoGeracao;
   try {
     const relatorio = await js(API + "/compras/relatorio/semanal");
+    if (tela !== 'compras' || navegacao !== _navegacaoGeracao) return;
     const html = `
       <div class="panel">
         <h3>📊 Relatório Semanal - Compras Rápidas</h3>
@@ -1326,8 +1194,10 @@ async function verRelatorioSemanal() {
 
 // ===== COTAÇÕES LADO A LADO =====
 async function verComparativoCotacoes(cotacaoId) {
+  const navegacao = _navegacaoGeracao;
   try {
     const dados = await js(API + `/cotacoes/${cotacaoId}/comparacao`);
+    if (tela === 'assistente' || navegacao !== _navegacaoGeracao) return;
     
     let html = `
       <div class="panel">
@@ -1389,7 +1259,7 @@ async function compras(){
 
   content.innerHTML = `<div class="panel"><h3>${isAdmin ? 'Compras e solicitações' : 'Nova solicitação de compra'}</h3>
     <p style="color:#647066">${isAdmin ? 'Trabalhe por etapa: cotar, aprovar, comprar e confirmar o recebimento.' : 'Use quando precisar solicitar compra sem abrir manutenção.'}</p>
-    <div class="actions"><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirModalListaCompra()">📋 Nova Lista de Compra</button>${isAdmin ? '<button class="primary" onclick="abrirCompraRapida()">Compra Rápida (&lt;R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button>' : ''}<button class="secondary" onclick="carregar()">Atualizar</button></div>
+    <div class="actions"><button id="comprasPedirAssistente" type="button" class="primary" onclick="trocarTela('assistente')">Pedir por áudio ou texto</button><button class="primary" onclick="abrirModalCompra()">+ Nova Solicitação de Compra</button><button class="primary" onclick="abrirModalListaCompra()">📋 Nova Lista de Compra</button>${isAdmin ? '<button class="primary" onclick="abrirCompraRapida()">Compra Rápida (&lt;R$2000)</button><button class="secondary" onclick="verRelatorioSemanal()">Relatório Semanal</button>' : ''}<button class="secondary" onclick="carregar()">Atualizar</button></div>
     ${isAdmin ? `<div id="barraAcoesLote" class="actions" style="margin-top:12px;display:none;padding:10px;background:#eef7f0;border:1px solid #c8e6c9;border-radius:8px"><strong id="contadorSelecaoLote">0 selecionados</strong><button class="primary" style="background:#1565c0" onclick="confirmarComprasSelecionadas()">🛒 Confirmar comprados</button><button class="primary" style="background:#2e7d32" onclick="confirmarRecebimentosSelecionados()">📦 Confirmar recebidos</button><button class="secondary" onclick="limparSelecaoLote()">Limpar seleção</button></div>` : ''}</div>
     <div style="margin-top:14px">${filasHtml}</div>`;
 }
@@ -1830,7 +1700,9 @@ function renderizarHistoricoCompacto(itens) {
 }
 
 async function historico(){
+  const navegacao = _navegacaoGeracao;
   const compData = await buscarTodasCompras('historico');
+  if (tela !== 'historico' || navegacao !== _navegacaoGeracao) return;
   const historicoData = compData.filter(c => statusEhHistorico(c.status)).sort((a, b) => {
     const dataA = new Date(a.received_at || a.updated_at || a.created_at || 0);
     const dataB = new Date(b.received_at || b.updated_at || b.created_at || 0);
@@ -1882,6 +1754,7 @@ async function verDetalhesListaHistorico(compraId) {
 
 // Refresh automático inteligente — só atualiza se não há modal aberto nem formulário preenchido
 function podeFazerRefresh() {
+  if (tela === 'assistente' || tela === 'epis') return false;
   // Verificar se algum modal está aberto
   const modalAberto = document.querySelector('.modal:not(.hidden)');
   if (modalAberto) return false;
@@ -1963,6 +1836,7 @@ async function cotacoesGerais(){
 }
 
 function renderizarCotacoes(cotacoesData, filtro = 'todas') {
+  if (tela !== 'cotacoes') return;
   let container = document.getElementById('cotacoesContainer');
   if (!container) {
     content.innerHTML += `<div id="cotacoesContainer"></div>`;
@@ -1998,16 +1872,19 @@ function renderizarCotacoes(cotacoesData, filtro = 'todas') {
       if (!textoCompra.includes(busca)) continue;
     }
     
-    const origemWhatsApp = compra.origem === 'whatsapp' ? '<span class="whatsapp-source-badge" style="margin-left:8px">WhatsApp</span>' : '';
+    const badgeOrigem = compra.origem === 'assistente' ? '<span class="assistente-source-badge" style="margin-left:8px">Assistente</span>' : compra.origem === 'whatsapp' ? '<span class="whatsapp-source-badge" style="margin-left:8px">WhatsApp</span>' : '';
+    const detalheOrigem = compra.origem === 'assistente'
+      ? `<div class="assistente-card-action"><button type="button" class="secondary" data-assistente-compra-id="${Number(compra.id)}">Ver descrição e fotos</button></div>`
+      : compra.origem === 'whatsapp' ? `<div class="whatsapp-card-action"><button type="button" class="secondary" data-whatsapp-action="abrir-detalhe-compra" data-whatsapp-compra-id="${Number(compra.id)}">Ver áudio transcrito e fotos</button></div>` : '';
     let cardHtml = `<div class="card" style="margin-bottom: 20px;">
       <div style="margin-bottom: 15px;">
         <b class="texto-produto-ltr" dir="ltr" style="font-size: 16px;">#${compra.id} — ${htmlEsc(compra.item)}</b>
-        ${origemWhatsApp}
+        ${badgeOrigem}
         <span class="pedido-status-wrap" style="margin-left: 10px;">${st(compra.status)}</span>
       </div>
       <div style="margin-bottom: 10px; color: #666; font-size: 14px;">
-        Qtd: ${compra.quantidade} ${compra.unidade || 'un'} | Solicitante: ${htmlEsc(compra.solicitante || '-')}
-      </div>`;
+        ${compra.tipo_solicitacao === 'lista' ? 'Lista de produtos' : `Qtd: ${compra.quantidade} ${htmlEsc(compra.unidade || 'un')}`} | Solicitante: ${htmlEsc(compra.solicitante || '-')}
+      </div>${detalheOrigem}`;
     
     if (cotacoes && cotacoes.length > 0) {
       // Para lista de compra: tabela planilha (produtos nas linhas, fornecedores nas colunas)
@@ -2143,7 +2020,9 @@ function abrirRelatorio(){
 }
 
 async function fornecedores(){
+  const navegacao = _navegacaoGeracao;
   const data=await js(API+"/fornecedores");
+  if (tela !== 'fornecedores' || navegacao !== _navegacaoGeracao) return;
   content.innerHTML=`<div class="panel"><h3>Cadastro de Fornecedores</h3><div class="grid"><input id="fornNome" placeholder="Nome"><input id="fornContato" placeholder="Contato"><input id="fornTel" placeholder="Telefone"><input id="fornTipo" placeholder="Tipo de produto"></div><button class="primary full" onclick="addFornecedor()">Salvar fornecedor</button></div><div class="panel"><h3>Fornecedores cadastrados</h3>${data.length?`<table class="table"><thead><tr><th>Nome</th><th>Contato</th><th>Telefone</th><th>Tipo</th></tr></thead><tbody>${data.map(f=>`<tr><td><b>${f.nome}</b></td><td>${f.contato||"-"}</td><td>${f.telefone||"-"}</td><td>${f.tipo_produto||"-"}</td></tr>`).join("")}</tbody></table>`:"<p>Nenhum fornecedor cadastrado.</p>"}</div>`;
 }
 
@@ -2737,7 +2616,7 @@ async function abrirModalAdicionarFornecedor(cotacaoId) {
     
     // Montar card de referência do produto (foto + descrição)
     let refHtml = '';
-    const temFoto = compra.origem !== 'whatsapp' && (compra.foto_url || compra.tem_foto);
+    const temFoto = !['whatsapp', 'assistente'].includes(compra.origem) && (compra.foto_url || compra.tem_foto);
     const temDesc = compra.descricao || compra.item;
     if (temFoto || temDesc) {
       refHtml = `<div style="background:#f0f8f5;border:1px solid #c8e6c9;border-radius:8px;padding:12px;margin-bottom:14px;display:flex;gap:12px;align-items:flex-start">`;
@@ -3425,11 +3304,6 @@ function initAppUi() {
     const alvo = event.target.closest("[data-whatsapp-action]");
     if (!alvo) return;
     const acao = alvo.dataset.whatsappAction;
-    if (acao === "atualizar") return carregar();
-    if (acao === "limpar-lider") return preencherLiderWhatsApp();
-    if (acao === "editar-lider") return preencherLiderWhatsApp(_whatsappLideres[Number(alvo.dataset.whatsappLiderIndex)]);
-    if (acao === "alternar-lider") return alternarLiderWhatsApp(alvo.dataset.whatsappLiderIndex, alvo);
-    if (acao === "reprocessar") return reprocessarFalhasWhatsApp(alvo);
     if (acao === "abrir-detalhe-compra") return abrirDetalhesPedidoWhatsApp(alvo.dataset.whatsappCompraId);
     if (acao === "fechar-detalhe") return fecharDetalhesPedidoWhatsApp();
     if (acao === "ampliar-foto") {
@@ -3484,6 +3358,7 @@ if (document.readyState === "loading") {
   }
 
   document.addEventListener('touchstart', function(e) {
+    if (tela === 'assistente' || tela === 'epis' || temOverlayAberto()) { pulling = false; return; }
     // Só ativa se estiver no topo da página
     if (window.scrollY === 0) {
       startY = e.touches[0].clientY;
@@ -3509,7 +3384,7 @@ if (document.readyState === "loading") {
       indicator.innerHTML = '⟳ Atualizando...';
       indicator.style.height = '60px';
       setTimeout(() => {
-        if (typeof carregar === 'function') carregar();
+        if (tela !== 'assistente' && tela !== 'epis' && !temOverlayAberto() && typeof carregar === 'function') carregar();
         if (typeof atualizarContadorNotificacoes === 'function') atualizarContadorNotificacoes();
         setTimeout(() => {
           if (indicator) indicator.style.height = '0';

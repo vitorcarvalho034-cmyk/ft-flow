@@ -5,7 +5,7 @@
     "dev": "netlify dev",
     "build": "echo build-ok",
     "test": "node --test tests/*.test.js",
-    "test:integration": "WHATSAPP_TEST_DB=1 node --test tests/*.test.js"
+    "test:integration": "WHATSAPP_TEST_DB=1 ASSISTENTE_TEST_DB=1 node --test tests/*.test.js"
   },
   "engines": { "node": ">=22" },
   "dependencies": {

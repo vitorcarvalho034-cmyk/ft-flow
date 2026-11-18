@@ -5,16 +5,12 @@ const nodemailer = require("nodemailer");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { createWhatsAppService } = require('../lib/whatsapp');
-const { createWorkerDispatcher, mountPublicWhatsAppRoutes, mountPrivateWhatsAppRoutes } = require('../lib/whatsapp-http');
+const { mountLegacyWhatsAppReadRoutes } = require('../lib/whatsapp-http');
 const { mountEpiRoutes } = require('../lib/epis');
+const { mountAssistenteRoutes } = require('../lib/assistente');
 
 const app = express();
-app.use(express.json({
-  limit: "20mb",
-  verify(req, _res, buffer) {
-    if (req.originalUrl.split('?')[0].endsWith('/whatsapp/webhook')) req.rawBody = Buffer.from(buffer);
-  }
-}));
+app.use(express.json({ limit: "20mb" }));
 
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || "ft-flow-secret-key-change-in-production";
@@ -60,11 +56,12 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-const whatsappService = createWhatsAppService({ pool });
-const dispatchWhatsApp = createWorkerDispatcher();
-// These two routes use Meta's signature/challenge, NOT a user's JWT.
-// Register before generic authentication/DB middleware to reject unsigned traffic cheaply.
-mountPublicWhatsAppRoutes(app, { service: whatsappService, ensureBaseDb: ensureDb, dispatch: dispatchWhatsApp });
+// Historical attachments remain readable, but no WhatsApp traffic is accepted.
+const whatsappService = createWhatsAppService({ pool, env: { ...process.env, FT_WHATSAPP_ENABLED: 'false' } });
+app.all('/whatsapp/webhook', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.status(410).json({ error: 'Integração WhatsApp removida. Use o assistente dentro do aplicativo.' });
+});
 app.use(autenticar);
 
 async function q(sql, params = []) {
@@ -193,6 +190,7 @@ async function ensureDb(){
   await q(`ALTER TABLE lista_compras_aprovacoes ADD COLUMN IF NOT EXISTS decisao VARCHAR(30) DEFAULT 'comprar'`).catch(e => console.log('decisao column already exists'));
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS uso TEXT`).catch(()=>{});
   await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS destinatario TEXT`).catch(()=>{});
+  await q(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'app'`);
 
   // seed users if none
   const u = await q(`SELECT COUNT(*)::int total FROM usuarios`);
@@ -214,8 +212,9 @@ async function ensureDb(){
 }
 
 app.use(async (req,res,next)=>{try{await ensureDb(); next();}catch(e){console.error(e); res.status(500).json({error:e.message});}});
-mountPrivateWhatsAppRoutes(app, { service: whatsappService, pool, dispatch: dispatchWhatsApp });
+mountLegacyWhatsAppReadRoutes(app, { service: whatsappService });
 mountEpiRoutes(app, { pool });
+mountAssistenteRoutes(app, { pool, ensureBaseDb: ensureDb });
 
 async function email(titulo,dados={},destinatario=null,htmlCustomizado=null){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
@@ -367,54 +366,12 @@ async function emailComFornecedores(titulo, compraId, cotacoes, compra, appUrl="
   const t = nodemailer.createTransport({host:process.env.SMTP_HOST||"smtp.gmail.com",port:Number(process.env.SMTP_PORT||587),secure:false,auth:{user:process.env.SMTP_USER,pass:process.env.SMTP_PASS}});
   await t.sendMail({from:process.env.SMTP_USER,to:approvalEmail,subject:titulo,html});
 }
-function normalizarTelefone(num) {
-  let n = String(num || "").replace(/\D/g, "");
-  if (!n) return "";
-  if (n.startsWith("0")) n = n.slice(1);
-  if (!n.startsWith("55") && n.length <= 11) n = "55" + n;
-  return n;
-}
-
-function telefonesWhatsAppAdmin() {
-  const raw = process.env.ADMIN_WHATSAPP || process.env.ADMIN_WHATSAPP_NUMBERS || "";
-  return String(raw).split(",").map(normalizarTelefone).filter(Boolean);
-}
-
-function montarTextoWhatsApp(titulo, dados = {}, msgExtra = "") {
-  let text = `*FT FLOW*\n*${titulo}*\n\n`;
-  for (const [k, v] of Object.entries(dados)) {
-    if (v != null && String(v).trim() !== "") text += `*${k}:* ${v}\n`;
-  }
-  if (msgExtra && !Object.keys(dados).length) text += `${msgExtra}\n`;
-  const appUrl = process.env.APP_URL || "https://ft-flow.netlify.app";
-  text += `\n${appUrl}`;
-  return text.slice(0, 4000);
-}
-
-async function whatsappCallMeBot(phone, text) {
-  const apikey = process.env.CALLMEBOT_API_KEY;
-  if (!apikey) throw new Error("CALLMEBOT_API_KEY não configurada");
-  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(apikey)}`;
-  const r = await fetch(url);
-  const body = await r.text();
-  if (!r.ok || /error/i.test(body)) throw new Error(body.slice(0, 120) || `CallMeBot HTTP ${r.status}`);
-}
-
-async function whatsapp(phone, text) {
-  const phones = telefonesWhatsAppAdmin();
-  if (!phones.length) return;
-  const provider = String(process.env.WHATSAPP_PROVIDER || "callmebot").toLowerCase();
-  if (provider === 'callmebot') {
-    await whatsappCallMeBot(phones[0], text);
-    return;
-  }
-}
 
 async function notify(titulo,msg,tipo="sistema",dados={}){
   await q(`INSERT INTO notificacoes (titulo,mensagem,tipo,destino_role) VALUES ($1,$2,$3,$4)`,[titulo,msg,tipo,"admin"]);
   // fire and forget optional channels
   email(titulo,dados).catch(e=>console.log('Email err',e.message));
-  if (tipo === 'compra' || tipo === 'manutencao') whatsapp(titulo, montarTextoWhatsApp(titulo,dados,msg)).catch(e=>console.log('WA err',e.message));
+  // WhatsApp was retired; notifications and email remain unchanged.
 }
 
 // Mantém o mesmo nome de fornecedor em todas as cotações, evitando duplicidades por maiúscula/minúscula.

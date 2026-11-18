@@ -50,9 +50,9 @@ test('compras leves: payload sem blobs, escopos, cotações e foto inline proteg
     const admin = await call('/auth/login', 'POST', { username: 'admin', password: '123' });
     assert.equal(admin.status, 200);
     const token = admin.data.token;
-    // Simulate the additive columns from the separately mounted WhatsApp feature
-    // without making this performance suite depend on that channel or any network.
-    await query(`ALTER TABLE compras ADD COLUMN origem TEXT DEFAULT 'app'`);
+    // Origin is now base metadata shared by manual and assistant requests.
+    // Simulate only legacy transcript storage, without enabling that channel.
+    await query(`ALTER TABLE compras ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'app'`);
     await query(`ALTER TABLE compras ADD COLUMN whatsapp_transcricao TEXT`);
 
     const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00]).toString('base64');
