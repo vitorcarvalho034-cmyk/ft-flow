@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v40";
+const APP_VERSION = "v41";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
@@ -47,6 +47,7 @@ function toggleSolicitanteOutro(selectEl) {
 const API = "/api";
 let usuario = null;
 let tela = "dashboard";
+let _navegacaoGeracao = 0;
 
 let token = localStorage.getItem('ft_flow_token');
 
@@ -428,17 +429,19 @@ function trocarTela(n,b){
   document.querySelectorAll(".drawer-nav-item").forEach(x=>{
     x.classList.toggle("active", x.dataset.tela===n);
   });
-  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",whatsapp:"Pedidos pelo WhatsApp",relatorios:"Relatórios",fornecedores:"Fornecedores"};
+  const titles={dashboard:"Dashboard",manutencoes:"Manutenções",estoque:"Estoque",epis:"EPIs",compras:"Compras",historico:"Histórico",cotacoes:"Cotações",whatsapp:"Pedidos pelo WhatsApp",relatorios:"Relatórios",fornecedores:"Fornecedores"};
   pageTitle.innerText=titles[n]||"FT FLOW";
   carregar();
 }
 
 async function carregar(){
+  ++_navegacaoGeracao;
   try{
     content.innerHTML='<div class="panel"><div class="spinner"></div> Carregando...</div>';
     if(tela==="dashboard") return dashboard();
     if(tela==="manutencoes") return manutencoes();
     if(tela==="estoque") return estoque();
+    if(tela==="epis") return epis();
     if(tela==="compras") return compras();
     if(tela==="historico") return historico();
     if(tela==="cotacoes") return cotacoesGerais();
@@ -703,12 +706,14 @@ function tabelaMan(data){
 }
 
 async function dashboard(){
+  const navegacao = _navegacaoGeracao;
   // Carrega dados em paralelo para melhor performance
   const [d, man, est] = await Promise.all([
     js(API+"/dashboard"),
     js(API+"/manutencoes?limit=5"),
     js(API+"/estoque")
   ]);
+  if (tela !== 'dashboard' || navegacao !== _navegacaoGeracao) return;
   
   const manData = man.data || man;
   const estoqueBaixo = est.filter(i=>i.baixo);
@@ -1356,7 +1361,9 @@ async function verComparativoCotacoes(cotacaoId) {
 }
 
 async function compras(){
+  const navegacao = _navegacaoGeracao;
   const compData = await buscarTodasCompras('ativas');
+  if (tela !== 'compras' || navegacao !== _navegacaoGeracao) return;
   // Toda compra não encerrada permanece visível nas filas, inclusive registros antigos com status diferente.
   const comprasAtivas = compData.filter(c => !statusEhHistorico(c.status));
   const isAdmin = usuario && usuario.role === "admin";
@@ -1907,8 +1914,10 @@ function filtrarHistorico() {
 }
 
 async function cotacoesGerais(){
+  const navegacao = _navegacaoGeracao;
   // Uma única requisição substitui várias buscas individuais de cotações.
   const data = await js(API + "/cotacoes/abertas?incluir_aprovadas=1&leves=1");
+  if (tela !== 'cotacoes' || navegacao !== _navegacaoGeracao) return;
   const comCotacao = data.compras || [];
   const cotacoesTodas = data.cotacoes || [];
   

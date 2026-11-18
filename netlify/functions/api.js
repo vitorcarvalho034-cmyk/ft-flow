@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { createWhatsAppService } = require('../lib/whatsapp');
 const { createWorkerDispatcher, mountPublicWhatsAppRoutes, mountPrivateWhatsAppRoutes } = require('../lib/whatsapp-http');
+const { mountEpiRoutes } = require('../lib/epis');
 
 const app = express();
 app.use(express.json({
@@ -214,6 +215,7 @@ async function ensureDb(){
 
 app.use(async (req,res,next)=>{try{await ensureDb(); next();}catch(e){console.error(e); res.status(500).json({error:e.message});}});
 mountPrivateWhatsAppRoutes(app, { service: whatsappService, pool, dispatch: dispatchWhatsApp });
+mountEpiRoutes(app, { pool });
 
 async function email(titulo,dados={},destinatario=null,htmlCustomizado=null){
   if(!process.env.SMTP_USER||!process.env.SMTP_PASS) return;
