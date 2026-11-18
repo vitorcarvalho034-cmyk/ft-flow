@@ -12,7 +12,9 @@ app.use(autenticar);
 mountAssistenteRoutes(app, { pool, ensureBaseDb: ensureDb });
 ```
 
-O prefixo do módulo é `/assistente`; no app o endereço externo é `/api/assistente/...`. O middleware de autenticação fornece `req.user.username`, `req.user.role` e normalmente `req.user.id`, assinados via JWT. O módulo não interpreta tokens por conta própria; reafirma a autenticação em todas as rotas, inclusive status e mídias. Permite os perfis existentes `funcionario` e `admin`. Não aceita identidade ou privilégios enviados no body. Na confirmação consulta `usuarios` pelo username autenticado, usa o `nome` registrado ou, se vazio, o username; verifica o ID do JWT quando presente. A identidade nunca é obtida do áudio, do nome da lista ou de campos enviados pela IA.
+O prefixo do módulo é `/assistente`; no app o endereço externo é `/api/assistente/...`. O middleware de autenticação fornece `req.user.username`, `req.user.role` e normalmente `req.user.id`, assinados via JWT. O módulo não interpreta tokens por conta própria; reafirma a autenticação em todas as rotas, inclusive status e mídias. Permite os perfis existentes `funcionario` e `admin`. Na confirmação consulta `usuarios` pelo username autenticado e verifica o ID do JWT quando presente. Autenticação, autorização, propriedade, cotas e auditoria continuam exclusivamente vinculadas a essa conta autenticada, nunca a uma pessoa citada no texto/áudio ou enviada no body.
+
+`rascunho.nome_pessoa` identifica a pessoa que pede e precisa ser informado/revisado pelo usuário; não é obtido automaticamente do cadastro. O nome indicado será `compras.solicitante` e `ft_assistente_pedidos.solicitante`, para que o ADM veja quem pede. Separadamente, `ft_assistente_pedidos.registrado_por` guarda o `nome` registrado da conta que confirmou, com fallback para seu username quando vazio. `solicitante_username`, `solicitante_id` e `audit_log.actor_id` continuam sendo da conta autenticada. Nome da pessoa não concede acesso, define role, muda a conta ou comprova identidade. Campos extras como `solicitante`, `registrado_por`, `role`, preço e status enviados pelo cliente não substituem os dados autenticados.
 
 `mountAssistenteRoutes` retorna o serviço e aceita as opções adicionais `env`, `fetchImpl`, `timeoutMs` e `onCreated` para testes/integração. `createAssistenteService` também é exportado. O host deve fornecer um pool PostgreSQL válido e `ensureBaseDb` deve estabelecer os contratos atuais de `usuarios`, `compras`, `lista_compras_itens`, `notificacoes` e `audit_log`. O status não invoca esse callback, não consulta banco, não executa DDL e não testa a IA.
 
@@ -47,11 +49,14 @@ Os primeiros três valores passam a `true` apenas quando existe uma chave Assist
 
 ```json
 {
+  "nome_pessoa": "Maria Oliveira",
   "nome_lista": "Materiais da Obra A",
   "categoria": "Manutenção",
   "destino": "Obra A",
   "uso": "Reparo",
+  "descricao": "Materiais para reparo da parede",
   "observacoes": "Entrega pela manhã",
+  "link_produto": null,
   "itens": [
     {"produto":"Cimento", "quantidade":2, "unidade":"saco"},
     {"produto":"Parafusos", "quantidade":4, "unidade":"caixa"}
@@ -59,7 +64,11 @@ Os primeiros três valores passam a `true` apenas quando existe uma chave Assist
 }
 ```
 
-Limites: `nome_lista` 240 caracteres, `categoria` 120, `destino` 240, `uso` 500, `observacoes` 1500, produto 240 e unidade 30; no máximo 30 itens. Ausência é representada por `null`, sem nome automático, categoria padrão, destino presumido, quantidade ou unidade inventados. Campos excedentes não são persistidos, especialmente identidade, preço, fornecedor, aprovação e status. Excesso de itens ou texto é rejeitado, jamais truncado.
+**Dados essenciais do rascunho:** `nome_pessoa`, `destino`, pelo menos um item e `produto`, quantidade positiva e unidade válida de cada item. **Opcionais:** `nome_lista`, `categoria`, `uso`, `descricao`, `observacoes` e `link_produto`; não bloqueiam a interpretação/confirmação quando ausentes, mas são preservados quando fornecidos. O link usa a propriedade `link_produto` compatível com `compras`; é texto opcional, não é buscado ou executado pelo módulo.
+
+Limites: `nome_pessoa` e `nome_lista` 240 caracteres, `categoria` 120, `destino` 240, `uso` 500, `descricao` e `observacoes` 1500 cada, `link_produto` 2048, produto 240 e unidade 30; no máximo 30 itens. Ausência é representada por `null`, sem nome automático, categoria padrão, destino presumido, quantidade ou unidade inventados no rascunho. `nome_pessoa` é nullable string no normalize e no schema de extração estrito (`maxLength:240`). Campos excedentes não são persistidos, especialmente privilégios, preço, fornecedor, aprovação e status. Excesso de itens ou texto é rejeitado, jamais truncado.
+
+Nome vazio ou rótulos genéricos de conta, como `admin`, `administrador`, `operador`, `funcionário` e `conta logada` (ignorando caixa, acentos e espaços), não satisfazem `nome_pessoa`: o módulo solicita o nome da pessoa que pede. Não há validação fictícia de identidade, documento ou cadastro, nem exigência de sobrenome. Nomes reais que contenham termos de cargo não são rejeitados por isso.
 
 Quantidades informadas precisam ser finitas, positivas e no máximo 1.000.000, limite explícito porque as tabelas existentes usam PostgreSQL REAL. Aceita número JSON ou string decimal simples, inclusive vírgula brasileira; rejeita booleano, objeto, array, notação hexadecimal, zero, negativos e valores que seriam zero em REAL. Valores decimais mantêm a precisão disponível no contrato existente. Unidades canônicas permitidas: `m`, `cm`, `kg`, `g`, `L`, `mL`, `un`, `par`, `m²`, `m³`, `caixa`, `saco`, `pacote`, `fardo`, `rolo`, `tubo`, `kit`, `lata`, `frasco`, `galão`, `balde`. Normaliza aliases como litros/caixas/pares, sem converter embalagens em unidades arbitrárias. Unidade desconhecida pode aparecer no rascunho de interpretação para revisão, mas bloqueia a confirmação.
 
@@ -82,14 +91,16 @@ Resposta de sucesso:
 
 ```json
 {
-  "rascunho": {"nome_lista":null,"categoria":null,"destino":null,"uso":null,"observacoes":null,"itens":[{"produto":"Tinta","quantidade":null,"unidade":null}]},
+  "rascunho": {"nome_pessoa":null,"nome_lista":null,"categoria":null,"destino":null,"uso":null,"descricao":null,"observacoes":null,"link_produto":null,"itens":[{"produto":"Tinta","quantidade":null,"unidade":null}]},
   "transcricao": null,
-  "pergunta": "Para continuar, informe ou corrija: nome_lista, categoria, destino, itens.1.quantidade, itens.1.unidade.",
-  "avisos": ["Confira todos os itens e corrija os dados antes de confirmar. Fotos não são enviadas à IA."]
+  "pergunta": "Para continuar, informe ou corrija: nome_pessoa, destino, itens.1.quantidade, itens.1.unidade. Informe o nome da pessoa que pede, não o nome ou rótulo da conta.",
+  "avisos": ["Confira o nome da pessoa que pede, o destino e todos os itens; revise e corrija antes de confirmar. Fotos não são enviadas à IA."]
 }
 ```
 
-`transcricao` é a transcrição deste áudio ou `null` em texto puro; o frontend conserva/revisa a transcrição que desejar anexar à confirmação. Na extração, `itens:null` mantém a lista anterior; se a IA retornar itens, substitui por uma lista completa corrigida, sem concatenar/duplicar. Campos gerais `null` mantêm os anteriores; string vazia apaga explicitamente. Nos itens, `null` indica informação ausente. Retorno com mais de 30 itens gera 422, não uma lista parcial. JSON malformado, chaves inesperadas, tipos inválidos, recusa, resposta incompleta ou fora dos limites geram erro; o frontend deve preservar o rascunho anterior. O modelo não recebe ferramentas e nunca executa SQL, URLs, código ou confirmação contidos no texto. O schema valida estrutura, não garante factualidade da IA: todos os valores exigem revisão humana.
+`transcricao` é a transcrição deste áudio ou `null` em texto puro; o frontend conserva/revisa a transcrição que desejar anexar à confirmação. Na extração, `itens:null` mantém a lista anterior; se a IA retornar itens, substitui por uma lista completa corrigida, sem concatenar/duplicar. Campos gerais `null` mantêm os anteriores; string vazia apaga explicitamente, inclusive `nome_pessoa`. A pessoa pode ser extraída quando indicada explicitamente no texto ou áudio e pode ser corrigida posteriormente, mas precisa de revisão humana obrigatória. A IA nunca recebe o nome da conta como fonte automática da pessoa; se esta faltar, o backend pergunta. Nos itens, `null` indica informação ausente. Retorno com mais de 30 itens gera 422, não uma lista parcial. JSON malformado, chaves inesperadas, tipos inválidos, recusa, resposta incompleta ou fora dos limites geram erro; o frontend deve preservar o rascunho anterior. O modelo não recebe ferramentas e nunca executa SQL, URLs, código ou confirmação contidos no texto. O schema valida estrutura, não garante factualidade da IA: todos os valores exigem revisão humana.
+
+`missingFields` e `pergunta` consideram somente pessoa, destino e os campos essenciais dos itens. O backend gera sua própria pergunta e não repassa a pergunta sugerida pela IA, evitando exigências indevidas de lista, categoria, uso, descrição, observações, link ou fotos. Quando os dados essenciais do rascunho estão completos, `pergunta:null`, mesmo sem foto; foto é verificada somente em `/confirmar`.
 
 Sem chave exclusiva retorna 503 com `code:'IA_NAO_CONFIGURADA'` e mensagem de preenchimento manual. A IA tem cotas duráveis, compartilhadas entre instâncias: 12 chamadas em janela fixa de 10 minutos e 60 em janela diária UTC por username autenticado. Texto custa uma chamada; áudio reserva duas (transcrição + extração). Tentativas que chegam à IA, inclusive falhas, consomem a reserva. Uma reserva recusada por qualquer cota é inteiramente desfeita. 429 informa `Retry-After:600`. Não armazena texto, áudio, transcrição intermediária ou fotos nessa rota; apenas contadores de uso sem conteúdo.
 
@@ -100,17 +111,17 @@ Cada operação remota, incluindo leitura da resposta, tem timeout máximo de 20
 ```json
 {
   "request_id": "12345678-1234-4234-8234-123456789abc",
-  "rascunho": {"nome_lista":"Materiais da Obra A","categoria":"Manutenção","destino":"Obra A","uso":"Reparo","observacoes":null,"itens":[{"produto":"Cimento","quantidade":2,"unidade":"saco"}]},
+  "rascunho": {"nome_pessoa":"Maria Oliveira","destino":"Obra A","itens":[{"produto":"Cimento","quantidade":2,"unidade":"saco"}]},
   "transcricao": "Transcrição final revisada",
   "fotos": [{"base64":"BASE64_SEM_PREFIXO_DATA", "mime_type":"image/png"}]
 }
 ```
 
-Confirmação funciona sem chave de IA e não chama nenhum modelo. Exige UUID RFC com versão 1–8, nome de lista, categoria, destino, pelo menos um item e produto/quantidade positiva/unidade permitida em todos os itens. Uso, observações, transcrição e fotos são opcionais. Transcrição confirmada tem até 6000 caracteres. Identidade, status, fornecedor e preço enviados pelo body são ignorados: não alteram o fluxo nem o solicitante.
+Confirmação funciona sem chave de IA e não chama nenhum modelo. Exige UUID RFC com versão 1–8, **nome da pessoa que pede revisado**, **destino**, **pelo menos um item com produto/quantidade positiva/unidade permitida** e **pelo menos uma foto válida do pedido**. Ausência de algum essencial, nome vazio/rótulo genérico ou fotos omitidas, `null` ou `[]` gera **HTTP 400 `PEDIDO_INCOMPLETO` antes de qualquer INSERT ou acesso ao banco**. Nome de lista, categoria, uso, descrição, observações, link e transcrição são opcionais. Transcrição confirmada tem até 6000 caracteres. O único nome de pessoa usado para apresentação é `rascunho.nome_pessoa`; campos extras de identidade/privilégios, status, fornecedor e preço enviados pelo body são ignorados e não alteram autenticação ou fluxo.
 
 No máximo três fotos, cada uma até 1 MiB e no total até 2 MiB. Formatos exclusivos: JPEG, PNG e WebP; MIME declarado precisa coincidir com assinaturas binárias. Não aceita SVG, GIF, URL, `href`, `data:` ou propriedades extras no objeto da foto. Base64 de 2 MiB ocupa aproximadamente 2,67 MiB; confirmação e interpretação são requests separados, mantendo os corpos válidos abaixo do limite JSON bufferizado Netlify de 6 MB [5]. Esses limites são de bytes decodificados e validados também no backend.
 
-Uma única transação cria `compras`, todos os itens, o registro idempotente, fotos, uma notificação ADM e audit log. Um advisory lock transacional por UUID serializa clicks/retries antes de qualquer INSERT; `ft_assistente_pedidos.request_id` possui PRIMARY KEY e `compra_id` UNIQUE duráveis. Reutilização do UUID por outro solicitante ou com rascunho/transcrição/fotos diferentes gera 409 sem retornar o pedido de outra pessoa. Replay idêntico retorna o mesmo ID sem novo item, foto, notificação ou auditoria, inclusive depois de reiniciar o serviço. Falha em qualquer escrita faz ROLLBACK; o mesmo UUID pode ser reenviado. Locks de confirmação e migração têm limite de 5 segundos; statements transacionais têm limite de 10 segundos. Deadlock/timeout de banco recebe erro genérico recuperável, sem detalhes internos.
+Uma única transação cria `compras`, todos os itens, o registro idempotente, fotos, uma notificação ADM e audit log. Um advisory lock transacional por UUID serializa clicks/retries antes de qualquer INSERT; `ft_assistente_pedidos.request_id` possui PRIMARY KEY e `compra_id` UNIQUE duráveis. Reutilização do UUID por outra conta autenticada ou com rascunho/transcrição/fotos diferentes gera 409 sem retornar o pedido de outra conta. O hash inclui `nome_pessoa`, opcionais normalizados, transcrição e bytes/tipos das fotos, sem defaults técnicos. Replay idêntico retorna o mesmo ID sem novo item, foto, notificação ou auditoria, inclusive depois de reiniciar o serviço. Falha em qualquer escrita faz ROLLBACK; o mesmo UUID pode ser reenviado. Locks de confirmação e migração têm limite de 5 segundos; statements transacionais têm limite de 10 segundos. Deadlock/timeout de banco recebe erro genérico recuperável, sem detalhes internos.
 
 Resposta novo pedido, HTTP 201:
 
@@ -122,7 +133,7 @@ Replay, HTTP 200: mesma estrutura com `duplicado:true`. Não retorna base64, tra
 
 ## Compatibilidade com compras/cotações existentes
 
-Sempre cria `tipo_solicitacao='lista'`, inclusive para um único item. `compras.item` recebe exatamente o nome revisado da lista; categoria/destino/uso são preservados, `solicitante` usa o cadastro autenticado, `descricao` contém os itens e observações finais. `quantidade=0` e `unidade=''` no cabeçalho são a representação existente para lista; as quantidades reais ficam em `lista_compras_itens`. `origem='assistente'`, `foto_url=NULL`, valores iniciais zero, fornecedor não escolhido, sem transcrição embutida em `compras`.
+Sempre cria `tipo_solicitacao='lista'`, inclusive para um único item. **Defaults técnicos apenas na persistência:** `compras.item` recebe `nome_lista` quando fornecido; ausente, recebe o nome do produto se há um item, ou `Pedido de materiais` se há vários. Categoria ausente vira `Outros`; uso ausente permanece `NULL`. Isso não preenche nem modifica o rascunho de IA. `onCreated` recebe o nome de lista/categoria efetivamente persistidos. Destino e demais valores fornecidos são preservados; `solicitante` é o `nome_pessoa` revisado, `descricao` contém os itens, a descrição opcional e observações finais; `link_produto` preserva o link opcional. `quantidade=0` e `unidade=''` no cabeçalho são a representação existente para lista; as quantidades reais ficam em `lista_compras_itens`. `origem='assistente'`, `foto_url=NULL`, valores iniciais zero, fornecedor não escolhido, sem transcrição embutida em `compras`.
 
 O início é `status='Em cotação'` e `status_lista='rascunho'`, não uma lista pronta fictícia. Cada item começa com `fornecedor=''` e `preco=0`; não insere cotações, fornecedores nem aprovações. Isso reutiliza a representação utilizada pelo núcleo WhatsApp sem importar sua configuração. A rota existente `/cotacoes/abertas` filtra pelo `status`, não por `status_lista`, então a compra chega à fila ADM. O frontend existente permite adicionar fornecedor na lista em rascunho. Não há campo `lista_pronta` no schema atual: o contrato é `status_lista`. Nenhuma informação adicional é necessária para abrir a fila de cotação. O POST `/compras` legado vincula Em cotação a pronta, mas esse módulo usa o caminho explicitamente requerido de lista aguardando fornecedores e o estado já utilizado pelo núcleo de pedidos.
 
@@ -130,7 +141,7 @@ Não se alteram `api.js`/frontend neste módulo: o host monta o helper e pode ex
 
 ## Metadados e mídia privada
 
-`GET /assistente/compras/:id` retorna `{origem:'assistente',solicitante,transcricao,itens:[{produto,quantidade,unidade}],fotos:[{id,mime_type}]}`. Solicitante é o nome registrado no momento da confirmação; transcrição é o texto original anexado e confirmado ou `null`. Os itens são a lista atual da compra, com as quantidades finais revisadas; o modal os separa do texto/transcrição original para não confundir uma correção com o áudio anterior. Fotos não contêm base64, conteúdo, href ou URL pública.
+`GET /assistente/compras/:id` retorna `{origem:'assistente',solicitante,registrado_por,destino,transcricao,itens:[{produto,quantidade,unidade}],fotos:[{id,mime_type}]}`. Em novos pedidos, `solicitante` é a pessoa indicada/revisada e `registrado_por` é o nome da conta registrada que confirmou. Em histórico antigo com `registrado_por` nulo/vazio, retorna o `solicitante_username` capturado como fallback, sem atualizar/backfill dos registros antigos nem consultar o nome atual da conta. `destino` é o destino atual da compra, mostrado junto da pessoa e das fotos no modal do ADM. Transcrição é o texto original anexado e confirmado ou `null`. Os itens são a lista atual da compra, com as quantidades finais revisadas; o modal os separa do texto/transcrição original para não confundir uma correção com o áudio anterior. Fotos não contêm base64, conteúdo, href ou URL pública.
 
 `GET /assistente/midias/:id` devolve bytes com MIME real validado, `Cache-Control:private, no-store`, `X-Content-Type-Options:nosniff`, `Content-Disposition:inline` e CSP restritiva. O frontend usa a mesma autorização Bearer, normalmente via fetch autenticado + object URL. Não há endpoint de upload público nem link remoto.
 
@@ -138,7 +149,7 @@ Ambas as rotas fazem JOIN com a compra de origem Assistente e restringem por `ad
 
 ## Persistência e erros
 
-DDL é aditivo, serializado e limitado a `ft_assistente_pedidos`, `ft_assistente_midias`, `ft_assistente_ai_limites`, seus índices e a coluna opcional `compras.origem` com default `app`, sem alterar registros antigos. `ft_assistente_pedidos` vincula compra/UUID, identidade autenticada, hash do conteúdo final e transcrição confirmada; `ft_assistente_midias` guarda BYTEA privado vinculado à compra confirmada. Áudio original e rascunhos/transcrições intermediárias nunca são persistidos. Os contadores da IA armazenam username/janela/período/contagem sem conteúdo; não há limpeza automática desses contadores nesta versão. Retenção/backup existentes do PostgreSQL se aplicam.
+DDL é aditivo, serializado e limitado a `ft_assistente_pedidos`, `ft_assistente_midias`, `ft_assistente_ai_limites`, seus índices, a nova coluna `ft_assistente_pedidos.registrado_por TEXT` nullable (via `ADD COLUMN IF NOT EXISTS`) e a coluna opcional `compras.origem` com default `app`, sem alterar registros antigos. `ft_assistente_pedidos` vincula compra/UUID, conta autenticada (username/ID), pessoa indicada, nome da conta registradora, hash do conteúdo final e transcrição confirmada; `ft_assistente_midias` guarda BYTEA privado vinculado à compra confirmada. Áudio original e rascunhos/transcrições intermediárias nunca são persistidos. Os contadores da IA armazenam username/janela/período/contagem sem conteúdo; não há limpeza automática desses contadores nesta versão. Retenção/backup existentes do PostgreSQL se aplicam.
 
 Erros de rota usam `{error,code}` com mensagem amigável. Nenhuma falha do módulo registra segredo, headers, payload, foto, transcrição, stack, SQL ou body de provedor. Mensagens de banco/provedor não são propagadas. Sem IA o usuário continua preenchendo e confirmando manualmente. A aplicação host continua responsável por autenticação, parser JSON, erros anteriores ao mount e configuração Netlify.
 
@@ -157,9 +168,9 @@ ASSISTENTE_TEST_DB=1 ASSISTENTE_TEST_PGHOST=127.0.0.1 \
   node --test tests/assistente.test.js
 ```
 
-A configuração é fixada em banco **`ft_flow_assistente_test`**, usuário **`ubuntu`**, SSL desabilitado e host permitido somente `/var/run/postgresql` ou `127.0.0.1`. Antes do reset afirma `current_database()`, `current_user` e `inet_server_addr()`: banco distinto, usuário distinto ou IP externo é proibido. Não usa `DATABASE_URL`, senhas de produção nem chaves da sessão. Remove variáveis herdadas de SMTP/mail/WA/YCloud/OpenAI e usa chave sintética exclusiva, `fetchImpl` fake e endpoints permitidos explicitamente. O reset só toca tabelas nomeadas nesse banco dedicado; não toca bancos/suites de WhatsApp/EPI. Integração é opt-in.
+A configuração é fixada em banco **`ft_flow_assistente_test`**, usuário **`ubuntu`**, SSL desabilitado e host permitido somente `/var/run/postgresql` ou `127.0.0.1`. Antes do reset afirma `current_database()`, `current_user` e `inet_server_addr()`: banco distinto, usuário distinto ou IP externo é proibido. Não usa `DATABASE_URL`, senhas de produção nem chaves da sessão. Remove variáveis herdadas de SMTP/mail/WA/YCloud/OpenAI e `FT_ASSISTENTE_*`, usa chave sintética exclusiva, `fetchImpl` fake e endpoints permitidos explicitamente. O reset só toca tabelas nomeadas nesse banco dedicado; não toca bancos/suites de WhatsApp/EPI. Integração é opt-in.
 
-Execução efetiva local: **18 testes aprovados, 0 falhas**, incluindo 13 cenários PostgreSQL com autenticação, ausência de chave, multi-itens/nulls, cópia completa de 30, correção, texto adversarial sem execução, erros/refusal/incompletos/excesso da IA, áudio multipart, transcrição vazia/longa/combinada, timeout, cotas concorrentes/duráveis, confirmação manual, validação/fotos, privacidade, oito clicks concorrentes, replay, conflito, unidade par/pares e rollback/retry. A execução usou socket local em `ft_flow_assistente_test`, usuário ubuntu; TCP 127.0.0.1 inicialmente exigiu senha não fornecida e não se alterou a autenticação do servidor para contornar essa restrição. Não houve teste de conectividade real da IA. Frontend e demais suites são de responsabilidade da integração host.
+Execução efetiva local em 18/11/2026: **22 testes aprovados, 0 falhas**, incluindo 16 cenários PostgreSQL e 5 testes independentes de banco (o contador inclui o agrupador da integração). Cobertura: autenticação, ausência de chave, essenciais/foto bloqueados antes do banco, nomes genéricos, extração/revisão/correção/null/apagar pessoa por texto/áudio, opcionais preservados, perguntas IA opcionais ignoradas, defaults somente na persistência, migração aditiva/fallback de histórico, itens atuais, multi-itens/cópia completa de 30, texto adversarial, erros/refusal/incompletos/excesso da IA, áudio multipart, transcrição vazia/longa/combinada, timeout, cotas concorrentes/duráveis, confirmação manual, limites/fotos, privacidade owner/ADM, oito clicks concorrentes, replay entre instâncias, conflitos de pessoa/áudio/fotos, auditoria por conta e rollback/retry. A execução usou socket local em `ft_flow_assistente_test`, usuário ubuntu. Sem PostgreSQL: **5 aprovados, 1 integração pulada, 0 falhas**. Não houve acesso a produção, chaves reais ou rede de IA, nem commit/push. Frontend e demais suites são de responsabilidade da integração host.
 
 ## Referências
 

@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v42";
+const APP_VERSION = "v43";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },
@@ -2794,9 +2794,18 @@ function trocarTelaDrawer(tela) {
 
 // ===== SCROLL MOBILE — evita travamento com modais/drawer abertos =====
 let _scrollLockY = 0;
+let _scrollLockObserver = null;
+const SCROLL_OVERLAYS = '.modal, .drawer, .notif-panel';
 
 function temOverlayAberto() {
-  return !!document.querySelector(".modal:not(.hidden), .drawer:not(.hidden), .notif-panel:not(.hidden)");
+  return [...document.querySelectorAll(SCROLL_OVERLAYS)].some(el => {
+    // Uma classe sem "hidden" não garante visibilidade: o overlay pode
+    // estar num ancestral oculto, removido ou ter style/hidden. aria-hidden
+    // descreve acessibilidade, não visibilidade; não pode liberar o fundo.
+    if (!el.isConnected || el.closest('.hidden') || !el.getClientRects().length) return false;
+    const style = getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden' && style.visibility !== 'collapse';
+  });
 }
 
 function atualizarScrollLock() {
@@ -2814,12 +2823,18 @@ function atualizarScrollLock() {
 }
 
 function initScrollLockObserver() {
-  document.querySelectorAll(".modal, .drawer, .notif-panel").forEach(el => {
-    new MutationObserver(atualizarScrollLock).observe(el, {
-      attributes: true,
-      attributeFilter: ["class"]
-    });
+  if (_scrollLockObserver) return atualizarScrollLock();
+  const containsOverlay = node => node.nodeType === 1 && (node.matches(SCROLL_OVERLAYS) || !!node.querySelector(SCROLL_OVERLAYS));
+  _scrollLockObserver = new MutationObserver(records => {
+    const relevant = records.some(record => record.type === 'childList'
+      ? [...record.addedNodes, ...record.removedNodes].some(containsOverlay)
+      // Ignorar nossas próprias mutações de body/class/top e as de itens,
+      // thumbnails e timers; observar somente overlays e seus ancestrais.
+      : record.target !== document.body && containsOverlay(record.target));
+    if (relevant) atualizarScrollLock();
   });
+  _scrollLockObserver.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'] });
+  window.addEventListener('resize', atualizarScrollLock, { passive: true });
   atualizarScrollLock();
 }
 

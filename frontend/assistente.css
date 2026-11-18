@@ -35,6 +35,13 @@
 .assistente-upload { border: 1px solid var(--as-line); border-radius: 12px; margin: 14px 0; padding: 0 14px; }
 .assistente-upload summary { padding: 14px 0; cursor: pointer; font-size: 14px; line-height: 1.5; color: var(--as-accent); }
 .assistente-upload label { margin: 4px 0 16px; }
+.assistente-checklist { list-style: none; padding: 12px 14px; margin: 16px 0; border: 1px solid var(--as-line); border-radius: 12px; background: var(--as-soft); font-size: 14px; line-height: 1.6; }
+.assistente-checklist li + li { margin-top: 8px; }
+.assistente-checklist [data-complete="true"] { color: var(--as-accent); }
+.assistente-photo-panel { scroll-margin-top: 110px; }
+.assistente-photo-missing { border-left: 4px solid #d99a21 !important; }
+.assistente-photo-confirmation { padding: 14px; border: 1px solid var(--as-line); border-radius: 12px; background: var(--as-soft); line-height: 1.6; }
+.assistente-optional > .assistente-grid { margin-top: 4px; }
 .assistente-page input[type="file"] { padding: 10px; font-size: 14px; width: 100%; overflow: hidden; }
 .assistente-page input[type="file"]::file-selector-button { max-width: 100%; padding: 8px; margin-right: 8px; border: 0; border-radius: 6px; background: #e9f8ef; color: #166534; }
 .assistente-page audio { display: block; width: 100%; max-width: 100%; margin: 14px 0; }
@@ -51,6 +58,7 @@
 .assistente-item-values { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 10px; }
 .assistente-remove-item { justify-self: start; font-size: 13px; min-height: 40px; grid-column: 1 / -1; }
 .assistente-transcription { border-left: 3px solid #22c55e; padding: 4px 14px; background: var(--as-soft); border-radius: 8px; margin: 16px 0; }
+.assistente-transcription summary { cursor: pointer; padding: 10px 0; color: var(--as-accent); font-size: 14px; line-height: 1.5; }
 .assistente-transcription p, .assistente-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .assistente-review { scroll-margin-top: 110px; }
 .assistente-bottom { justify-content: space-between; }
@@ -96,7 +104,7 @@
   .assistente-item input, .assistente-item select { padding: 11px 9px; }
   .assistente-photos { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .assistente-modal { justify-content: flex-end; }
-  .assistente-modal .modal-card { width: 100%; max-height: 92vh; max-height: 92dvh; padding: 18px; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
+  .assistente-modal .modal-card { width: 100%; max-height: 92vh; max-height: 92dvh; padding: 18px; padding-left: calc(18px + env(safe-area-inset-left, 0px)); padding-right: calc(18px + env(safe-area-inset-right, 0px)); padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); }
   .assistente-summary > div { grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: 10px; }
   .assistente-detail-photos { gap: 8px; }
   .assistente-bottom p { width: 100%; }
@@ -104,7 +112,9 @@
   body:has(.assistente-page) .topbar > div { min-width: 0; }
   body:has(.assistente-page) .topbar h2 { overflow-wrap: anywhere; font-size: 18px; }
   body:has(.assistente-page) .topbar .top-actions { flex: 0 0 auto; }
-  body:has(.assistente-page) { overscroll-behavior-y: contain; }
+  /* O body não é o scroller raiz neste layout. "contain" nele impede que
+     o swipe alcance document.scrollingElement no Chromium mobile. */
+  body:has(.assistente-page) { overscroll-behavior-y: auto; }
 }
 @media (max-width: 350px) {
   .assistente-page .panel { padding: 12px; }

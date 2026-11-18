@@ -5,12 +5,22 @@
   const MAX_AUDIO = 3 * MiB;
   const MAX_PHOTO = MiB;
   const MAX_PHOTOS_TOTAL = 2 * MiB;
-  const FIELD_LIMITS = { nome_lista: 240, categoria: 120, destino: 240, uso: 500, observacoes: 1500 };
+  const FIELD_LIMITS = { nome_pessoa: 240, nome_lista: 240, categoria: 120, destino: 240, uso: 500, observacoes: 1500 };
+  const DRAFT_FIELDS = Object.keys(FIELD_LIMITS);
   const AUDIO_TYPES = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/x-m4a', 'audio/m4a'];
   const audioType = mime => String(mime || '').split(';')[0].trim().toLowerCase();
   const escape = value => htmlEsc(String(value ?? ''));
   const blankItem = () => ({ produto: '', quantidade: '', unidade: '' });
-  const emptyDraft = () => ({ nome_lista: '', categoria: '', destino: '', uso: '', observacoes: '', itens: [blankItem()] });
+  const emptyDraft = () => ({ nome_pessoa: '', nome_lista: '', categoria: '', destino: '', uso: '', observacoes: '', itens: [blankItem()] });
+  function explicitPerson(value) {
+    const name = String(value ?? '').trim();
+    const label = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[\s\d_.()-]+/g, ' ').trim();
+    return name.length <= FIELD_LIMITS.nome_pessoa && /\p{L}{2}/u.test(name)
+      && !/^(?:(?:admin|adm|administrador(a)?|operador(a)?|funcionario(a)?|usuario(a)?|user|conta)(?: (?:logado|logada|registrado|registrada|compartilhada))?|responsavel|nao informado)$/.test(label);
+  }
+  const hasValidPhotos = () => state.photos.length >= 1 && state.photos.length <= 3
+    && state.photos.every(photo => photo.blob?.size > 0 && photo.blob.size <= MAX_PHOTO && photo.blob.type === 'image/jpeg')
+    && state.photos.reduce((sum, photo) => sum + photo.blob.size, 0) <= MAX_PHOTOS_TOTAL;
   function newKey() {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
     const bytes = new Uint8Array(16);
@@ -36,7 +46,7 @@
   const categorias = () => [...document.querySelectorAll('#listaCompraModalCategoria option')].map(o => o.value).filter(Boolean);
   function normalizeDraft(draft) {
     const result = emptyDraft();
-    for (const field of ['nome_lista', 'categoria', 'destino', 'uso', 'observacoes']) result[field] = String(draft?.[field] ?? '');
+    for (const field of DRAFT_FIELDS) result[field] = String(draft?.[field] ?? '');
     result.itens = Array.isArray(draft?.itens) && draft.itens.length
       ? draft.itens.map(item => ({ produto: String(item?.produto ?? ''), quantidade: item?.quantidade ?? '', unidade: String(item?.unidade ?? '') }))
       : [blankItem()];
@@ -49,7 +59,7 @@
     const consent = rootEl('#assistenteConsentimento');
     if (consent) state.consent = consent.checked;
     if (!state.review) return;
-    for (const field of ['nome_lista', 'categoria', 'destino', 'uso', 'observacoes']) {
+    for (const field of DRAFT_FIELDS) {
       const input = rootEl(`[data-draft-field="${field}"]`);
       if (input) state.draft[field] = input.value;
     }
@@ -61,7 +71,7 @@
   }
   function payloadDraft() {
     const draft = normalizeDraft(state.draft);
-    for (const field of ['nome_lista', 'categoria', 'destino', 'uso', 'observacoes']) draft[field] = draft[field].trim();
+    for (const field of DRAFT_FIELDS) draft[field] = draft[field].trim();
     draft.itens = draft.itens.map(item => ({ produto: item.produto.trim(), quantidade: item.quantidade === '' ? '' : Number(String(item.quantidade).replace(',', '.')), unidade: item.unidade.trim() }));
     return draft;
   }
@@ -133,6 +143,10 @@
     if (record) record.textContent = state.recordPending ? 'Aguardando microfone…' : 'Gravar áudio';
     const cancel = rootEl('[data-assistente-action="cancel-interpret"]');
     if (cancel) { cancel.hidden = state.busy !== 'interpret'; cancel.disabled = false; }
+    const review = rootEl('#assistenteRevisarPedido');
+    if (review) { review.disabled = locked || !hasValidPhotos(); review.setAttribute('aria-describedby', 'assistenteChecklistFoto'); }
+    const photoAction = rootEl('[data-assistente-action="focus-photo"]');
+    if (photoAction) photoAction.hidden = hasValidPhotos();
     state.root.setAttribute('aria-busy', String(!!state.busy || state.photoBusy));
   }
   function renderAudio() {
@@ -161,25 +175,29 @@
     });
     const count = rootEl('[data-photo-count]');
     if (count) count.textContent = `${state.photos.length}/3 fotos · ${(state.photos.reduce((sum, p) => sum + p.blob.size, 0) / MiB).toFixed(2)} de 2 MiB`;
+    showQuestions(false); updateButtons();
   }
   function renderReview() {
     const target = rootEl('[data-assistente-review]'); if (!target) return;
     target.hidden = !state.review;
     if (!state.review) return;
     const d = state.draft;
-    const field = (key, label, placeholder = '') => `<label>${label}<input data-draft-field="${key}" value="${escape(d[key])}" placeholder="${escape(placeholder)}" ${key === 'categoria' ? 'list="assistenteCategorias"' : ''} required id="assistente_${key}" maxlength="${FIELD_LIMITS[key]}"></label>`;
+    const field = (key, label, placeholder = '') => `<label for="assistente_${key}">${label}<input data-draft-field="${key}" value="${escape(d[key])}" placeholder="${escape(placeholder)}" ${key === 'categoria' ? 'list="assistenteCategorias"' : ''} ${['nome_pessoa', 'destino'].includes(key) ? 'required' : ''} id="assistente_${key}" maxlength="${FIELD_LIMITS[key]}"></label>`;
     target.innerHTML = `<div class="assistente-section-heading"><span class="assistente-step">2</span><div><h3>Revise seu pedido</h3><p class="assistente-muted">Edite o que precisar. Nada é enviado ao ADM antes da sua confirmação.</p></div></div>
       <div class="assistente-question" data-assistente-question role="status"></div>
       <form id="assistenteReviewForm" novalidate>
-        <div class="assistente-grid">${field('nome_lista', 'Nome da lista', 'Ex.: Materiais para irrigação')}${field('categoria', 'Categoria', 'Selecione ou escreva')}${field('destino', 'Destino', 'Onde será utilizado?')}${field('uso', 'Uso', 'Para que você precisa?')}</div>
-        <datalist id="assistenteCategorias">${categorias().map(v => `<option value="${escape(v)}"></option>`).join('')}</datalist>
-        <label>Observações (opcional)<textarea id="assistente_observacoes" data-draft-field="observacoes" maxlength="1500" placeholder="Marca, modelo, tamanho ou outra especificação">${escape(d.observacoes)}</textarea></label>
+        <div class="assistente-grid assistente-main-fields">${field('nome_pessoa', 'Nome da pessoa (obrigatório)', 'Ex.: Maria ou João')}${field('destino', 'Destino (obrigatório)', 'Ex.: Estufa 2 ou oficina')}</div>
+        <p class="assistente-muted" id="assistenteNomePessoaAjuda">Indique explicitamente quem solicita. “Operador”, “Administrador” ou a conta logada não identificam uma pessoa.</p>
         <h4>Itens do pedido</h4><div data-assistente-items>${d.itens.map(itemHtml).join('')}</div>
         <button type="button" class="secondary" id="assistenteAdicionarItem" data-assistente-action="add-item">+ Adicionar item</button>
-        <div class="assistente-transcription" data-assistente-transcription ${state.transcricao ? '' : 'hidden'}><h4>Descrição / transcrição</h4><p>${escape(state.transcricao)}</p></div>
+        <details id="assistenteDetalhesAdicionais" class="assistente-upload assistente-optional" data-assistente-optional><summary>Detalhes adicionais (opcional)</summary><div class="assistente-grid">${field('nome_lista', 'Nome da lista (opcional)', 'Se quiser, dê um nome à lista')}${field('categoria', 'Categoria (opcional)', 'Selecione ou escreva')}${field('uso', 'Uso (opcional)', 'Se quiser, indique o uso')}</div>
+        <datalist id="assistenteCategorias">${categorias().map(v => `<option value="${escape(v)}"></option>`).join('')}</datalist>
+        <label for="assistente_observacoes">Observações (opcional)<textarea id="assistente_observacoes" data-draft-field="observacoes" maxlength="1500" placeholder="Marca, modelo, tamanho ou outra especificação, se necessário">${escape(d.observacoes)}</textarea></label></details>
+        <details class="assistente-transcription" data-assistente-transcription ${state.transcricao ? '' : 'hidden'}><summary>Texto / transcrição original (opcional)</summary><p>${escape(state.transcricao)}</p></details>
         <p class="assistente-muted">O pedido entra na fila de cotação do ADM. Este envio não aprova compras e não dá baixa no estoque.</p>
-        <div class="assistente-actions"><button id="assistenteRevisarPedido" type="submit" class="primary">Revisar e continuar</button></div>
+        <div class="assistente-actions"><button id="assistenteAnexarFotoObrigatoria" type="button" class="secondary" data-assistente-action="focus-photo">Anexar foto obrigatória</button><button id="assistenteRevisarPedido" type="submit" class="primary">Revisar e continuar</button></div>
       </form>`;
+    rootEl('#assistente_nome_pessoa').setAttribute('aria-describedby', 'assistenteNomePessoaAjuda');
     rootEl('#assistenteReviewForm').addEventListener('submit', event => { event.preventDefault(); openConfirmation(); });
     showQuestions(false); updateButtons();
   }
@@ -198,23 +216,39 @@
     if (mark) state.root?.querySelectorAll('[aria-invalid]').forEach(el => el.removeAttribute('aria-invalid'));
     const check = (condition, label, selector) => {
       if (!condition) { missing.push(label); if (mark) rootEl(selector)?.setAttribute('aria-invalid', 'true'); }
+      else rootEl(selector)?.removeAttribute('aria-invalid');
     };
-    for (const [field, label] of [['nome_lista', 'nome da lista'], ['categoria', 'categoria'], ['destino', 'destino'], ['uso', 'uso']]) check(!!draft[field], label, `[data-draft-field="${field}"]`);
+    check(explicitPerson(draft.nome_pessoa), 'nome próprio da pessoa (não o nome da conta)', '#assistente_nome_pessoa');
+    check(!!draft.destino && draft.destino.length <= FIELD_LIMITS.destino, 'destino', '#assistente_destino');
     if (!draft.itens.length) missing.push('pelo menos um item');
     draft.itens.forEach((item, i) => {
       const prefix = `[data-assistente-item="${i}"]`;
-      check(!!item.produto, `produto do item ${i + 1}`, `${prefix} [data-item-field="produto"]`);
+      check(!!item.produto && item.produto.length <= 240, `produto do item ${i + 1}`, `${prefix} [data-item-field="produto"]`);
       check(Number.isFinite(item.quantidade) && item.quantidade > 0 && item.quantidade <= 1000000, `quantidade do item ${i + 1}`, `${prefix} [data-item-field="quantidade"]`);
       check(units().includes(item.unidade), `unidade do item ${i + 1}`, `${prefix} [data-item-field="unidade"]`);
     });
+    check(hasValidPhotos(), 'pelo menos 1 foto válida do pedido', '#assistenteFotosArquivo');
     return missing;
   }
   function showQuestions(mark = true) {
-    const target = rootEl('[data-assistente-question]'); if (!target) return;
     const missing = missingFields(mark);
-    const parts = [state.pergunta, ...state.avisos];
-    if (missing.length) parts.push(`Para completar o pedido, informe: ${missing.join(', ')}. Não vamos adivinhar essas informações.`);
-    target.textContent = parts.filter(Boolean).join('\n'); target.hidden = !target.textContent;
+    const essential = missing.filter(label => label !== 'pelo menos 1 foto válida do pedido');
+    const dataStatus = rootEl('[data-assistente-checklist="dados"]');
+    if (dataStatus) { dataStatus.textContent = essential.length ? 'Dados necessários: pessoa, destino, produto, quantidade e unidade por item.' : 'Dados necessários preenchidos.'; dataStatus.dataset.complete = String(!essential.length); }
+    const photoStatus = rootEl('[data-assistente-checklist="foto"]');
+    if (photoStatus) { photoStatus.textContent = hasValidPhotos() ? `Foto obrigatória anexada (${state.photos.length}/3).` : 'Foto faltante: anexe pelo menos 1 foto válida para revisar e confirmar.'; photoStatus.dataset.complete = String(hasValidPhotos()); }
+    const panel = rootEl('[data-assistente-photo-panel]');
+    if (panel) panel.classList.toggle('assistente-photo-missing', !hasValidPhotos());
+    const target = rootEl('[data-assistente-question]');
+    if (!target) return;
+    // A validação local é a fonte das perguntas: textos livres do serviço não podem exigir opcionais.
+    target.textContent = missing.length ? `Para completar o pedido, informe: ${missing.join(', ')}. Quantidade e unidade precisam ser explícitas; não vamos adivinhar.` : 'Dados necessários e foto completos. Você já pode revisar e confirmar.';
+    target.hidden = false;
+  }
+  function focusPhoto() {
+    const input = rootEl('#assistenteFotosArquivo');
+    rootEl('[data-assistente-photo-panel]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    input?.focus({ preventScroll: true });
   }
   function prepareManual() {
     if (state.busy || state.recording || state.recordPending || state.photoBusy) return;
@@ -393,33 +427,40 @@
     } finally { if (current(generation)) { state.photoBusy = false; updateButtons(); } }
   }
   function focusDialog(modal) {
-    modal.querySelector('button')?.focus();
+    modal.querySelector('button')?.focus({ preventScroll: true });
   }
   function closeConfirmation(restore = true) {
     const modal = document.getElementById('modalAssistenteConfirmacao');
     modal?.classList.add('hidden'); modal?.setAttribute('aria-hidden', 'true');
     document.getElementById('assistenteConfirmacaoResumo')?.replaceChildren();
-    if (restore && confirmOpener?.isConnected) confirmOpener.focus(); confirmOpener = null;
+    if (restore && confirmOpener?.isConnected) confirmOpener.focus({ preventScroll: true }); confirmOpener = null;
   }
   function openConfirmation() {
     if (state.busy || state.photoBusy || state.recording || state.recordPending) return;
     collect(); showQuestions(true);
-    if (missingFields().length) { message('Complete as informações em destaque antes de enviar.', true); rootEl('[aria-invalid="true"]')?.focus(); return; }
+    if (missingFields().length) {
+      message('Complete os dados necessários e anexe pelo menos 1 foto válida antes de enviar.', true);
+      if (!hasValidPhotos()) focusPhoto();
+      else rootEl('[aria-invalid="true"]')?.focus();
+      return;
+    }
     const form = rootEl('#assistenteReviewForm');
     if (form && !form.reportValidity()) return;
     const modal = document.getElementById('modalAssistenteConfirmacao'); const target = document.getElementById('assistenteConfirmacaoResumo');
     if (!modal || !target) return;
     const d = payloadDraft(); confirmOpener = document.activeElement;
-    target.innerHTML = `<dl class="assistente-summary"><div><dt>Lista</dt><dd>${escape(d.nome_lista)}</dd></div><div><dt>Categoria</dt><dd>${escape(d.categoria)}</dd></div><div><dt>Destino</dt><dd>${escape(d.destino)}</dd></div><div><dt>Uso</dt><dd>${escape(d.uso)}</dd></div>${d.observacoes ? `<div><dt>Observações</dt><dd>${escape(d.observacoes)}</dd></div>` : ''}</dl><h4>Itens</h4><ul class="assistente-summary-items">${d.itens.map(item => `<li><b>${escape(item.produto)}</b><span>${escape(item.quantidade)} ${escape(item.unidade)}</span></li>`).join('')}</ul>${state.transcricao ? `<h4>Descrição / transcrição</h4><p class="assistente-prewrap">${escape(state.transcricao)}</p>` : ''}<p><b>${state.photos.length} foto(s) anexada(s).</b> Fotos ficam somente no pedido.</p><p class="assistente-muted">Será enviada uma lista para cotação do ADM. Não é uma compra aprovada nem uma entrega de estoque.</p>`;
+    const optional = [['nome_lista', 'Lista'], ['categoria', 'Categoria'], ['uso', 'Uso'], ['observacoes', 'Observações']].filter(([key]) => d[key]);
+    target.innerHTML = `<dl class="assistente-summary assistente-summary-primary"><div><dt>Solicitado por</dt><dd data-assistente-summary="nome_pessoa">${escape(d.nome_pessoa)}</dd></div><div><dt>Destino</dt><dd data-assistente-summary="destino">${escape(d.destino)}</dd></div></dl><h4>Itens do pedido</h4><ul class="assistente-summary-items">${d.itens.map(item => `<li><b>${escape(item.produto)}</b><span>${escape(item.quantidade)} ${escape(item.unidade)}</span></li>`).join('')}</ul><p class="assistente-photo-confirmation" data-assistente-summary="fotos"><b>${state.photos.length} foto(s) válida(s) anexada(s).</b> A foto é obrigatória por pedido, não por item. Fotos nunca são enviadas à IA.</p>${optional.length ? `<details class="assistente-upload" data-assistente-summary="opcionais"><summary>Detalhes adicionais (opcional)</summary><dl class="assistente-summary">${optional.map(([key, label]) => `<div><dt>${label}</dt><dd>${escape(d[key])}</dd></div>`).join('')}</dl></details>` : ''}${state.transcricao ? `<details class="assistente-transcription"><summary>Texto / transcrição original (opcional)</summary><p class="assistente-prewrap">${escape(state.transcricao)}</p></details>` : ''}<p class="assistente-muted">Será enviada uma lista para cotação do ADM. Não é uma compra aprovada nem uma entrega de estoque.</p>`;
     document.getElementById('assistenteConfirmacaoErro').textContent = '';
     modal.querySelectorAll('button').forEach(button => { button.disabled = false; });
     document.getElementById('assistenteConfirmarEnvio').textContent = 'Confirmar e enviar ao ADM';
+    modal.querySelector('.modal-card').scrollTop = 0;
     modal.classList.remove('hidden'); modal.setAttribute('aria-hidden', 'false'); focusDialog(modal);
   }
   async function confirmSend() {
     const modal = document.getElementById('modalAssistenteConfirmacao');
     if (state.busy || !current(state.generation) || modal?.classList.contains('hidden')) return;
-    collect(); if (missingFields(true).length) { closeConfirmation(); showQuestions(true); return; }
+    collect(); if (missingFields(true).length) { closeConfirmation(); showQuestions(true); if (!hasValidPhotos()) focusPhoto(); return; }
     const generation = state.generation; state.busy = 'confirm';
     modal.querySelectorAll('button').forEach(button => { button.disabled = true; });
     const button = document.getElementById('assistenteConfirmarEnvio'); button.textContent = 'Enviando pedido…'; updateButtons();
@@ -461,12 +502,13 @@
       collect();
       if (event.target.id === 'assistenteAudioArquivo') { const file = event.target.files[0]; event.target.value = ''; uploadAudio(file); }
       if (event.target.id === 'assistenteFotosArquivo') { const files = [...event.target.files]; event.target.value = ''; uploadPhotos(files); }
-      updateButtons();
+      showQuestions(false); updateButtons();
     });
     if (state.success) { renderSuccess(); return; }
-    state.root.innerHTML = `<section class="panel assistente-intro"><div class="assistente-section-heading"><span class="assistente-step">1</span><div><h3>Descreva o que você precisa</h3><p class="assistente-muted">Escreva ou grave um áudio. Depois, revise os itens e envie o pedido ao ADM.</p></div></div>
-      <p class="assistente-muted">Responsável pelo envio: <b>${escape(usuario?.nome || usuario?.username || usuario?.user || 'Conta logada')}</b>. Em uma conta compartilhada, esta identificação é da conta, não de uma pessoa citada no áudio.</p>
-      <label for="assistenteTexto">Seu pedido ou correção<textarea id="assistenteTexto" rows="5" maxlength="6000" placeholder="Ex.: Preciso de 2 pares de luvas para a equipe da estufa. Tamanho M, para poda.">${escape(state.texto)}</textarea></label>
+    state.root.innerHTML = `<section class="panel assistente-intro"><div class="assistente-section-heading"><span class="assistente-step">1</span><div><h3>Monte seu pedido</h3><p class="assistente-muted">Escreva, grave um áudio ou preencha sem IA. Para enviar: pessoa, destino, itens com quantidade e unidade e pelo menos 1 foto válida.</p></div></div>
+      <p class="assistente-muted" data-assistente-account>Conta que registra: <b>${escape(usuario?.nome || usuario?.username || usuario?.user || 'Conta logada')}</b>. A autenticação é da conta. A pessoa que solicita deve ser indicada explicitamente no texto/áudio ou no campo Nome da pessoa; não será inferida do login.</p>
+      <ul class="assistente-checklist" id="assistenteChecklist" aria-label="Checklist do pedido"><li data-assistente-checklist="dados">Dados necessários: pessoa, destino, produto, quantidade e unidade por item.</li><li id="assistenteChecklistFoto" data-assistente-checklist="foto" role="status">Foto faltante: anexe pelo menos 1 foto válida para revisar e confirmar.</li></ul>
+      <label for="assistenteTexto">Texto do pedido ou correção (opcional)<textarea id="assistenteTexto" rows="5" maxlength="6000" placeholder="Ex.: Sou Maria. Preciso de 2 pares de luvas tamanho M para a estufa 2.">${escape(state.texto)}</textarea></label>
       <div class="assistente-actions"><button type="button" class="secondary" id="assistenteGravarAudio" data-assistente-action="record">Gravar áudio</button><button type="button" class="secondary" id="assistentePararAudio" data-assistente-action="stop" disabled>Parar gravação</button><span class="assistente-muted" data-record-time aria-live="off"></span></div>
       <p class="assistente-muted">Até 90 segundos e 3 MiB. O áudio não é enviado automaticamente. Você também pode continuar só por texto.</p><div data-assistente-audio></div>
       <details class="assistente-upload"><summary>Já tem um áudio? Escolher arquivo (opcional)</summary><label>Arquivo de áudio<input id="assistenteAudioArquivo" type="file" accept=".m4a,.mp3,.wav,.ogg,.webm,audio/mp4,audio/mpeg,audio/wav,audio/ogg,audio/webm"></label></details>
@@ -474,7 +516,7 @@
       <label class="assistente-consent"><input id="assistenteConsentimento" type="checkbox"${state.consent ? ' checked' : ''}><span>Autorizar envio deste texto/áudio ao serviço de IA para montar o pedido. Fotos só ficam no pedido.</span></label>
       <div class="assistente-actions"><button type="button" class="primary" id="assistenteOrganizarPedido" data-assistente-action="organize" disabled>Organizar pedido</button><button type="button" class="secondary" id="assistentePreencherManual" data-assistente-action="manual">Preencher sem IA</button><button type="button" class="secondary" id="assistenteCancelarOrganizacao" data-assistente-action="cancel-interpret" hidden>Cancelar organização</button></div>
       <p class="assistente-message" data-assistente-message role="status" hidden></p></section>
-      <section class="panel assistente-photo-panel"><h3>Fotos de referência <small>(opcional)</small></h3><p class="assistente-muted">Até 3 fotos. Preparadas no aparelho em JPEG, até 1600 × 1600, 1 MiB por foto e 2 MiB no total. Só são enviadas quando você confirma o pedido.</p><label>Adicionar fotos<input id="assistenteFotosArquivo" type="file" accept="image/*,.heic,.heif" multiple></label><p class="assistente-muted" data-photo-count></p><div class="assistente-photos" data-assistente-photos></div></section>
+      <section class="panel assistente-photo-panel" id="assistenteFotoObrigatoria" data-assistente-photo-panel><h3>Foto do pedido <small>(obrigatório)</small></h3><p class="assistente-muted" id="assistenteFotoAjuda">Pelo menos 1 foto válida por pedido, até 3 no total; não é necessária uma foto para cada item. Você pode organizar ou transcrever antes de anexar. Preparadas no aparelho em JPEG, até 1600 × 1600, 1 MiB por foto e 2 MiB no total. Só são enviadas ao confirmar, nunca à IA.</p><label for="assistenteFotosArquivo">Adicionar fotos (obrigatório)<input id="assistenteFotosArquivo" type="file" accept="image/*,.heic,.heif" multiple aria-required="true" aria-describedby="assistenteFotoAjuda assistenteChecklistFoto"></label><p class="assistente-muted" data-photo-count></p><div class="assistente-photos" data-assistente-photos></div></section>
       <section class="panel assistente-review" data-assistente-review hidden></section>
       <div class="assistente-actions assistente-bottom"><button type="button" class="secondary" id="assistenteLimparPedido" data-assistente-action="clear">Limpar pedido</button><p class="assistente-muted">Rascunho só nesta sessão. Nada é salvo neste aparelho.</p></div>`;
     renderAudio(); renderPhotos(); renderReview(); updateButtons();
@@ -497,6 +539,7 @@
     if (action === 'record') return startRecording();
     if (action === 'organize') return organize();
     if (action === 'manual') return prepareManual();
+    if (action === 'focus-photo') return focusPhoto();
     if (action === 'remove-audio') { revokeAudio(); state.audio = null; renderAudio(); return message('Áudio removido.'); }
     if (action === 'remove-photo') { const photo = state.photos[Number(button.dataset.index)]; if (photo?.url) URL.revokeObjectURL(photo.url); state.photos.splice(Number(button.dataset.index), 1); return renderPhotos(); }
     if (action === 'add-item') { collect(); if (state.draft.itens.length >= 30) return message('Cada pedido aceita até 30 itens. Divida uma lista maior em mais de um pedido.', true); state.draft.itens.push(blankItem()); renderReview(); rootEl(`[data-assistente-item="${state.draft.itens.length - 1}"] input`)?.focus(); return; }
@@ -508,7 +551,7 @@
     details.urls.forEach(url => URL.revokeObjectURL(url)); details.urls.clear();
     const modal = document.getElementById('modalAssistentePedido'); modal?.classList.add('hidden'); modal?.setAttribute('aria-hidden', 'true');
     document.getElementById('assistentePedidoConteudo')?.replaceChildren();
-    if (restore && details.opener?.isConnected) details.opener.focus(); details.opener = null;
+    if (restore && details.opener?.isConnected) details.opener.focus({ preventScroll: true }); details.opener = null;
   }
   async function openDetails(id) {
     if (!Number.isFinite(Number(id)) || Number(id) <= 0) return;
@@ -522,7 +565,9 @@
       if (!alive()) return;
       if (data?.origem !== 'assistente') throw new Error('Origem inválida');
       target.replaceChildren();
-      const person = document.createElement('p'); person.textContent = `Solicitante: ${String(data.solicitante || 'Não informado')}`;
+      const person = document.createElement('p'); person.dataset.assistenteDetail = 'nome_pessoa'; person.textContent = `Solicitado por: ${String(data.nome_pessoa || data.solicitante || 'Não informado')}`;
+      const registered = document.createElement('p'); registered.dataset.assistenteDetail = 'registrado_por'; registered.textContent = `Registrado por: ${String(data.registrado_por || 'Não informado')}`;
+      const destination = document.createElement('p'); destination.dataset.assistenteDetail = 'destino'; destination.textContent = `Destino: ${String(data.destino || 'Não informado')}`;
       const finalHeading = document.createElement('h4'); finalHeading.textContent = 'Itens do pedido';
       const finalItems = document.createElement('ul'); finalItems.className = 'assistente-summary-items';
       for (const item of Array.isArray(data.itens) ? data.itens : []) {
@@ -531,12 +576,14 @@
         const amount = document.createElement('span'); amount.textContent = `${item.quantidade ?? ''} ${item.unidade || ''}`.trim();
         line.append(product, amount); finalItems.append(line);
       }
-      const heading = document.createElement('h4'); heading.textContent = 'Texto / transcrição original';
-      const text = document.createElement('p'); text.className = 'assistente-prewrap'; text.textContent = String(data.transcricao || 'Sem transcrição. Consulte os itens do pedido.');
+      const transcription = document.createElement('details'); transcription.className = 'assistente-transcription';
+      const heading = document.createElement('summary'); heading.textContent = 'Texto / transcrição original (opcional)';
+      const text = document.createElement('p'); text.className = 'assistente-prewrap'; text.textContent = String(data.transcricao || ''); transcription.append(heading, text);
       const photoHeading = document.createElement('h4'); photoHeading.textContent = 'Fotos do pedido';
-      const photos = document.createElement('div'); photos.className = 'assistente-detail-photos'; target.append(person);
+      const photos = document.createElement('div'); photos.className = 'assistente-detail-photos'; target.append(person, registered, destination);
       if (finalItems.childElementCount) target.append(finalHeading, finalItems);
-      target.append(heading, text, photoHeading, photos);
+      if (data.transcricao) target.append(transcription);
+      target.append(photoHeading, photos);
       const entries = Array.isArray(data.fotos) ? data.fotos.slice(0, 3) : [];
       if (!entries.length) { const empty = document.createElement('p'); empty.textContent = 'Nenhuma foto anexada.'; photos.append(empty); }
       await Promise.all(entries.map(async (photo, index) => {
