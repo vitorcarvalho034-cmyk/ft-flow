@@ -1,5 +1,7 @@
 # Assistente de pedidos — backend FT FLOW
 
+Atualização de 23/11/2026: a integração Manus, a configuração de provedor, o processamento assíncrono e o modo uma pergunta por vez estão documentados em [Assistente Manus e perguntas guiadas](assistente-manus.md). As descrições síncronas OpenAI abaixo continuam válidas somente quando esse provedor está selecionado. O fluxo de confirmação, essenciais, fotos privadas, auditoria e compras permanece compartilhado.
+
 O módulo organiza texto/áudio em um rascunho revisável e só cria uma compra após confirmação explícita. Não altera contas Meta/YCloud, não envia WhatsApp/e-mail diretamente, não apaga compras/histórico e não importa configuração nem código do canal WhatsApp. A primeira versão cria listas de compras, não pedidos EPI; a área EPI existente fica preservada.
 
 ## Montagem e autenticação

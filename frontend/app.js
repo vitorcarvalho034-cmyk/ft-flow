@@ -1,6 +1,6 @@
 
 // FT FLOW V2.9 - Otimizado
-const APP_VERSION = "v44";
+const APP_VERSION = "v45";
 
 const UNIDADES_MEDIDA = [
   { grupo: "Comprimento", opcoes: [{ v: "m", l: "Metro (m)" }, { v: "cm", l: "Centímetro (cm)" }] },

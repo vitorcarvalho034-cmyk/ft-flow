@@ -62,6 +62,14 @@
 .assistente-transcription p, .assistente-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
 .assistente-review { scroll-margin-top: 110px; }
 .assistente-bottom { justify-content: space-between; }
+.assistente-guide { border: 2px solid var(--as-line); scroll-margin-top: 110px; }
+.assistente-guide h3 { font-size: 22px; line-height: 1.4; }
+.assistente-guide label { display: block; }
+.assistente-guide input, .assistente-guide select { width: 100%; min-height: 48px; font-size: 18px; }
+.assistente-guide-progress { color: var(--as-accent); font-size: 13px; font-weight: 700; margin: 0 0 12px; }
+.assistente-page:has(.assistente-guide:not([hidden])) .assistente-intro .assistente-section-heading,
+.assistente-page:has(.assistente-guide:not([hidden])) [data-assistente-account],
+.assistente-page:has(.assistente-guide:not([hidden])) #assistenteChecklist { display: none; }
 .assistente-success { text-align: center; padding: 36px 24px !important; }
 .assistente-success .assistente-actions { justify-content: center; }
 .assistente-success-mark { display: inline-grid; place-items: center; width: 56px; height: 56px; color: var(--as-accent); background: var(--as-soft); border-radius: 50%; font-size: 30px; margin-bottom: 16px; }

@@ -36,7 +36,7 @@
     pergunta: '', avisos: [], configured: null, busy: '', photoBusy: false,
     audio: null, audioUrl: '', photos: [], recorder: null, stream: null,
     recording: false, recordPending: false, timer: null, recordStarted: 0, success: null,
-    metadataCancel: null
+    metadataCancel: null, async: false, processing: null
   };
   const details = { generation: 0, controller: null, urls: new Set(), opener: null };
   let confirmOpener = null;
@@ -44,6 +44,7 @@
   const current = generation => generation === state.generation && tela === 'assistente' && state.root?.isConnected;
   const units = () => [...new Set([...document.querySelectorAll('#novoItemUnidade option')].map(o => o.value).filter(Boolean).concat(UNIDADES_VALIDAS, 'par'))];
   const categorias = () => [...document.querySelectorAll('#listaCompraModalCategoria option')].map(o => o.value).filter(Boolean);
+  const guided = window.criarAssistenteGuiado({ state, rootEl, collect, escape, explicitPerson, units, blankItem, updateButtons, renderReview, renderAudio, revokeAudio, message, focusPhoto, toBase64, request, current, waitForPoll, cancelProcessing, newKey });
   function normalizeDraft(draft) {
     const result = emptyDraft();
     for (const field of DRAFT_FIELDS) result[field] = String(draft?.[field] ?? '');
@@ -86,11 +87,13 @@
     if (error?.name === 'AbortError') return '';
     // Traduzir apenas códigos conhecidos, nunca exibir a mensagem bruta do provedor.
     const safe = {
-      IA_SEM_CREDITOS: 'A conta da API OpenAI está sem créditos. O ADM precisa adicionar créditos para liberar a transcrição e a IA. Você pode preencher sem IA por enquanto.',
-      IA_LIMITE_CONTA: 'A conta da API OpenAI atingiu um limite de uso ou gasto. O ADM precisa verificar esse limite. Você pode preencher sem IA por enquanto.',
+      IA_SEM_CREDITOS: 'A conta do serviço de IA está sem créditos. O ADM precisa verificar os créditos do provedor. Você pode preencher sem IA por enquanto.',
+      IA_LIMITE_CONTA: 'A conta do serviço de IA atingiu um limite de uso ou gasto. O ADM precisa verificar esse limite. Você pode preencher sem IA por enquanto.',
       IA_MUITAS_REQUISICOES: 'A IA está recebendo muitas solicitações. Aguarde um pouco antes de tentar novamente ou preencha sem IA.',
       LIMITE_IA: 'O limite de uso da IA nesta conta do app foi atingido. Aguarde antes de tentar novamente ou preencha sem IA.',
       IA_ACESSO_NEGADO: 'A conta da IA não autorizou esta operação. O ADM precisa verificar o acesso. Você pode preencher sem IA por enquanto.',
+      IA_REQUER_CONFIRMACAO: 'O serviço de IA pediu uma autorização adicional. O ADM precisa verificar a conta do provedor. Você pode preencher sem IA por enquanto.',
+      PROCESSAMENTO_CANCELADO: 'A organização foi cancelada. O pedido não foi enviado ao ADM.',
       IA_CONFIGURACAO_INVALIDA: 'A configuração do serviço de IA precisa ser verificada pelo ADM. Você pode preencher sem IA por enquanto.',
       IA_NAO_CONFIGURADA: 'A IA ainda não está configurada. Você pode preencher sem IA e enviar o pedido completo.',
       AUDIO_NAO_PROCESSADO: 'O serviço não conseguiu ler este áudio. Ouça a gravação e tente um trecho menor ou continue por texto.',
@@ -101,6 +104,7 @@
       LIMITE_TEXTO: 'O texto e a transcrição juntos são longos demais. Divida em pedidos menores.',
       TEMPO_IA_EXCEDIDO: 'A IA demorou demais para responder. Tente novamente com um áudio mais curto ou preencha sem IA.',
       RESPOSTA_IA_INVALIDA: 'A IA não devolveu um pedido completo e válido. Tente novamente ou preencha sem IA.',
+      IA_ITENS_REPETIDOS: 'A IA identificou itens repetidos. Confira seu pedido e use o modo uma pergunta por vez ou preencha sem IA. Nenhum item foi salvo nem removido.',
       IA_INDISPONIVEL: 'A IA está indisponível no momento. Aguarde e tente novamente ou preencha sem IA.'
     };
     if (error?.status === 401 || (!error?.status && !error?.code && /sessão|sessao|401/i.test(String(error?.message || '')))) return 'Sua sessão expirou. O pedido continua nesta tela; guarde os dados antes de entrar novamente.';
@@ -114,6 +118,7 @@
         signal: controller.signal, keepOnUnauthorized: true,
         ...(payload === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       });
+      if (!current(generation) && path === '/interpretar' && result?.estado === 'processando') cancelProcessingId(result.processamento_id);
       return current(generation) ? result : null;
     } finally { state.controllers.delete(controller); }
   }
@@ -135,7 +140,7 @@
     state.recording = false; state.recordPending = false; stopTracks();
   }
   function cleanup(reset = false) {
-    collect(); ++state.generation;
+    collect(); cancelProcessing(); ++state.generation;
     state.controllers.forEach(controller => controller.abort()); state.controllers.clear();
     discardRecording(); revokeAudio();
     state.metadataCancel?.(); state.metadataCancel = null;
@@ -143,6 +148,7 @@
     closeConfirmation(false); closeDetails(false);
     state.root = null; state.busy = ''; state.photoBusy = false; state.consent = false;
     if (reset) {
+      guided.reset();
       state.texto = ''; state.draft = emptyDraft(); state.review = false;
       state.transcricao = ''; state.audio = null; state.photos = [];
       state.pergunta = ''; state.avisos = []; state.success = null; state.requestId = newKey(); state.configured = null;
@@ -157,7 +163,7 @@
     const ai = rootEl('[data-assistente-action="organize"]');
     if (ai) {
       ai.disabled = locked || !state.consent || state.configured !== true;
-      ai.textContent = state.busy === 'interpret' ? 'Organizando pedido…' : 'Organizar pedido';
+      ai.textContent = state.busy === 'interpret' ? 'Processando áudio/texto…' : guided.active ? 'Transcrever resposta deste áudio' : 'Organizar pedido';
     }
     const record = rootEl('[data-assistente-action="record"]');
     if (record) record.textContent = state.recordPending ? 'Aguardando microfone…' : 'Gravar áudio';
@@ -168,6 +174,7 @@
     const photoAction = rootEl('[data-assistente-action="focus-photo"]');
     if (photoAction) photoAction.hidden = hasValidPhotos();
     state.root.setAttribute('aria-busy', String(!!state.busy || state.photoBusy));
+    guided.syncButtons();
   }
   function renderAudio() {
     const target = rootEl('[data-assistente-audio]'); if (!target) return;
@@ -272,6 +279,7 @@
   }
   function prepareManual() {
     if (state.busy || state.recording || state.recordPending || state.photoBusy) return;
+    if (guided.active) return guided.review();
     collect();
     if (!state.review) { state.review = true; state.transcricao = state.texto.trim(); }
     state.pergunta = ''; state.avisos = [];
@@ -288,6 +296,7 @@
   async function organize() {
     collect();
     if (state.busy || state.photoBusy || state.recording || state.recordPending) return;
+    if (guided.active) return guided.transcribe();
     if (!state.consent) return message('Marque a autorização para usar a IA, ou escolha preencher sem IA.', true);
     if (state.configured !== true) return message('A organização automática não está disponível agora. Você pode preencher sem IA.', true);
     if (!state.texto.trim() && !state.audio) return message('Descreva o que precisa por texto ou adicione um áudio.', true);
@@ -298,21 +307,51 @@
       if (state.review) payload.rascunho = payloadDraft();
       if (state.audio) payload.audio = { base64: await toBase64(state.audio.blob), mime_type: state.audio.mime };
       if (!current(generation)) return;
-      const response = await request('/interpretar', payload, generation);
+      if (state.async) { state.processing = newKey(); payload.processamento_id = state.processing; }
+      let response = await request('/interpretar', payload, generation);
+      const deadline = Date.now() + 4 * 60 * 1000;
+      while (response?.estado === 'processando' && current(generation)) {
+        if (response.processamento_id !== state.processing) throw new Error('Identificador de processamento inválido');
+        if (Date.now() >= deadline) { cancelProcessing(); throw { code: 'TEMPO_IA_EXCEDIDO' }; }
+        message('Organizando seu pedido com a Manus… O áudio, as fotos e os campos continuam nesta tela. Nada foi enviado ao ADM.');
+        await waitForPoll(generation);
+        if (!current(generation)) return;
+        response = await request('/processamentos/' + encodeURIComponent(state.processing), undefined, generation);
+      }
       if (!response || !current(generation)) return;
       if (!response.rascunho || typeof response.rascunho !== 'object') throw new Error('Resposta incompleta');
+      state.processing = null;
       state.draft = normalizeDraft(response.rascunho); state.review = true;
       if (typeof response.transcricao === 'string') state.transcricao = response.transcricao || state.transcricao || state.texto.trim();
       state.pergunta = typeof response.pergunta === 'string' ? response.pergunta : '';
       state.avisos = Array.isArray(response.avisos) ? response.avisos.filter(v => typeof v === 'string') : [];
-      renderReview(); showQuestions(true); message('Pedido organizado. Confira os campos e complete as informações em destaque.');
+      renderReview(); showQuestions(true); message('Rascunho organizado, ainda não enviado. Confira os campos, complete o que falta e use Revisar e continuar para conferir antes de enviar ao ADM.');
       rootEl('[data-assistente-review]')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (error) {
-      if (current(generation)) message(responseError(error, 'Não foi possível organizar o pedido agora. Seu rascunho foi mantido. Tente novamente ou preencha sem IA.'), true);
+      if (current(generation)) { cancelProcessing(); message(responseError(error, 'Não foi possível organizar o pedido agora. Seu rascunho foi mantido. Tente novamente ou preencha sem IA.'), true); }
     } finally { if (current(generation)) { state.busy = ''; updateButtons(); } }
+  }
+  function waitForPoll(generation) {
+    const controller = new AbortController(); state.controllers.add(controller);
+    return new Promise((resolve, reject) => {
+      const cleanup = () => { clearTimeout(timer); controller.signal.removeEventListener('abort', abort); state.controllers.delete(controller); };
+      const abort = () => { cleanup(); reject(new DOMException('Cancelado', 'AbortError')); };
+      const timer = setTimeout(() => { cleanup(); if (current(generation)) resolve(); else reject(new DOMException('Cancelado', 'AbortError')); }, 5000);
+      controller.signal.addEventListener('abort', abort, { once: true });
+    });
+  }
+  function cancelProcessing() {
+    const id = state.processing; state.processing = null;
+    cancelProcessingId(id);
+  }
+  function cancelProcessingId(id) {
+    if (!id) return;
+    const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 10000);
+    js(API + '/assistente/processamentos/' + encodeURIComponent(id) + '/cancelar', { method: 'POST', signal: controller.signal, keepOnUnauthorized: true }).catch(() => {}).finally(() => clearTimeout(timer));
   }
   function cancelInterpret() {
     if (state.busy !== 'interpret') return;
+    cancelProcessing();
     ++state.generation; state.controllers.forEach(c => c.abort()); state.controllers.clear();
     state.busy = ''; updateButtons(); message('Organização cancelada. O texto e o rascunho foram mantidos.');
   }
@@ -497,6 +536,7 @@
       state.success = { id: String(id) }; state.requestId = newKey();
       state.audio = null; state.photos = []; state.transcricao = ''; state.texto = ''; state.consent = false;
       state.draft = emptyDraft(); state.review = false; state.pergunta = ''; state.avisos = []; state.busy = '';
+      guided.reset();
       renderSuccess();
     } catch (error) {
       if (current(generation)) document.getElementById('assistenteConfirmacaoErro').textContent = responseError(error, 'Não foi possível confirmar o envio. Seu pedido foi mantido. Tente novamente; a mesma solicitação não será enviada duas vezes.');
@@ -517,15 +557,15 @@
     state.root = document.createElement('div'); state.root.className = 'assistente-page';
     content.replaceChildren(state.root);
     state.root.addEventListener('click', onClick);
-    state.root.addEventListener('input', () => { collect(); if (state.review) showQuestions(false); updateButtons(); });
+    state.root.addEventListener('input', () => { collect(); guided.collect(); if (state.review) showQuestions(false); updateButtons(); });
     state.root.addEventListener('change', event => {
-      collect();
+      collect(); guided.collect();
       if (event.target.id === 'assistenteAudioArquivo') { const file = event.target.files[0]; event.target.value = ''; uploadAudio(file); }
       if (event.target.id === 'assistenteFotosArquivo') { const files = [...event.target.files]; event.target.value = ''; uploadPhotos(files); }
       showQuestions(false); updateButtons();
     });
     if (state.success) { renderSuccess(); return; }
-    state.root.innerHTML = `<section class="panel assistente-intro"><div class="assistente-section-heading"><span class="assistente-step">1</span><div><h3>Monte seu pedido</h3><p class="assistente-muted">Escreva, grave um áudio ou preencha sem IA. Para enviar: pessoa, destino, itens com quantidade e unidade e pelo menos 1 foto válida.</p></div></div>
+    state.root.innerHTML = `<section class="panel assistente-mode"><h3>Como você prefere pedir?</h3><p class="assistente-muted">A IA monta apenas um rascunho. Você confere e confirma antes de qualquer envio ao ADM.</p><div class="assistente-actions"><button type="button" class="primary" id="assistenteModoGuiado" data-assistente-action="guide-start">Uma pergunta por vez</button><button type="button" class="secondary" data-assistente-action="guide-full">Pedido completo / áudio único</button></div></section><section class="panel assistente-guide" data-assistente-guide hidden></section><section class="panel assistente-intro"><div class="assistente-section-heading"><span class="assistente-step">1</span><div><h3>Monte seu pedido</h3><p class="assistente-muted">Escreva, grave um áudio ou preencha sem IA. Para enviar: pessoa, destino, itens com quantidade e unidade e pelo menos 1 foto válida.</p></div></div>
       <p class="assistente-muted" data-assistente-account>Conta que registra: <b>${escape(usuario?.nome || usuario?.username || usuario?.user || 'Conta logada')}</b>. A autenticação é da conta. A pessoa que solicita deve ser indicada explicitamente no texto/áudio ou no campo Nome da pessoa; não será inferida do login.</p>
       <ul class="assistente-checklist" id="assistenteChecklist" aria-label="Checklist do pedido"><li data-assistente-checklist="dados">Dados necessários: pessoa, destino, produto, quantidade e unidade por item.</li><li id="assistenteChecklistFoto" data-assistente-checklist="foto" role="status">Foto faltante: anexe pelo menos 1 foto válida para revisar e confirmar.</li></ul>
       <label for="assistenteTexto">Texto do pedido ou correção (opcional)<textarea id="assistenteTexto" rows="5" maxlength="6000" placeholder="Ex.: Sou Maria. Preciso de 2 pares de luvas tamanho M para a estufa 2.">${escape(state.texto)}</textarea></label>
@@ -539,11 +579,12 @@
       <section class="panel assistente-photo-panel" id="assistenteFotoObrigatoria" data-assistente-photo-panel><h3>Foto do pedido <small>(obrigatório)</small></h3><p class="assistente-muted" id="assistenteFotoAjuda">Pelo menos 1 foto válida por pedido, até 3 no total; não é necessária uma foto para cada item. Você pode organizar ou transcrever antes de anexar. Preparadas no aparelho em JPEG, até 1600 × 1600, 1 MiB por foto e 2 MiB no total. Só são enviadas ao confirmar, nunca à IA.</p><label for="assistenteFotosArquivo">Adicionar fotos (obrigatório)<input id="assistenteFotosArquivo" type="file" accept="image/*,.heic,.heif" multiple aria-required="true" aria-describedby="assistenteFotoAjuda assistenteChecklistFoto"></label><p class="assistente-muted" data-photo-count></p><div class="assistente-photos" data-assistente-photos></div></section>
       <section class="panel assistente-review" data-assistente-review hidden></section>
       <div class="assistente-actions assistente-bottom"><button type="button" class="secondary" id="assistenteLimparPedido" data-assistente-action="clear">Limpar pedido</button><p class="assistente-muted">Rascunho só nesta sessão. Nada é salvo neste aparelho.</p></div>`;
-    renderAudio(); renderPhotos(); renderReview(); updateButtons();
+    renderAudio(); renderPhotos(); renderReview(); guided.render(); updateButtons();
     try {
       const response = await request('/status', undefined, generation); if (!response || !current(generation)) return;
       state.configured = response.configurado === true;
-      rootEl('[data-assistente-status]').textContent = state.configured ? 'IA configurada. A disponibilidade e os créditos do serviço são verificados ao organizar. A autorização abaixo vale somente para usar a IA.' : 'A organização automática ainda não está disponível. Você pode montar e enviar o pedido normalmente em Preencher sem IA.';
+      state.async = response.processamento_assincrono === true;
+      rootEl('[data-assistente-status]').textContent = state.configured ? (response.provedor === 'manus' ? 'Assistente conectado à API Manus. Texto/áudio só são enviados com sua autorização; a tarefa fica privada na conta do serviço. Confira o resultado antes de enviar ao ADM.' : 'IA configurada. A disponibilidade e os créditos do serviço são verificados ao organizar. A autorização abaixo vale somente para usar a IA.') : 'A organização automática ainda não está disponível. Você pode montar e enviar o pedido normalmente em Preencher sem IA.';
     } catch (_) {
       if (current(generation)) { state.configured = null; rootEl('[data-assistente-status]').textContent = 'Não foi possível verificar a organização automática agora. Você pode preencher sem IA e enviar o pedido.'; }
     } finally { if (current(generation)) updateButtons(); }
@@ -556,6 +597,7 @@
     if (action === 'new') { cleanup(true); return mount(); }
     if (action === 'stop') return stopRecording();
     if (state.busy || state.photoBusy || state.recording || state.recordPending) return;
+    if (action.startsWith('guide-')) return guided.action(action);
     if (action === 'record') return startRecording();
     if (action === 'organize') return organize();
     if (action === 'manual') return prepareManual();

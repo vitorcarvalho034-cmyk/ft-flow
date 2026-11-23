@@ -1,12 +1,13 @@
-const CACHE_VERSION = "v44";
+const CACHE_VERSION = "v45";
 const CACHE_NAME = `ft-flow-${CACHE_VERSION}`;
 const ASSETS = [
   "/",
   "/index.html",
   "/style.css?v=48",
-  "/app.js?v=73",
-  "/assistente.css?v=2",
-  "/assistente.js?v=3",
+  "/app.js?v=74",
+  "/assistente.css?v=3",
+  "/assistente-guiado.js?v=1",
+  "/assistente.js?v=4",
   "/epis.css?v=1",
   "/epis.js?v=1",
   "/logo.png",
